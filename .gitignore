@@ -99,10 +99,20 @@ app-builds/
 *.rpm
 *.AppImage
 
+# DuhaDeriStokTakip-App specific build outputs
+DuhaDeriStokTakip-App/dist/
+DuhaDeriStokTakip-App/dist-react/
+DuhaDeriStokTakip-App/build/
+DuhaDeriStokTakip-App/node_modules/
+DuhaDeriStokTakip-App/src/renderer/dist-react/
+
 # Database files
 *.db
 *.sqlite
 *.sqlite3
+
+# DuhaDeriStokTakip Data folder (user data)
+DuhaDeriStokTakip-Data/
 
 # Temporary files
 tmp/
@@ -120,6 +130,7 @@ temp/
 
 # Electron-builder output
 /dist_electron/
+DuhaDeriStokTakip-App/dist_electron/
 
 # Local configuration files
 config/local.json
@@ -141,4 +152,13 @@ storybook-static/
 .tmp/
 .temp/
 
+# Kiro IDE files
 .kiro/specs/
+
+# Old project references (if any)
+electron-vite-app/
+DeriStokTakip/
+
+# macOS specific
+.DS_Store
+**/.DS_Store

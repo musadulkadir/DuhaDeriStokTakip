@@ -1,7 +1,7 @@
 {
-  "name": "dericilik-stok-cari-vite",
+  "name": "duha-deri-stok-takip-app",
   "version": "1.0.0",
-  "description": "Dericilik Stok ve Cari Takip Uygulaması - Vite Edition",
+  "description": "Duha Deri Stok ve Cari Takip Uygulaması",
   "main": "src/main/main.js",
   "scripts": {
     "start": "concurrently \"npm run dev:react\" \"wait-on http://localhost:3000 && electron .\"",
@@ -47,8 +47,8 @@
     "wait-on": "^8.0.1"
   },
   "build": {
-    "productName": "Dericilik Stok & Cari",
-    "appId": "com.dericilik.stokcari.vite",
+    "productName": "Duha Deri Stok Takip",
+    "appId": "com.duhaderi.stoktakip.app",
     "asarUnpack": [
       "**/node_modules/sqlite3/**/*"
     ],
