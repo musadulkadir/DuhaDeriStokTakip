@@ -1,0 +1,83 @@
+{
+  "name": "dericilik-stok-cari-vite",
+  "version": "1.0.0",
+  "description": "Dericilik Stok ve Cari Takip Uygulaması - Vite Edition",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "concurrently \"npm run dev:react\" \"wait-on http://localhost:3000 && electron .\"",
+    "dev": "concurrently \"npm run dev:react\" \"wait-on http://localhost:3000 && electron .\"",
+    "dev:react": "vite",
+    "build": "vite build && electron-builder",
+    "build:react": "vite build",
+    "postinstall": "electron-builder install-app-deps",
+    "rebuild": "electron-rebuild"
+  },
+  "keywords": [
+    "electron",
+    "react",
+    "vite",
+    "sqlite3",
+    "tailwindcss"
+  ],
+  "author": "Developer",
+  "license": "MIT",
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/icons-material": "^7.3.4",
+    "@mui/material": "^7.3.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^7.3.0",
+    "sqlite3": "^5.1.7"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.11",
+    "@types/react-dom": "^19.0.4",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "concurrently": "^9.1.2",
+    "electron": "^35.0.2",
+    "electron-builder": "^25.1.8",
+    "electron-rebuild": "^3.2.9",
+    "postcss": "^8.5.0",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.8.2",
+    "vite": "^6.0.7",
+    "wait-on": "^8.0.1"
+  },
+  "build": {
+    "productName": "Dericilik Stok & Cari",
+    "appId": "com.dericilik.stokcari.vite",
+    "asarUnpack": [
+      "**/node_modules/sqlite3/**/*"
+    ],
+    "files": [
+      "dist-react/**/*",
+      "src/main/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "mac": {
+      "target": {
+        "target": "default",
+        "arch": [
+          "arm64",
+          "x64"
+        ]
+      }
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ]
+    }
+  }
+}
