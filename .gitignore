@@ -140,3 +140,5 @@ storybook-static/
 # Temporary folders
 .tmp/
 .temp/
+
+.kiro/specs/
