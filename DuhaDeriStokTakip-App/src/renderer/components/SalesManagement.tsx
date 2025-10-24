@@ -60,15 +60,15 @@ interface Sale {
   id: number;
   customerId: number;
   customerName: string;
+  currency: string;
   items: SaleItem[];
   total: number;
   date: string;
-  status: 'Tamamlandı' | 'İptal';
 }
 
 const SalesManagement: React.FC = () => {
   const navigate = useNavigate();
-  
+
   // State
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -88,6 +88,31 @@ const SalesManagement: React.FC = () => {
   const [unitPricePerDesi, setUnitPricePerDesi] = useState<string>('');
   const [saleCurrency, setSaleCurrency] = useState(DEFAULT_CURRENCIES.SALES);
   const [errors, setErrors] = useState<string[]>([]);
+
+  // Tutar formatlama fonksiyonları
+  const formatNumberWithCommas = (value: string): string => {
+    // Sadece rakam ve nokta karakterlerini al
+    const numericValue = value.replace(/[^\d.]/g, '');
+    
+    // Eğer boşsa boş döndür
+    if (!numericValue) return '';
+    
+    // Sayıyı parçalara ayır (tam kısım ve ondalık kısım)
+    const parts = numericValue.split('.');
+    const integerPart = parts[0];
+    const decimalPart = parts[1];
+    
+    // Tam kısmı üç haneli ayraçlarla formatla
+    const formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    
+    // Ondalık kısım varsa ekle
+    return decimalPart !== undefined ? `${formattedInteger}.${decimalPart}` : formattedInteger;
+  };
+
+  const parseFormattedNumber = (value: string): number => {
+    // Virgülleri kaldır ve sayıya çevir
+    return parseFloat(value.replace(/,/g, '')) || 0;
+  };
 
   // Load data
   const loadProducts = async () => {
@@ -125,20 +150,21 @@ const SalesManagement: React.FC = () => {
       if (response.success) {
         // Satış verilerini grupla ve dönüştür
         const salesMap = new Map();
-        
+
         response.data.forEach((row: any) => {
           if (!salesMap.has(row.id)) {
             salesMap.set(row.id, {
               id: row.id,
               customerId: row.customer_id,
-              customerName: row.customer_name,
+              customerName: row.customer_name || row.name || 'Bilinmeyen Müşteri',
+              currency: row.currency || 'TRY',
               total: row.total_amount,
               date: row.sale_date.split('T')[0],
               status: row.payment_status === 'paid' ? 'Tamamlandı' : 'Beklemede',
               items: []
             });
           }
-          
+
           if (row.quantity_pieces) {
             salesMap.get(row.id).items.push({
               productId: row.product_id,
@@ -150,7 +176,7 @@ const SalesManagement: React.FC = () => {
             });
           }
         });
-        
+
         setSales(Array.from(salesMap.values()));
       }
     } catch (error) {
@@ -175,18 +201,18 @@ const SalesManagement: React.FC = () => {
       newErrors.push('Geçerli bir adet miktarı girin');
     }
 
-    if (!quantityDesi || parseFloat(quantityDesi) <= 0) {
+    if (!quantityDesi || parseFormattedNumber(quantityDesi) <= 0) {
       newErrors.push('Geçerli bir desi miktarı girin');
     }
 
-    if (!unitPricePerDesi || parseFloat(unitPricePerDesi) <= 0) {
+    if (!unitPricePerDesi || parseFormattedNumber(unitPricePerDesi) <= 0) {
       newErrors.push('Geçerli bir desi başına fiyat girin');
     }
 
     // Stok kontrolü - stok adet cinsinden
     const piecesToSell = parseInt(quantityPieces);
     const availableStock = selectedProduct?.stock_quantity || 0;
-    
+
     if (selectedProduct && quantityPieces && piecesToSell > availableStock) {
       newErrors.push(`Stok yetersiz! Mevcut stok: ${availableStock} adet`);
     }
@@ -200,9 +226,9 @@ const SalesManagement: React.FC = () => {
       productId: selectedProduct!.id!,
       productName: `${selectedProduct!.category} - ${selectedProduct!.color}`,
       quantityPieces: piecesToSell,
-      quantityDesi: parseFloat(quantityDesi),
-      unitPricePerDesi: parseFloat(unitPricePerDesi),
-      total: parseFloat(quantityDesi) * parseFloat(unitPricePerDesi),
+      quantityDesi: parseFormattedNumber(quantityDesi),
+      unitPricePerDesi: parseFormattedNumber(unitPricePerDesi),
+      total: parseFormattedNumber(quantityDesi) * parseFormattedNumber(unitPricePerDesi),
     };
 
     setSaleItems([...saleItems, item]);
@@ -235,7 +261,7 @@ const SalesManagement: React.FC = () => {
     setLoading(true);
     try {
       const totalAmount = calculateTotal();
-      
+
       // Satış verisini hazırla
       const saleData = {
         customer_id: selectedCustomer.id,
@@ -261,9 +287,7 @@ const SalesManagement: React.FC = () => {
 
       // Satış başarılı - stok güncellemesi sales:create handler'ında yapılıyor
 
-      // Müşteri bakiyesini güncelle (borç ekle)
-      const newBalance = (selectedCustomer.balance || 0) - totalAmount;
-      await dbAPI.updateCustomerBalance(selectedCustomer.id!, newBalance);
+      // Müşteri bakiyesi artık satış ve ödeme kayıtlarından hesaplanıyor, ayrı güncelleme gerekmiyor
 
       // Satış yapıldığında kasaya ekleme - KALDIRILDI
       // Müşteri ödeme yaptığında kasaya eklenecek
@@ -272,9 +296,9 @@ const SalesManagement: React.FC = () => {
       await loadProducts();
       await loadCustomers();
       await loadSales();
-      
+
       setSnackbar({ open: true, message: 'Satış başarıyla tamamlandı', severity: 'success' });
-      
+
       // Reset form
       setSelectedCustomer(null);
       setSaleItems([]);
@@ -283,10 +307,10 @@ const SalesManagement: React.FC = () => {
       setNewSaleDialogOpen(false);
     } catch (error) {
       console.error('Sale completion error:', error);
-      setSnackbar({ 
-        open: true, 
-        message: error instanceof Error ? error.message : 'Satış tamamlanırken hata oluştu', 
-        severity: 'error' 
+      setSnackbar({
+        open: true,
+        message: error instanceof Error ? error.message : 'Satış tamamlanırken hata oluştu',
+        severity: 'error'
       });
     } finally {
       setLoading(false);
@@ -339,6 +363,70 @@ const SalesManagement: React.FC = () => {
         </Grid>
       </Grid>
 
+      {/* Sales Summary */}
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card>
+            <CardContent sx={{ textAlign: 'center', p: 2 }}>
+              <Typography variant="h6" sx={{ color: 'success.main', mb: 1 }}>
+                Toplam Satış (TL)
+              </Typography>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: 'success.main' }}>
+                ₺{sales.filter(s => s.currency === 'TRY').reduce((sum, s) => sum + s.total, 0).toLocaleString('tr-TR')}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {sales.filter(s => s.currency === 'TRY').length} satış
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card>
+            <CardContent sx={{ textAlign: 'center', p: 2 }}>
+              <Typography variant="h6" sx={{ color: 'info.main', mb: 1 }}>
+                Toplam Satış (USD)
+              </Typography>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: 'info.main' }}>
+                ${sales.filter(s => s.currency === 'USD').reduce((sum, s) => sum + s.total, 0).toLocaleString('tr-TR')}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {sales.filter(s => s.currency === 'USD').length} satış
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card>
+            <CardContent sx={{ textAlign: 'center', p: 2 }}>
+              <Typography variant="h6" sx={{ color: 'warning.main', mb: 1 }}>
+                Toplam Satış (EUR)
+              </Typography>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: 'warning.main' }}>
+                €{sales.filter(s => s.currency === 'EUR').reduce((sum, s) => sum + s.total, 0).toLocaleString('tr-TR')}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {sales.filter(s => s.currency === 'EUR').length} satış
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card>
+            <CardContent sx={{ textAlign: 'center', p: 2 }}>
+              <Typography variant="h6" sx={{ color: 'primary.main', mb: 1 }}>
+                Toplam Satış
+              </Typography>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: 'primary.main' }}>
+                {sales.length}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                tüm para birimleri
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
       {/* Sales History */}
       <Card>
         <CardContent sx={{ p: 0 }}>
@@ -356,7 +444,6 @@ const SalesManagement: React.FC = () => {
                   <TableCell>Ürün Sayısı</TableCell>
                   <TableCell align="right">Toplam Tutar</TableCell>
                   <TableCell>Tarih</TableCell>
-                  <TableCell>Durum</TableCell>
                   <TableCell align="center">İşlemler</TableCell>
                 </TableRow>
               </TableHead>
@@ -372,22 +459,15 @@ const SalesManagement: React.FC = () => {
                     <TableCell>{sale.items.length} ürün</TableCell>
                     <TableCell align="right">
                       <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                        ${sale.total.toLocaleString()}
+                        {sale.currency === 'USD' ? '$' : sale.currency === 'TRY' ? '₺' : '€'}{sale.total.toLocaleString('tr-TR')}
                       </Typography>
                     </TableCell>
                     <TableCell>
                       {new Date(sale.date).toLocaleDateString('tr-TR')}
                     </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={sale.status}
-                        color={sale.status === 'Tamamlandı' ? 'success' : 'error'}
-                        size="small"
-                      />
-                    </TableCell>
                     <TableCell align="center">
-                      <Button 
-                        size="small" 
+                      <Button
+                        size="small"
                         variant="outlined"
                         onClick={() => {
                           setSelectedSale(sale);
@@ -406,10 +486,10 @@ const SalesManagement: React.FC = () => {
       </Card>
 
       {/* New Sale Dialog */}
-      <Dialog 
-        open={newSaleDialogOpen} 
-        onClose={() => setNewSaleDialogOpen(false)} 
-        maxWidth="lg" 
+      <Dialog
+        open={newSaleDialogOpen}
+        onClose={() => setNewSaleDialogOpen(false)}
+        maxWidth="lg"
         fullWidth
       >
         <DialogTitle>
@@ -448,7 +528,7 @@ const SalesManagement: React.FC = () => {
                 </CardContent>
               </Card>
             </Grid>
-            
+
             {/* Customer Selection */}
             <Grid item xs={12} md={8}>
               <Card>
@@ -459,7 +539,7 @@ const SalesManagement: React.FC = () => {
                   </Typography>
                   <Autocomplete
                     options={customers}
-                    getOptionLabel={(option) => `${option.name} - ${option.phone}`}
+                    getOptionLabel={(option) => `${option.name || 'İsimsiz'} - ${option.phone || 'Telefon yok'}`}
                     value={selectedCustomer}
                     onChange={(_, newValue) => setSelectedCustomer(newValue)}
                     renderInput={(params) => (
@@ -470,7 +550,7 @@ const SalesManagement: React.FC = () => {
                         <Box>
                           <Typography variant="body1">{option.name}</Typography>
                           <Typography variant="body2" color="text.secondary">
-                            {option.phone} - Bakiye: ${(option.balance || 0).toLocaleString()}
+                            {option.phone || 'Telefon yok'} - Bakiye: ₺{(option.balance || 0).toLocaleString('tr-TR')}
                           </Typography>
                         </Box>
                       </Box>
@@ -482,7 +562,7 @@ const SalesManagement: React.FC = () => {
                         <strong>Seçili Müşteri:</strong> {selectedCustomer.name}
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
-                        Güncel Bakiye: ${(selectedCustomer.balance || 0).toLocaleString()}
+                        Güncel Bakiye: ₺{(selectedCustomer.balance || 0).toLocaleString('tr-TR')}
                       </Typography>
                     </Box>
                   )}
@@ -497,8 +577,8 @@ const SalesManagement: React.FC = () => {
                   <Typography variant="h6" sx={{ mb: 2 }}>
                     Ürün Ekle
                   </Typography>
-                  <Grid container spacing={2} alignItems="end">
-                    <Grid item xs={12} md={4}>
+                  <Grid container spacing={2} alignItems="start">
+                    <Grid item xs={12} md={2}>
                       <Autocomplete
                         options={products}
                         getOptionLabel={(option) => `${option.category} - ${option.color}`}
@@ -507,7 +587,21 @@ const SalesManagement: React.FC = () => {
                           setSelectedProduct(newValue);
                         }}
                         renderInput={(params) => (
-                          <TextField {...params} label="Ürün Seç" />
+                          <TextField
+                            {...params}
+                            label="Ürün Seç"
+                            size="medium"
+                            helperText="Satılacak ürünü seçin"
+                            sx={{
+                              '& .MuiInputLabel-root': {
+                                fontSize: '1.1rem',
+                                fontWeight: 600,
+                              },
+                              '& .MuiOutlinedInput-root': {
+                                minHeight: '56px',
+                              }
+                            }}
+                          />
                         )}
                         renderOption={(props, option) => (
                           <Box component="li" {...props}>
@@ -530,45 +624,101 @@ const SalesManagement: React.FC = () => {
                         value={quantityPieces}
                         onChange={(e) => setQuantityPieces(e.target.value)}
                         fullWidth
+                        size="medium"
                         helperText="Stoktan düşecek"
+                        sx={{
+                          '& .MuiInputLabel-root': {
+                            fontSize: '1.1rem',
+                            fontWeight: 600,
+                          },
+                          '& .MuiOutlinedInput-root': {
+                            minHeight: '56px',
+                          }
+                        }}
                       />
                     </Grid>
                     <Grid item xs={12} md={2}>
                       <TextField
                         label="Desi"
-                        type="number"
                         value={quantityDesi}
-                        onChange={(e) => setQuantityDesi(e.target.value)}
+                        onChange={(e) => {
+                          const formatted = formatNumberWithCommas(e.target.value);
+                          setQuantityDesi(formatted);
+                        }}
                         fullWidth
+                        size="medium"
                         helperText="Fiyat hesabı için"
+                        sx={{
+                          '& .MuiInputLabel-root': {
+                            fontSize: '1.1rem',
+                            fontWeight: 600,
+                          },
+                          '& .MuiOutlinedInput-root': {
+                            minHeight: '56px',
+                          }
+                        }}
                       />
                     </Grid>
                     <Grid item xs={12} md={2}>
                       <TextField
-                        label="Desi Başına Fiyat ($)"
-                        type="number"
+                        label={`Desi Başına Fiyat (${saleCurrency === 'USD' ? '$' : saleCurrency === 'TRY' ? '₺' : '€'})`}
                         value={unitPricePerDesi}
-                        onChange={(e) => setUnitPricePerDesi(e.target.value)}
+                        onChange={(e) => {
+                          const formatted = formatNumberWithCommas(e.target.value);
+                          setUnitPricePerDesi(formatted);
+                        }}
                         fullWidth
+                        size="medium"
+                        helperText="Birim fiyat girin"
+                        sx={{
+                          '& .MuiInputLabel-root': {
+                            fontSize: '1.1rem',
+                            fontWeight: 600,
+                          },
+                          '& .MuiOutlinedInput-root': {
+                            minHeight: '56px',
+                          }
+                        }}
                       />
                     </Grid>
                     <Grid item xs={12} md={2}>
                       <TextField
-                        label="Toplam ($)"
-                        value={quantityDesi && unitPricePerDesi ? (parseFloat(quantityDesi) * parseFloat(unitPricePerDesi)).toFixed(2) : '0'}
+                        label={`Toplam (${saleCurrency === 'USD' ? '$' : saleCurrency === 'TRY' ? '₺' : '€'})`}
+                        value={quantityDesi && unitPricePerDesi ? 
+                          formatNumberWithCommas((parseFormattedNumber(quantityDesi) * parseFormattedNumber(unitPricePerDesi)).toFixed(2)) : '0'}
                         disabled
                         fullWidth
+                        size="medium"
+                        helperText="Otomatik hesaplanan"
+                        sx={{
+                          '& .MuiInputLabel-root': {
+                            fontSize: '1.1rem',
+                            fontWeight: 600,
+                          },
+                          '& .MuiOutlinedInput-root': {
+                            minHeight: '56px',
+                          }
+                        }}
                       />
                     </Grid>
                     <Grid item xs={12} md={1}>
-                      <Button
-                        variant="contained"
-                        onClick={addItemToSale}
-                        fullWidth
-                        startIcon={<Add />}
-                      >
-                        Ekle
-                      </Button>
+                      <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                        <Button
+                          variant="contained"
+                          onClick={addItemToSale}
+                          fullWidth
+                          startIcon={<Add />}
+                          size="large"
+                          sx={{
+                            minHeight: '56px',
+                            fontSize: '1.1rem',
+                            fontWeight: 600,
+                          }}
+                        >
+                          Ekle
+                        </Button>
+                        <Box sx={{ height: '20px' }} /> {/* Helper text alanı için boşluk */}
+                      </Box>
                     </Grid>
                   </Grid>
                 </CardContent>
@@ -600,10 +750,10 @@ const SalesManagement: React.FC = () => {
                             {saleItems.map((item, index) => (
                               <TableRow key={index}>
                                 <TableCell>{item.productName}</TableCell>
-                                <TableCell align="right">{item.quantityPieces} adet</TableCell>
-                                <TableCell align="right">{item.quantityDesi} desi</TableCell>
-                                <TableCell align="right">${item.unitPricePerDesi}/desi</TableCell>
-                                <TableCell align="right">${item.total.toFixed(2)}</TableCell>
+                                <TableCell align="right">{item.quantityPieces.toLocaleString('tr-TR')} adet</TableCell>
+                                <TableCell align="right">{item.quantityDesi.toLocaleString('tr-TR')} desi</TableCell>
+                                <TableCell align="right">{saleCurrency === 'USD' ? '$' : saleCurrency === 'TRY' ? '₺' : '€'}{item.unitPricePerDesi.toLocaleString('tr-TR')}/desi</TableCell>
+                                <TableCell align="right">{saleCurrency === 'USD' ? '$' : saleCurrency === 'TRY' ? '₺' : '€'}{item.total.toLocaleString('tr-TR')}</TableCell>
                                 <TableCell align="center">
                                   <IconButton
                                     size="small"
@@ -621,7 +771,7 @@ const SalesManagement: React.FC = () => {
                       <Divider sx={{ my: 2 }} />
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <Typography variant="h6">
-                          Genel Toplam: ${calculateTotal().toFixed(2)}
+                          Genel Toplam: {saleCurrency === 'USD' ? '$' : saleCurrency === 'TRY' ? '₺' : '€'}{calculateTotal().toLocaleString('tr-TR')}
                         </Typography>
                         <Box sx={{ display: 'flex', gap: 1 }}>
                           <Button
@@ -675,33 +825,28 @@ const SalesManagement: React.FC = () => {
                     </Typography>
                     <List dense>
                       <ListItem>
-                        <ListItemText 
-                          primary="Satış No" 
+                        <ListItemText
+                          primary="Satış No"
                           secondary={`#${selectedSale.id}`}
                         />
                       </ListItem>
                       <ListItem>
-                        <ListItemText 
-                          primary="Müşteri" 
+                        <ListItemText
+                          primary="Müşteri"
                           secondary={selectedSale.customerName}
                         />
                       </ListItem>
                       <ListItem>
-                        <ListItemText 
-                          primary="Tarih" 
+                        <ListItemText
+                          primary="Tarih"
                           secondary={new Date(selectedSale.date).toLocaleDateString('tr-TR')}
                         />
                       </ListItem>
+
                       <ListItem>
-                        <ListItemText 
-                          primary="Durum" 
-                          secondary={selectedSale.status}
-                        />
-                      </ListItem>
-                      <ListItem>
-                        <ListItemText 
-                          primary="Toplam Tutar" 
-                          secondary={`$${selectedSale.total.toLocaleString()}`}
+                        <ListItemText
+                          primary="Toplam Tutar"
+                          secondary={`${selectedSale.currency === 'USD' ? '$' : selectedSale.currency === 'TRY' ? '₺' : '€'}${selectedSale.total.toLocaleString('tr-TR')}`}
                         />
                       </ListItem>
                     </List>
@@ -719,7 +864,7 @@ const SalesManagement: React.FC = () => {
                         <ListItem key={index}>
                           <ListItemText
                             primary={item.productName}
-                            secondary={`${item.quantity} ${item.unit} × $${item.unitPrice} = $${item.total}`}
+                            secondary={`${(item.quantityPieces || 0).toLocaleString('tr-TR')} adet (${(item.quantityDesi || 0).toLocaleString('tr-TR')} desi) × ${selectedSale.currency === 'USD' ? '$' : selectedSale.currency === 'TRY' ? '₺' : '€'}${(item.unitPricePerDesi || 0).toLocaleString('tr-TR')}/desi = ${selectedSale.currency === 'USD' ? '$' : selectedSale.currency === 'TRY' ? '₺' : '€'}${(item.total || 0).toLocaleString('tr-TR')}`}
                           />
                         </ListItem>
                       ))}

@@ -40,10 +40,11 @@ const Sidebar: React.FC<SidebarProps> = ({ open, toggleSidebar }) => {
 
   const menuItems = [
     { path: '/', label: 'Dashboard', icon: <DashboardIcon /> },
-    { path: '/products', label: 'Deri Ürünleri', icon: <CategoryIcon /> },
-    { path: '/customers', label: 'Müşteri Yönetimi', icon: <PersonIcon /> },
+    { path: '/products', label: 'Ürünler', icon: <CategoryIcon /> },
+    { path: '/customers', label: 'Partner Yönetimi', icon: <PersonIcon /> },
     { path: '/employees', label: 'Çalışan Yönetimi', icon: <GroupIcon /> },
     { path: '/sales', label: 'Satış İşlemleri', icon: <ShoppingCartIcon /> },
+    { path: '/purchases', label: 'Alım İşlemleri', icon: <WorkIcon /> },
     { path: '/cash', label: 'Kasa Yönetimi', icon: <AccountBalanceWalletIcon /> },
     { path: '/movements', label: 'Stok Hareketleri', icon: <HistoryIcon /> },
     { path: '/reports', label: 'Raporlar', icon: <AssessmentIcon /> },

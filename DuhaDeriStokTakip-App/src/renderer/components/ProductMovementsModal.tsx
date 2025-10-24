@@ -107,7 +107,7 @@ const ProductMovementsModal: React.FC<ProductMovementsModalProps> = ({ open, onC
           <CloseIcon />
         </IconButton>
         <Typography id="product-movements-modal-title" variant="h6" component="h2">
-          Stok Geçmişi: {`${product.category} - ${product.color}`}
+          Stok Geçmişi: {product.name || `${product.category}${product.color ? ` - ${product.color}` : ''}`}
         </Typography>
         <TableContainer component={Paper} sx={{ mt: 2, maxHeight: 440 }}>
           <Table stickyHeader>
@@ -141,19 +141,19 @@ const ProductMovementsModal: React.FC<ProductMovementsModalProps> = ({ open, onC
                     </TableCell>
                     <TableCell align="right">
                       <Chip
-                        label={movement.movement_type === 'in' ? `+${movement.quantity}` : `-${movement.quantity}`}
+                        label={movement.movement_type === 'in' ? `+${movement.quantity.toLocaleString('tr-TR')}` : `-${movement.quantity.toLocaleString('tr-TR')}`}
                         color={movement.movement_type === 'in' ? 'success' : 'error'}
                         size="small"
                       />
                       <Typography variant="caption" display="block" color="text.secondary">
-                        {movement.previous_stock} → {movement.new_stock}
+                        {movement.previous_stock.toLocaleString('tr-TR')} → {movement.new_stock.toLocaleString('tr-TR')}
                       </Typography>
                     </TableCell>
                     <TableCell>
                       {movement.notes || 'Açıklama yok'}
                       {movement.total_amount && (
                         <Typography variant="caption" display="block" color="text.secondary">
-                          Tutar: ${movement.total_amount.toLocaleString()}
+                          Tutar: ₺{movement.total_amount.toLocaleString('tr-TR')}
                         </Typography>
                       )}
                     </TableCell>

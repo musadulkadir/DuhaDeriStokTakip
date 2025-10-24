@@ -15,6 +15,7 @@ export interface Product extends BaseEntity {
   stock_quantity?: number;
   unit?: string;
   description?: string;
+  type?: 'product' | 'material';
 }
 
 // Customer interface - matches customers table schema
@@ -24,6 +25,7 @@ export interface Customer extends BaseEntity {
   phone?: string;
   address?: string;
   balance?: number;
+  type?: 'customer' | 'supplier';
 }
 
 // Employee interface - matches employees table schema

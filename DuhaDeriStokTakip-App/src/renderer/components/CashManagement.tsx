@@ -53,6 +53,7 @@ interface CashTransaction {
   id: number;
   type: 'in' | 'out';
   amount: number;
+  currency?: string;
   category: string;
   description: string;
   reference_type?: 'sale' | 'payment' | 'expense' | 'other';
@@ -61,26 +62,52 @@ interface CashTransaction {
   customer_name?: string;
   created_at: string;
   user: string;
+  previous_balance?: number;
+  new_balance?: number;
 }
 
 interface CashSummary {
-  totalBalance: number;
-  todayIncome: number;
-  todayExpense: number;
-  monthlyIncome: number;
-  monthlyExpense: number;
-  totalDebt: number;
+  totalBalanceTRY: number;
+  totalBalanceUSD: number;
+  totalBalanceEUR: number;
+  todayIncomeTRY: number;
+  todayIncomeUSD: number;
+  todayIncomeEUR: number;
+  todayExpenseTRY: number;
+  todayExpenseUSD: number;
+  todayExpenseEUR: number;
+  monthlyIncomeTRY: number;
+  monthlyIncomeUSD: number;
+  monthlyIncomeEUR: number;
+  monthlyExpenseTRY: number;
+  monthlyExpenseUSD: number;
+  monthlyExpenseEUR: number;
+  totalDebtTRY: number;
+  totalDebtUSD: number;
+  totalDebtEUR: number;
 }
 
 const CashManagement: React.FC = () => {
   const [transactions, setTransactions] = useState<CashTransaction[]>([]);
   const [summary, setSummary] = useState<CashSummary>({
-    totalBalance: 0,
-    todayIncome: 0,
-    todayExpense: 0,
-    monthlyIncome: 0,
-    monthlyExpense: 0,
-    totalDebt: 0,
+    totalBalanceTRY: 0,
+    totalBalanceUSD: 0,
+    totalBalanceEUR: 0,
+    todayIncomeTRY: 0,
+    todayIncomeUSD: 0,
+    todayIncomeEUR: 0,
+    todayExpenseTRY: 0,
+    todayExpenseUSD: 0,
+    todayExpenseEUR: 0,
+    monthlyIncomeTRY: 0,
+    monthlyIncomeUSD: 0,
+    monthlyIncomeEUR: 0,
+    monthlyExpenseTRY: 0,
+    monthlyExpenseUSD: 0,
+    monthlyExpenseEUR: 0,
+    totalDebtTRY: 0,
+    totalDebtUSD: 0,
+    totalDebtEUR: 0,
   });
   const [loading, setLoading] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
@@ -98,6 +125,31 @@ const CashManagement: React.FC = () => {
   const [category, setCategory] = useState('');
   const [description, setDescription] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
+
+  // Tutar formatlama fonksiyonları
+  const formatNumberWithCommas = (value: string): string => {
+    // Sadece rakam ve nokta karakterlerini al
+    const numericValue = value.replace(/[^\d.]/g, '');
+
+    // Eğer boşsa boş döndür
+    if (!numericValue) return '';
+
+    // Sayıyı parçalara ayır (tam kısım ve ondalık kısım)
+    const parts = numericValue.split('.');
+    const integerPart = parts[0];
+    const decimalPart = parts[1];
+
+    // Tam kısmı üç haneli ayraçlarla formatla
+    const formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+
+    // Ondalık kısım varsa ekle
+    return decimalPart !== undefined ? `${formattedInteger}.${decimalPart}` : formattedInteger;
+  };
+
+  const parseFormattedNumber = (value: string): number => {
+    // Virgülleri kaldır ve sayıya çevir
+    return parseFloat(value.replace(/,/g, '')) || 0;
+  };
 
   // Kategoriler
   const incomeCategories = [
@@ -126,8 +178,16 @@ const CashManagement: React.FC = () => {
     setLoading(true);
     try {
       const response = await dbAPI.getCashTransactions();
-      if (response.success) {
-        setTransactions(response.data);
+      if (response.success && response.data) {
+        // İşlemleri tarih sırasına göre sırala
+        const sortedTransactions = [...response.data].sort((a, b) =>
+          new Date(a.created_at || '').getTime() - new Date(b.created_at || '').getTime()
+        );
+
+        // Her işlem için önceki ve yeni bakiyeyi hesapla
+        const transactionsWithBalance = calculateBalances(sortedTransactions);
+
+        setTransactions(transactionsWithBalance.reverse()); // En yeni işlemler üstte
         await calculateSummary(response.data);
       } else {
         setSnackbar({ open: true, message: response.error || 'İşlemler yüklenemedi', severity: 'error' });
@@ -139,65 +199,161 @@ const CashManagement: React.FC = () => {
     }
   };
 
+  // Bakiye hesaplama fonksiyonu
+  const calculateBalances = (transactions: any[]) => {
+    const balancesByCurrency: { [key: string]: number } = {
+      'TRY': 0,
+      'USD': 0,
+      'EUR': 0
+    };
+
+    return transactions.map((transaction) => {
+      const currency = transaction.currency || 'TRY';
+      const previousBalance = balancesByCurrency[currency];
+
+      // Yeni bakiyeyi hesapla
+      const newBalance = transaction.type === 'in'
+        ? previousBalance + transaction.amount
+        : previousBalance - transaction.amount;
+
+      // Bakiyeyi güncelle
+      balancesByCurrency[currency] = newBalance;
+
+      return {
+        ...transaction,
+        previous_balance: previousBalance,
+        new_balance: newBalance
+      };
+    });
+  };
+
   // Özet hesapla
   const calculateSummary = async (transactions: CashTransaction[]) => {
     const today = new Date().toISOString().split('T')[0];
     const currentMonth = new Date().toISOString().substring(0, 7);
 
-    // Kasa işlemlerini hesapla (sadece gider/gelir işlemleri)
+    // Kasa işlemlerini para birimi bazında hesapla
     const cashSummary = transactions.reduce((acc, transaction) => {
       const transactionDate = transaction.created_at.split('T')[0];
       const transactionMonth = transaction.created_at.substring(0, 7);
+      const currency = transaction.currency || 'USD';
 
       if (transaction.type === 'in') {
-        acc.totalBalance += transaction.amount;
-        if (transactionDate === today) {
-          acc.todayIncome += transaction.amount;
-        }
-        if (transactionMonth === currentMonth) {
-          acc.monthlyIncome += transaction.amount;
+        if (currency === 'TRY') {
+          acc.totalBalanceTRY += transaction.amount;
+          if (transactionDate === today) {
+            acc.todayIncomeTRY += transaction.amount;
+          }
+          if (transactionMonth === currentMonth) {
+            acc.monthlyIncomeTRY += transaction.amount;
+          }
+        } else if (currency === 'EUR') {
+          acc.totalBalanceEUR += transaction.amount;
+          if (transactionDate === today) {
+            acc.todayIncomeEUR += transaction.amount;
+          }
+          if (transactionMonth === currentMonth) {
+            acc.monthlyIncomeEUR += transaction.amount;
+          }
+        } else {
+          acc.totalBalanceUSD += transaction.amount;
+          if (transactionDate === today) {
+            acc.todayIncomeUSD += transaction.amount;
+          }
+          if (transactionMonth === currentMonth) {
+            acc.monthlyIncomeUSD += transaction.amount;
+          }
         }
       } else {
-        acc.totalBalance -= transaction.amount;
-        if (transactionDate === today) {
-          acc.todayExpense += transaction.amount;
-        }
-        if (transactionMonth === currentMonth) {
-          acc.monthlyExpense += transaction.amount;
+        if (currency === 'TRY') {
+          acc.totalBalanceTRY -= transaction.amount;
+          if (transactionDate === today) {
+            acc.todayExpenseTRY += transaction.amount;
+          }
+          if (transactionMonth === currentMonth) {
+            acc.monthlyExpenseTRY += transaction.amount;
+          }
+        } else if (currency === 'EUR') {
+          acc.totalBalanceEUR -= transaction.amount;
+          if (transactionDate === today) {
+            acc.todayExpenseEUR += transaction.amount;
+          }
+          if (transactionMonth === currentMonth) {
+            acc.monthlyExpenseEUR += transaction.amount;
+          }
+        } else {
+          acc.totalBalanceUSD -= transaction.amount;
+          if (transactionDate === today) {
+            acc.todayExpenseUSD += transaction.amount;
+          }
+          if (transactionMonth === currentMonth) {
+            acc.monthlyExpenseUSD += transaction.amount;
+          }
         }
       }
 
       return acc;
     }, {
-      totalBalance: 0,
-      todayIncome: 0,
-      todayExpense: 0,
-      monthlyIncome: 0,
-      monthlyExpense: 0,
+      totalBalanceTRY: 0,
+      totalBalanceUSD: 0,
+      totalBalanceEUR: 0,
+      todayIncomeTRY: 0,
+      todayIncomeUSD: 0,
+      todayIncomeEUR: 0,
+      todayExpenseTRY: 0,
+      todayExpenseUSD: 0,
+      todayExpenseEUR: 0,
+      monthlyIncomeTRY: 0,
+      monthlyIncomeUSD: 0,
+      monthlyIncomeEUR: 0,
+      monthlyExpenseTRY: 0,
+      monthlyExpenseUSD: 0,
+      monthlyExpenseEUR: 0,
     });
 
-    // Müşteri borçlarını hesapla
+    // Müşteri borçlarını para birimi bazında hesapla
     try {
       const customersResponse = await dbAPI.getCustomers();
-      let totalDebt = 0;
-      
-      if (customersResponse.success) {
-        totalDebt = customersResponse.data.reduce((sum: number, customer: any) => {
-          const balance = customer.balance || 0;
-          // Negatif bakiye = müşteri borcu
-          return sum + Math.abs(Math.min(balance, 0));
-        }, 0);
+      let totalDebtTRY = 0;
+      let totalDebtUSD = 0;
+      let totalDebtEUR = 0;
+
+      if (customersResponse.success && customersResponse.data) {
+        customersResponse.data.forEach((customer: any) => {
+          // Müşteri bakiyesi negatifse borç var demektir
+          // TL borcu
+          const balanceTRY = customer.balanceTRY || customer.balance || 0;
+          if (balanceTRY < 0) {
+            totalDebtTRY += Math.abs(balanceTRY);
+          }
+
+          // USD borcu  
+          const balanceUSD = customer.balanceUSD || 0;
+          if (balanceUSD < 0) {
+            totalDebtUSD += Math.abs(balanceUSD);
+          }
+
+          // EUR borcu
+          const balanceEUR = customer.balanceEUR || 0;
+          if (balanceEUR < 0) {
+            totalDebtEUR += Math.abs(balanceEUR);
+          }
+        });
       }
 
       setSummary({
         ...cashSummary,
-        totalDebt,
+        totalDebtTRY,
+        totalDebtUSD,
+        totalDebtEUR,
       });
     } catch (error) {
       console.error('Error calculating customer debt:', error);
       setSummary({
         ...cashSummary,
-        totalDebt: 0,
+        totalDebtTRY: 0,
+        totalDebtUSD: 0,
+        totalDebtEUR: 0,
       });
     }
   };
@@ -210,7 +366,7 @@ const CashManagement: React.FC = () => {
   const handleAddTransaction = async () => {
     const newErrors: string[] = [];
 
-    if (!amount || parseFloat(amount) <= 0) {
+    if (!amount || parseFormattedNumber(amount) <= 0) {
       newErrors.push('Geçerli bir tutar girin');
     }
 
@@ -231,7 +387,7 @@ const CashManagement: React.FC = () => {
     try {
       const transactionData = {
         type: transactionType,
-        amount: parseFloat(amount),
+        amount: parseFormattedNumber(amount),
         currency,
         category,
         description: description.trim(),
@@ -290,7 +446,7 @@ const CashManagement: React.FC = () => {
   const handleOpenEditDialog = (transaction: CashTransaction) => {
     setSelectedTransaction(transaction);
     setTransactionType(transaction.type);
-    setAmount(transaction.amount.toString());
+    setAmount(formatNumberWithCommas(transaction.amount.toString()));
     setCurrency(transaction.currency || 'USD');
     setCategory(transaction.category);
     setDescription(transaction.description);
@@ -308,7 +464,7 @@ const CashManagement: React.FC = () => {
 
     const newErrors: string[] = [];
 
-    if (!amount || parseFloat(amount) <= 0) {
+    if (!amount || parseFormattedNumber(amount) <= 0) {
       newErrors.push('Geçerli bir tutar girin');
     }
 
@@ -329,7 +485,7 @@ const CashManagement: React.FC = () => {
     try {
       const transactionData = {
         type: transactionType,
-        amount: parseFloat(amount),
+        amount: parseFormattedNumber(amount),
         currency,
         category,
         description: description.trim(),
@@ -375,63 +531,124 @@ const CashManagement: React.FC = () => {
 
       {/* Summary Cards */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={6} lg={2.4}>
+        {/* TL Kasa Bakiyesi */}
+        <Grid item xs={12} sm={6} lg={2}>
           <Card>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                 <AccountBalanceWallet sx={{ color: 'primary.main', mr: 1 }} />
-                <Typography variant="h6">Kasa Bakiyesi</Typography>
+                <Typography variant="h6">TL Kasa</Typography>
               </Box>
-              <Typography variant="h4" sx={{ mb: 1, color: summary.totalBalance >= 0 ? 'success.main' : 'error.main' }}>
-                ${summary.totalBalance.toLocaleString()}
+              <Typography variant="h4" sx={{ mb: 1, color: summary.totalBalanceTRY >= 0 ? 'success.main' : 'error.main' }}>
+                ₺{summary.totalBalanceTRY.toLocaleString('tr-TR')}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Güncel kasa durumu
+                TL kasa bakiyesi
               </Typography>
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} sm={6} lg={2.4}>
+
+        {/* USD Kasa Bakiyesi */}
+        <Grid item xs={12} sm={6} lg={2}>
+          <Card>
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                <AccountBalanceWallet sx={{ color: 'primary.main', mr: 1 }} />
+                <Typography variant="h6">USD Kasa</Typography>
+              </Box>
+              <Typography variant="h4" sx={{ mb: 1, color: summary.totalBalanceUSD >= 0 ? 'success.main' : 'error.main' }}>
+                ${summary.totalBalanceUSD.toLocaleString('tr-TR')}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                USD kasa bakiyesi
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* EUR Kasa Bakiyesi */}
+        <Grid item xs={12} sm={6} lg={2}>
+          <Card>
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                <AccountBalanceWallet sx={{ color: 'primary.main', mr: 1 }} />
+                <Typography variant="h6">EUR Kasa</Typography>
+              </Box>
+              <Typography variant="h4" sx={{ mb: 1, color: summary.totalBalanceEUR >= 0 ? 'success.main' : 'error.main' }}>
+                €{summary.totalBalanceEUR.toLocaleString('tr-TR')}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                EUR kasa bakiyesi
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Bugünkü Gelir */}
+        <Grid item xs={12} sm={6} lg={2}>
           <Card>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                 <TrendingUp sx={{ color: 'success.main', mr: 1 }} />
                 <Typography variant="h6">Bugünkü Gelir</Typography>
               </Box>
-              <Typography variant="h4" sx={{ mb: 1, color: 'success.main' }}>
-                ${summary.todayIncome.toLocaleString()}
+              <Typography variant="h6" sx={{ mb: 0.5, color: 'success.main' }}>
+                ₺{summary.todayIncomeTRY.toLocaleString('tr-TR')}
+              </Typography>
+              <Typography variant="h6" sx={{ mb: 0.5, color: 'success.main' }}>
+                ${summary.todayIncomeUSD.toLocaleString('tr-TR')}
+              </Typography>
+              <Typography variant="h6" sx={{ mb: 1, color: 'success.main' }}>
+                €{summary.todayIncomeEUR.toLocaleString('tr-TR')}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Gider: ${summary.todayExpense.toLocaleString()}
+                Gider: ₺{summary.todayExpenseTRY.toLocaleString('tr-TR')} / ${summary.todayExpenseUSD.toLocaleString('tr-TR')} / €{summary.todayExpenseEUR.toLocaleString('tr-TR')}
               </Typography>
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} sm={6} lg={2.4}>
+
+        {/* Aylık Gelir */}
+        <Grid item xs={12} sm={6} lg={2}>
           <Card>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                 <AttachMoney sx={{ color: 'info.main', mr: 1 }} />
                 <Typography variant="h6">Aylık Gelir</Typography>
               </Box>
-              <Typography variant="h4" sx={{ mb: 1, color: 'info.main' }}>
-                ${summary.monthlyIncome.toLocaleString()}
+              <Typography variant="h6" sx={{ mb: 0.5, color: 'info.main' }}>
+                ₺{summary.monthlyIncomeTRY.toLocaleString('tr-TR')}
+              </Typography>
+              <Typography variant="h6" sx={{ mb: 0.5, color: 'info.main' }}>
+                ${summary.monthlyIncomeUSD.toLocaleString('tr-TR')}
+              </Typography>
+              <Typography variant="h6" sx={{ mb: 1, color: 'info.main' }}>
+                €{summary.monthlyIncomeEUR.toLocaleString('tr-TR')}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Net: ${(summary.monthlyIncome - summary.monthlyExpense).toLocaleString()}
+                Net: ₺{(summary.monthlyIncomeTRY - summary.monthlyExpenseTRY).toLocaleString('tr-TR')} / ${(summary.monthlyIncomeUSD - summary.monthlyExpenseUSD).toLocaleString('tr-TR')} / €{(summary.monthlyIncomeEUR - summary.monthlyExpenseEUR).toLocaleString('tr-TR')}
               </Typography>
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} sm={6} lg={2.4}>
+
+        {/* Aylık Gider */}
+        <Grid item xs={12} sm={6} lg={2}>
           <Card>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                 <TrendingDown sx={{ color: 'error.main', mr: 1 }} />
                 <Typography variant="h6">Aylık Gider</Typography>
               </Box>
-              <Typography variant="h4" sx={{ mb: 1, color: 'error.main' }}>
-                ${summary.monthlyExpense.toLocaleString()}
+              <Typography variant="h6" sx={{ mb: 0.5, color: 'error.main' }}>
+                ₺{summary.monthlyExpenseTRY.toLocaleString('tr-TR')}
+              </Typography>
+              <Typography variant="h6" sx={{ mb: 0.5, color: 'error.main' }}>
+                ${summary.monthlyExpenseUSD.toLocaleString('tr-TR')}
+              </Typography>
+              <Typography variant="h6" sx={{ mb: 1, color: 'error.main' }}>
+                €{summary.monthlyExpenseEUR.toLocaleString('tr-TR')}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Bu ay toplam
@@ -439,15 +656,23 @@ const CashManagement: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} sm={6} lg={2.4}>
+
+        {/* Toplam Borç */}
+        <Grid item xs={12} sm={6} lg={2}>
           <Card>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                 <Warning sx={{ color: 'warning.main', mr: 1 }} />
                 <Typography variant="h6">Toplam Borç</Typography>
               </Box>
-              <Typography variant="h4" sx={{ mb: 1, color: 'warning.main' }}>
-                ${summary.totalDebt.toLocaleString()}
+              <Typography variant="h6" sx={{ mb: 0.5, color: 'warning.main' }}>
+                ₺{summary.totalDebtTRY.toLocaleString('tr-TR')}
+              </Typography>
+              <Typography variant="h6" sx={{ mb: 0.5, color: 'warning.main' }}>
+                ${summary.totalDebtUSD.toLocaleString('tr-TR')}
+              </Typography>
+              <Typography variant="h6" sx={{ mb: 1, color: 'warning.main' }}>
+                €{summary.totalDebtEUR.toLocaleString('tr-TR')}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Müşteri borçları
@@ -496,7 +721,9 @@ const CashManagement: React.FC = () => {
                   <TableCell>Tip</TableCell>
                   <TableCell>Kategori</TableCell>
                   <TableCell>Açıklama</TableCell>
+                  <TableCell align="right">Önceki Bakiye</TableCell>
                   <TableCell align="right">Tutar</TableCell>
+                  <TableCell align="right">Yeni Bakiye</TableCell>
                   <TableCell align="center">İşlemler</TableCell>
                 </TableRow>
               </TableHead>
@@ -524,14 +751,34 @@ const CashManagement: React.FC = () => {
                       )}
                     </TableCell>
                     <TableCell align="right">
-                      <Typography 
-                        variant="body2" 
-                        sx={{ 
+                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                        {transaction.currency === 'TRY' ? '₺' : transaction.currency === 'EUR' ? '€' : '$'}
+                        {(transaction.previous_balance || 0).toLocaleString('tr-TR')}
+                      </Typography>
+                    </TableCell>
+                    <TableCell align="right">
+                      <Typography
+                        variant="body2"
+                        sx={{
                           fontWeight: 600,
                           color: transaction.type === 'in' ? 'success.main' : 'error.main'
                         }}
                       >
-                        {transaction.type === 'in' ? '+' : '-'}${transaction.amount.toLocaleString()}
+                        {transaction.type === 'in' ? '+' : '-'}
+                        {transaction.currency === 'TRY' ? '₺' : transaction.currency === 'EUR' ? '€' : '$'}
+                        {transaction.amount.toLocaleString('tr-TR')}
+                      </Typography>
+                    </TableCell>
+                    <TableCell align="right">
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          fontWeight: 600,
+                          color: (transaction.new_balance || 0) >= 0 ? 'success.main' : 'error.main'
+                        }}
+                      >
+                        {transaction.currency === 'TRY' ? '₺' : transaction.currency === 'EUR' ? '€' : '$'}
+                        {(transaction.new_balance || 0).toLocaleString('tr-TR')}
                       </Typography>
                     </TableCell>
                     <TableCell align="center">
@@ -603,9 +850,11 @@ const CashManagement: React.FC = () => {
                 fullWidth
                 size="large"
                 label="Tutar"
-                type="number"
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onChange={(e) => {
+                  const formatted = formatNumberWithCommas(e.target.value);
+                  setAmount(formatted);
+                }}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -646,8 +895,8 @@ const CashManagement: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseAddDialog}>İptal</Button>
-          <Button 
-            onClick={handleAddTransaction} 
+          <Button
+            onClick={handleAddTransaction}
             variant="contained"
             disabled={loading}
             startIcon={<Save />}
@@ -694,9 +943,11 @@ const CashManagement: React.FC = () => {
                 fullWidth
                 size="large"
                 label="Tutar"
-                type="number"
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onChange={(e) => {
+                  const formatted = formatNumberWithCommas(e.target.value);
+                  setAmount(formatted);
+                }}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -738,8 +989,8 @@ const CashManagement: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseEditDialog}>İptal</Button>
-          <Button 
-            onClick={handleUpdateTransaction} 
+          <Button
+            onClick={handleUpdateTransaction}
             variant="contained"
             disabled={loading}
             startIcon={<Save />}
@@ -762,7 +1013,7 @@ const CashManagement: React.FC = () => {
                 <strong>İşlem:</strong> {selectedTransaction.description}
               </Typography>
               <Typography variant="body2">
-                <strong>Tutar:</strong> ${selectedTransaction.amount.toLocaleString()}
+                <strong>Tutar:</strong> {selectedTransaction.currency === 'TRY' ? '₺' : selectedTransaction.currency === 'EUR' ? '€' : '$'}{selectedTransaction.amount.toLocaleString('tr-TR')}
               </Typography>
               <Typography variant="body2">
                 <strong>Kategori:</strong> {selectedTransaction.category}
@@ -772,9 +1023,9 @@ const CashManagement: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDeleteDialogOpen(false)}>İptal</Button>
-          <Button 
-            onClick={handleDeleteTransaction} 
-            color="error" 
+          <Button
+            onClick={handleDeleteTransaction}
+            color="error"
             variant="contained"
             disabled={loading}
           >

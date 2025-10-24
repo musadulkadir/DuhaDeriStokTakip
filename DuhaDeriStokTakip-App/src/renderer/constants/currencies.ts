@@ -7,13 +7,13 @@ export interface Currency {
 }
 
 export const CURRENCIES: Currency[] = [
-  { code: 'TL', name: 'Türk Lirası', symbol: '₺' },
+  { code: 'TRY', name: 'Türk Lirası', symbol: '₺' },
   { code: 'USD', name: 'Amerikan Doları', symbol: '$' },
   { code: 'EUR', name: 'Euro', symbol: '€' }
 ];
 
 export const DEFAULT_CURRENCIES = {
-  EMPLOYEE_PAYMENT: 'TL',
+  EMPLOYEE_PAYMENT: 'TRY',
   SALES: 'USD',
   CASH_TRANSACTION: 'USD'
 };

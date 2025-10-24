@@ -4,8 +4,8 @@ Modern ve kullanıcı dostu deri stok ve cari takip uygulaması.
 
 ## Özellikler
 
-- 📦 **Stok Yönetimi**: Deri ürünlerinin stok takibi
-- 👥 **Müşteri Yönetimi**: Müşteri bilgileri ve cari hesap takibi
+- 📦 **Stok Yönetimi**: ürünlerin stok takibi
+- 👥 **Partner Yönetimi**: Partner bilgileri ve cari hesap takibi
 - 💰 **Satış İşlemleri**: Satış kayıtları ve faturalandırma
 - 💵 **Kasa Yönetimi**: Nakit giriş-çıkış işlemleri
 - 👨‍💼 **Çalışan Yönetimi**: Personel bilgileri ve maaş takibi

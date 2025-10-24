@@ -66,7 +66,7 @@ interface NewEmployee {
   phone: string;
   position: string;
   salary: string;
-  salaryCurrency: 'USD' | 'TRY' | 'EUR';
+  salaryCurrency: 'TRY' | 'USD' | 'EUR';
 }
 
 const EmployeeManagement: React.FC = () => {
@@ -86,7 +86,7 @@ const EmployeeManagement: React.FC = () => {
     phone: '',
     position: '',
     salary: '',
-    salaryCurrency: 'USD',
+    salaryCurrency: 'TRY',
   });
 
   // Çalışanları yükle
@@ -149,7 +149,7 @@ const EmployeeManagement: React.FC = () => {
         await loadEmployees();
         setSnackbar({ open: true, message: 'Çalışan başarıyla eklendi', severity: 'success' });
         setAddDialogOpen(false);
-        setNewEmployee({ name: '', email: '', phone: '', position: '', salary: '', salaryCurrency: 'USD' });
+        setNewEmployee({ name: '', email: '', phone: '', position: '', salary: '', salaryCurrency: 'TRY' });
       } else {
         console.error('Employee creation failed:', response.error);
         setSnackbar({ open: true, message: response.error || 'Çalışan eklenemedi', severity: 'error' });
@@ -289,10 +289,10 @@ const EmployeeManagement: React.FC = () => {
               </Avatar>
               <Box>
                 <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                  ${employees.reduce((sum, e) => sum + (e.salary || 0), 0).toLocaleString()}
+                  ₺{employees.reduce((sum, e) => sum + (e.salary || 0), 0).toLocaleString('tr-TR')}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Toplam Maaş
+                  Toplam Maaş (TL)
                 </Typography>
               </Box>
             </CardContent>
@@ -368,11 +368,11 @@ const EmployeeManagement: React.FC = () => {
                     <TableCell>{employee.phone || '-'}</TableCell>
                     <TableCell>{employee.email || '-'}</TableCell>
                     <TableCell align="right">
-                      ${(employee.salary || 0).toLocaleString()}
+                      ₺{(employee.salary || 0).toLocaleString('tr-TR')}
                     </TableCell>
                     <TableCell align="right">
                       <Chip
-                        label={`$${(employee.balance || 0).toLocaleString()}`}
+                        label={`₺${(employee.balance || 0).toLocaleString('tr-TR')}`}
                         color={getBalanceColor(employee.balance || 0) as any}
                         size="small"
                       />
@@ -539,7 +539,7 @@ const EmployeeManagement: React.FC = () => {
                   value={selectedEmployee.salary || 0}
                   onChange={(e) => setSelectedEmployee({...selectedEmployee, salary: parseFloat(e.target.value) || 0})}
                   InputProps={{
-                    startAdornment: <InputAdornment position="start">$</InputAdornment>,
+                    startAdornment: <InputAdornment position="start">₺</InputAdornment>,
                   }}
                 />
               </Grid>

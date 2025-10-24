@@ -5,7 +5,6 @@ import {
   Button,
   TextField,
   MenuItem,
-  Grid,
   Table,
   TableBody,
   TableCell,
@@ -50,10 +49,18 @@ interface NewProduct {
   description: string;
 }
 
+interface NewMaterial {
+  type: 'boya' | 'cila' | 'binder';
+  color?: string;
+  stock_quantity: string;
+  description: string;
+}
+
 const ProductManagement: React.FC = () => {
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [addMaterialDialogOpen, setAddMaterialDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -71,6 +78,32 @@ const ProductManagement: React.FC = () => {
     stock_quantity: '',
     description: '',
   });
+
+  const [newMaterial, setNewMaterial] = useState<NewMaterial>({
+    type: 'boya',
+    color: '',
+    stock_quantity: '',
+    description: '',
+  });
+
+  // Sayı formatlama fonksiyonları
+  const formatNumberWithCommas = (value: string): string => {
+    // Sadece rakam karakterlerini al
+    const numericValue = value.replace(/[^\d]/g, '');
+
+    // Eğer boşsa boş döndür
+    if (!numericValue) return '';
+
+    // Üç haneli ayraçlarla formatla
+    return numericValue.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  };
+
+  const parseFormattedNumber = (value: string): number => {
+    // Virgülleri kaldır ve sayıya çevir
+    return parseInt(value.replace(/,/g, '')) || 0;
+  };
+
+
 
   // Kategoriler ve renkleri yükle
   const loadCategories = async () => {
@@ -97,11 +130,24 @@ const ProductManagement: React.FC = () => {
 
   // Ürünleri yükle
   const loadProducts = async () => {
+    console.log('loadProducts çağrıldı');
     setLoading(true);
     try {
       const response = await dbAPI.getProducts();
+      console.log('API yanıtı:', response);
       if (response.success) {
-        setProducts(response.data);
+        // Eğer type alanı yoksa, kategori bazında ayarla
+        const processedProducts = response.data.map((product: Product) => {
+          // Her zaman kontrol et, type alanı yanlış olabilir
+          if (['boya', 'cila', 'binder'].includes(product.category?.toLowerCase() || '')) {
+            return { ...product, type: 'material' as const };
+          }
+          // Diğerleri ürün
+          return { ...product, type: 'product' as const };
+        });
+
+        console.log('İşlenmiş ürünler:', processedProducts);
+        setProducts(processedProducts);
       } else {
         setSnackbar({ open: true, message: response.error || 'Ürünler yüklenemedi', severity: 'error' });
       }
@@ -137,7 +183,7 @@ const ProductManagement: React.FC = () => {
         name: `${newProduct.category || 'Deri'} - ${newProduct.color || 'Renksiz'}`,
         category: newProduct.category,
         color: newProduct.color,
-        stock_quantity: newProduct.stock_quantity ? parseInt(newProduct.stock_quantity) : 0,
+        stock_quantity: newProduct.stock_quantity ? parseFormattedNumber(newProduct.stock_quantity) : 0,
         description: newProduct.description || undefined
       };
 
@@ -146,7 +192,31 @@ const ProductManagement: React.FC = () => {
       console.log('API Response:', response);
 
       if (response.success) {
-        setSnackbar({ open: true, message: 'Deri ürünü başarıyla eklendi', severity: 'success' });
+        // Yeni ürün başarıyla eklendi, şimdi stok hareketi oluştur
+        const productId = response.data?.id;
+        const stockQuantity = parseFormattedNumber(newProduct.stock_quantity) || 0;
+
+        if (stockQuantity > 0 && productId) {
+          // Stok hareketi kaydı oluştur
+          const movementData = {
+            product_id: productId,
+            movement_type: 'in',
+            quantity: stockQuantity,
+            previous_stock: 0,
+            new_stock: stockQuantity,
+            reference_type: 'initial_stock',
+            notes: `İlk stok girişi - ${productData.category} ${productData.color}`,
+            user: 'Sistem Kullanıcısı',
+          };
+
+          try {
+            await dbAPI.createStockMovement(movementData);
+          } catch (error) {
+            console.error('Stok hareketi oluşturulamadı:', error);
+          }
+        }
+
+        setSnackbar({ open: true, message: 'ürün başarıyla eklendi', severity: 'success' });
         setAddDialogOpen(false);
         // Form temizle
         setNewProduct({
@@ -158,11 +228,91 @@ const ProductManagement: React.FC = () => {
         await loadProducts();
       } else {
         console.error('API Error:', response.error);
-        setSnackbar({ open: true, message: response.error || 'Deri ürünü eklenemedi', severity: 'error' });
+        setSnackbar({ open: true, message: response.error || 'Ürün eklenemedi', severity: 'error' });
       }
     } catch (error) {
       console.error('Exception:', error);
-      setSnackbar({ open: true, message: 'Deri ürünü eklenirken hata oluştu: ' + error, severity: 'error' });
+      // Güvenli hata mesajı oluşturma
+      let errorMessage = 'Ürün eklenirken hata oluştu';
+      if (error && typeof error === 'object' && 'message' in error) {
+        errorMessage += ': ' + error.message;
+      } else if (typeof error === 'string') {
+        errorMessage += ': ' + error;
+      }
+      setSnackbar({ open: true, message: errorMessage, severity: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddMaterial = async () => {
+    setLoading(true);
+    try {
+      const materialName = newMaterial.type === 'boya' && newMaterial.color
+        ? `${newMaterial.type} - ${newMaterial.color}`
+        : newMaterial.type;
+
+      const materialData = {
+        name: materialName,
+        category: newMaterial.type,
+        color: newMaterial.type === 'boya' ? newMaterial.color : undefined,
+        stock_quantity: newMaterial.stock_quantity ? parseFormattedNumber(newMaterial.stock_quantity) : 0,
+        description: newMaterial.description || undefined,
+        type: 'material' as const // Malzeme olarak işaretle
+      };
+
+      console.log('Malzeme verisi:', materialData);
+      const response = await dbAPI.createProduct(materialData);
+      console.log('Malzeme ekleme yanıtı:', response);
+
+      if (response.success) {
+        // Yeni malzeme başarıyla eklendi, şimdi stok hareketi oluştur
+        const productId = response.data?.id;
+        const stockQuantity = parseFormattedNumber(newMaterial.stock_quantity) || 0;
+
+        if (stockQuantity > 0 && productId) {
+          const movementData = {
+            product_id: productId,
+            movement_type: 'in',
+            quantity: stockQuantity,
+            previous_stock: 0,
+            new_stock: stockQuantity,
+            reference_type: 'initial_stock',
+            notes: `İlk stok girişi - ${materialData.category} ${materialData.color || ''}`,
+            user: 'Sistem Kullanıcısı',
+          };
+
+          try {
+            await dbAPI.createStockMovement(movementData);
+          } catch (error) {
+            console.error('Stok hareketi oluşturulamadı:', error);
+          }
+        }
+
+        setSnackbar({ open: true, message: 'Malzeme başarıyla eklendi', severity: 'success' });
+        setAddMaterialDialogOpen(false);
+        setNewMaterial({
+          type: 'boya',
+          color: '',
+          stock_quantity: '',
+          description: '',
+        });
+        // Kısa bir bekleme sonrası yeniden yükle
+        setTimeout(async () => {
+          await loadProducts();
+        }, 500);
+      } else {
+        setSnackbar({ open: true, message: response.error || 'Malzeme eklenemedi', severity: 'error' });
+      }
+    } catch (error) {
+      // Güvenli hata mesajı oluşturma
+      let errorMessage = 'Malzeme eklenirken hata oluştu';
+      if (error && typeof error === 'object' && 'message' in error) {
+        errorMessage += ': ' + error.message;
+      } else if (typeof error === 'string') {
+        errorMessage += ': ' + error;
+      }
+      setSnackbar({ open: true, message: errorMessage, severity: 'error' });
     } finally {
       setLoading(false);
     }
@@ -173,8 +323,34 @@ const ProductManagement: React.FC = () => {
 
     setLoading(true);
     try {
+      // Mevcut ürün bilgilerini al
+      const originalProduct = products.find(p => p.id === selectedProduct.id);
+      const originalStock = originalProduct?.stock_quantity || 0;
+      const newStock = selectedProduct.stock_quantity || 0;
+      const stockDifference = newStock - originalStock;
+
       const response = await dbAPI.updateProduct(selectedProduct.id!, selectedProduct);
       if (response.success) {
+        // Eğer stok miktarı değiştiyse, stok hareketi oluştur
+        if (stockDifference !== 0) {
+          const movementData = {
+            product_id: selectedProduct.id!,
+            movement_type: stockDifference > 0 ? 'in' : 'out',
+            quantity: Math.abs(stockDifference),
+            previous_stock: originalStock,
+            new_stock: newStock,
+            reference_type: 'adjustment',
+            notes: `Stok düzeltmesi - ${selectedProduct.category} ${selectedProduct.color} (${stockDifference > 0 ? '+' : ''}${stockDifference})`,
+            user: 'Sistem Kullanıcısı',
+          };
+
+          try {
+            await dbAPI.createStockMovement(movementData);
+          } catch (error) {
+            console.error('Stok hareketi oluşturulamadı:', error);
+          }
+        }
+
         setSnackbar({ open: true, message: 'Ürün başarıyla güncellendi', severity: 'success' });
         setEditDialogOpen(false);
         setSelectedProduct(null);
@@ -189,28 +365,54 @@ const ProductManagement: React.FC = () => {
     }
   };
 
-  const handleDeleteProduct = async () => {
-    if (!selectedProduct) return;
+  //Ürün Silme Fonksiyonu
 
+  const handleDeleteProduct = async () => {
+    if (!selectedProduct) {
+      console.log('selectedProduct null, işlem iptal edildi');
+      return;
+    }
+
+    console.log('Ürün siliniyor:', selectedProduct);
     setLoading(true);
+
     try {
+      console.log('API çağrısı yapılıyor...');
       const response = await dbAPI.deleteProduct(selectedProduct.id!);
+      console.log('Silme yanıtı:', response);
+
       if (response.success) {
+        console.log('Silme başarılı, UI güncelleniyor...');
         setSnackbar({ open: true, message: 'Ürün başarıyla silindi', severity: 'success' });
         setDeleteDialogOpen(false);
         setSelectedProduct(null);
+
+        console.log('Ürünler yeniden yükleniyor...');
         await loadProducts();
+        console.log('Ürünler yeniden yüklendi');
       } else {
+        console.error('Silme başarısız:', response.error);
         setSnackbar({ open: true, message: response.error || 'Ürün silinemedi', severity: 'error' });
       }
     } catch (error) {
-      setSnackbar({ open: true, message: 'Ürün silinirken hata oluştu', severity: 'error' });
+      console.error('Ürün silme hatası:', error);
+      // Güvenli hata mesajı oluşturma
+      let errorMessage = 'Ürün silinirken hata oluştu';
+      if (error && typeof error === 'object' && 'message' in error) {
+        errorMessage += ': ' + error.message;
+      } else if (typeof error === 'string') {
+        errorMessage += ': ' + error;
+      }
+      setSnackbar({ open: true, message: errorMessage, severity: 'error' });
     } finally {
+      console.log('Loading false yapılıyor...');
       setLoading(false);
     }
   };
 
-  const filteredProducts = products.filter(product => {
+  // Deri ürünlerini filtrele
+  const filteredProducts = (products || []).filter(product => {
+    if (!product) return false; // Null/undefined ürünleri filtrele
     const productName = `${product.category || ''} - ${product.color || ''}`;
     const matchesSearch = searchTerm === '' ||
       productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -218,9 +420,26 @@ const ProductManagement: React.FC = () => {
       (product.color || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = filterCategory === '' || product.category === filterCategory;
     const matchesColor = filterColor === '' || product.color === filterColor;
+    const isLeatherProduct = !product.type || product.type === 'product'; // Deri ürünleri
 
-    return matchesSearch && matchesCategory && matchesColor;
+    return matchesSearch && matchesCategory && matchesColor && isLeatherProduct;
   });
+
+  // Malzemeleri filtrele
+  const filteredMaterials = (products || []).filter(product => {
+    if (!product) return false; // Null/undefined ürünleri filtrele
+    const matchesSearch = searchTerm === '' ||
+      (product.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (product.category || '').toLowerCase().includes(searchTerm.toLowerCase());
+    const isMaterial = product.type === 'material'; // Malzemeler
+
+    return matchesSearch && isMaterial;
+  });
+
+  console.log('Tüm ürünler:', products?.length || 0);
+  console.log('Deri ürünleri:', filteredProducts?.length || 0);
+  console.log('Malzemeler:', filteredMaterials?.length || 0);
+  console.log('Malzeme örnekleri:', filteredMaterials?.slice(0, 3) || []);
 
   const getStockStatus = (currentStock: number) => {
     if (currentStock === 0) return { label: 'Tükendi', color: 'error' };
@@ -231,11 +450,11 @@ const ProductManagement: React.FC = () => {
 
   const getColorDisplay = (colorName: string) => {
     // Renk verisi hem string hem de Color object array formatını destekle
-    if (typeof colors[0] === 'string') {
-      // Eğer colors string array ise, varsayılan renk döndür
+    if (!colors || colors.length === 0 || typeof colors[0] === 'string') {
+      // Eğer colors boş veya string array ise, varsayılan renk döndür
       return '#F5F5DC';
     }
-    
+
     // Color object array formatı
     const color = colors.find(c => c.name === colorName);
     return color?.hex_code || '#F5F5DC';
@@ -254,175 +473,225 @@ const ProductManagement: React.FC = () => {
       </Box>
 
       {/* Quick Stats */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <Card>
-            <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
-              <Avatar sx={{ bgcolor: 'primary.main', mr: 2 }}>
-                <InventoryIcon />
-              </Avatar>
-              <Box>
-                <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                  {products.length}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Toplam Ürün
-                </Typography>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <Card>
-            <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
-              <Avatar sx={{ bgcolor: 'success.main', mr: 2 }}>
-                <TrendingUp />
-              </Avatar>
-              <Box>
-                <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                  {products.reduce((sum, p) => sum + (p.stock_quantity || 0), 0)} adet
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Toplam Stok
-                </Typography>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <Card>
-            <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
-              <Avatar sx={{ bgcolor: 'warning.main', mr: 2 }}>
-                <TrendingDown />
-              </Avatar>
-              <Box>
-                <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                  {products.filter(p => (p.stock_quantity || 0) < 5).length}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Düşük Stok
-                </Typography>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <Card>
-            <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
-              <Avatar sx={{ bgcolor: 'secondary.main', mr: 2 }}>
-                <FilterListIcon />
-              </Avatar>
-              <Box>
-                <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                  {new Set(products.map(p => p.category)).size}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Deri Türü
-                </Typography>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
+      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: 3, mb: 4 }}>
+        <Card>
+          <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
+            <Avatar sx={{ bgcolor: 'primary.main', mr: 2 }}>
+              <InventoryIcon />
+            </Avatar>
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                {filteredProducts.length}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Deri Ürünü
+              </Typography>
+            </Box>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
+            <Avatar sx={{ bgcolor: 'success.main', mr: 2 }}>
+              <TrendingUp />
+            </Avatar>
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                {(() => {
+                  try {
+                    const total = (products || []).reduce((sum, p) => sum + (Number(p?.stock_quantity) || 0), 0) || 0;
+                    return (total || 0) + ' adet';
+                  } catch (e) {
+                    return '0 adet';
+                  }
+                })()}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Toplam Stok
+              </Typography>
+            </Box>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
+            <Avatar sx={{ bgcolor: 'info.main', mr: 2 }}>
+              <InventoryIcon />
+            </Avatar>
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                {filteredMaterials.length}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Malzeme Türü
+              </Typography>
+            </Box>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
+            <Avatar sx={{ bgcolor: 'warning.main', mr: 2 }}>
+              <TrendingDown />
+            </Avatar>
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                {(products || []).filter(p => (Number(p.stock_quantity) || 0) < 5).length}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Düşük Stok
+              </Typography>
+            </Box>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
+            <Avatar sx={{ bgcolor: 'secondary.main', mr: 2 }}>
+              <FilterListIcon />
+            </Avatar>
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                {new Set((products || []).map(p => p.category)).size}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Deri Türü
+              </Typography>
+            </Box>
+          </CardContent>
+        </Card>
+      </Box>
 
       {/* Search and Filter */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Grid container spacing={3} alignItems="center">
-            <Grid size={{ xs: 12, md: 3 }}>
-              <TextField
-                fullWidth
-                size="large"
-                placeholder="Ürün adı, kategori veya renk ara..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                sx={{ '& .MuiOutlinedInput-root': { minHeight: '56px' } }}
-                slotProps={{
-                  input: {
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <SearchIcon />
-                      </InputAdornment>
-                    ),
-                  },
-                }}
-              />
-            </Grid>
-            <Grid size={{ xs: 12, md: 3 }}>
-              <FormControl fullWidth size="large" variant="outlined">
-                <InputLabel id="category-filter-label">Deri Türü</InputLabel>
-                <Select
-                  labelId="category-filter-label"
-                  value={filterCategory}
-                  label="Deri Türü"
-                  onChange={(e) => setFilterCategory(e.target.value)}
-                  sx={{ minHeight: '56px' }}
-                >
-                  <MenuItem value="">Tüm Deri Türleri</MenuItem>
-                  {categories.map(category => (
-                    <MenuItem key={category.id} value={category.name}>{category.name}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid size={{ xs: 12, md: 3 }}>
-              <FormControl fullWidth size="large" variant="outlined">
-                <InputLabel id="color-filter-label">Renk</InputLabel>
-                <Select
-                  labelId="color-filter-label"
-                  value={filterColor}
-                  label="Renk"
-                  onChange={(e) => setFilterColor(e.target.value)}
-                  sx={{ minHeight: '56px' }}
-                >
-                  <MenuItem value="">Tüm Renkler</MenuItem>
-                  {colors.map(color => (
-                    <MenuItem key={color.id} value={color.name}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Box
-                          sx={{
-                            width: 16,
-                            height: 16,
-                            borderRadius: '50%',
-                            backgroundColor: color.hex_code || '#F5F5DC',
-                            border: color.name === 'Beyaz' ? '1px solid #ccc' : 'none',
-                          }}
-                        />
-                        {color.name}
-                      </Box>
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid size={{ xs: 12, md: 3 }}>
-              <Button
-                fullWidth
-                variant="outlined"
-                size="large"
-                sx={{ minHeight: '56px' }}
-                onClick={() => {
-                  setSearchTerm('');
-                  setFilterCategory('');
-                  setFilterColor('');
+          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 3, alignItems: 'center' }}>
+            <TextField
+              fullWidth
+              placeholder="Ürün adı, kategori veya renk ara..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  minHeight: '56px',
+                  fontSize: '1.1rem',
+                },
+                '& .MuiOutlinedInput-input': {
+                  fontSize: '1.1rem',
+                  fontWeight: 500,
+                }
+              }}
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon />
+                    </InputAdornment>
+                  ),
+                },
+              }}
+            />
+            <FormControl fullWidth variant="outlined">
+              <InputLabel
+                id="category-filter-label"
+                sx={{
+                  fontSize: '1.1rem',
+                  fontWeight: 600,
                 }}
               >
-                Temizle
-              </Button>
-            </Grid>
-            <Grid size={{ xs: 12, md: 3 }}>
-              <Button
-                fullWidth
-                variant="contained"
-                size="large"
-                startIcon={<AddIcon />}
-                sx={{ minHeight: '56px' }}
-                onClick={() => setAddDialogOpen(true)}
+                Deri Türü
+              </InputLabel>
+              <Select
+                labelId="category-filter-label"
+                value={filterCategory}
+                label="Deri Türü"
+                onChange={(e) => setFilterCategory(e.target.value)}
+                sx={{
+                  minHeight: '56px',
+                  '& .MuiSelect-select': {
+                    fontSize: '1.1rem',
+                    fontWeight: 500,
+                  }
+                }}
               >
-                Deri Ürünü Ekle
-              </Button>
-            </Grid>
-          </Grid>
+                <MenuItem value="">Tüm Deri Türleri</MenuItem>
+                {categories.map(category => (
+                  <MenuItem key={category.id} value={category.name}>{category.name}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl fullWidth variant="outlined">
+              <InputLabel
+                id="color-filter-label"
+                sx={{
+                  fontSize: '1.1rem',
+                  fontWeight: 600,
+                }}
+              >
+                Renk
+              </InputLabel>
+              <Select
+                labelId="color-filter-label"
+                value={filterColor}
+                label="Renk"
+                onChange={(e) => setFilterColor(e.target.value)}
+                sx={{
+                  minHeight: '56px',
+                  '& .MuiSelect-select': {
+                    fontSize: '1.1rem',
+                    fontWeight: 500,
+                  }
+                }}
+              >
+                <MenuItem value="">Tüm Renkler</MenuItem>
+                {colors.map(color => (
+                  <MenuItem key={color.id} value={color.name}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Box
+                        sx={{
+                          width: 16,
+                          height: 16,
+                          borderRadius: '50%',
+                          backgroundColor: color.hex_code || '#F5F5DC',
+                          border: color.name === 'Beyaz' ? '1px solid #ccc' : 'none',
+                        }}
+                      />
+                      {color.name}
+                    </Box>
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <Button
+              fullWidth
+              variant="outlined"
+              size="large"
+              sx={{ minHeight: '56px' }}
+              onClick={() => {
+                setSearchTerm('');
+                setFilterCategory('');
+                setFilterColor('');
+              }}
+            >
+              Temizle
+            </Button>
+            <Button
+              fullWidth
+              variant="contained"
+              size="large"
+              startIcon={<AddIcon />}
+              sx={{ minHeight: '56px' }}
+              onClick={() => setAddDialogOpen(true)}
+            >
+              Ürün Ekle
+            </Button>
+            <Button
+              fullWidth
+              variant="outlined"
+              size="large"
+              startIcon={<AddIcon />}
+              sx={{ minHeight: '56px' }}
+              onClick={() => setAddMaterialDialogOpen(true)}
+            >
+              Malzeme Ekle
+            </Button>
+          </Box>
         </CardContent>
       </Card>
 
@@ -446,8 +715,9 @@ const ProductManagement: React.FC = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {filteredProducts.map((product) => {
-                  const stockStatus = getStockStatus(product.stock_quantity || 0);
+                {(filteredProducts || []).map((product) => {
+                  if (!product) return null; // Null ürünleri atla
+                  const stockStatus = getStockStatus(Number(product?.stock_quantity) || 0);
                   return (
                     <TableRow key={product.id} hover>
                       <TableCell sx={{ fontWeight: 600 }}>{product.category}</TableCell>
@@ -466,7 +736,14 @@ const ProductManagement: React.FC = () => {
                         </Box>
                       </TableCell>
                       <TableCell align="right" sx={{ fontWeight: 600 }}>
-                        {product.stock_quantity || 0} adet
+                        {(() => {
+                          try {
+                            const qty = Number(product?.stock_quantity) || 0;
+                            return (qty || 0) + ' adet';
+                          } catch (e) {
+                            return '0 adet';
+                          }
+                        })()}
                       </TableCell>
                       <TableCell>
                         <Chip
@@ -515,73 +792,185 @@ const ProductManagement: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* Add Product Dialog */}
-      <Dialog open={addDialogOpen} onClose={() => setAddDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Yeni Deri Ürünü Ekle</DialogTitle>
-        <DialogContent>
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <FormControl fullWidth>
-                <InputLabel>Deri Türü</InputLabel>
-                <Select
-                  value={newProduct.category}
-                  label="Deri Türü"
-                  onChange={(e) => setNewProduct({ ...newProduct, category: e.target.value })}
-                >
-                  {categories.map(category => (
-                    <MenuItem key={category.id} value={category.name}>{category.name}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <FormControl fullWidth>
-                <InputLabel>Deri Rengi</InputLabel>
-                <Select
-                  value={newProduct.color}
-                  label="Deri Rengi"
-                  onChange={(e) => setNewProduct({ ...newProduct, color: e.target.value })}
-                >
-                  {colors.map(color => (
-                    <MenuItem key={color.id} value={color.name}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Box
-                          sx={{
-                            width: 16,
-                            height: 16,
-                            borderRadius: '50%',
-                            bgcolor: color.hex_code || '#F5F5DC',
-                            border: '1px solid rgba(0,0,0,0.2)',
-                          }}
+      {/* Materials Table */}
+      <Card sx={{ mt: 3 }}>
+        <CardContent sx={{ p: 0 }}>
+          <Box sx={{ p: 3, pb: 0 }}>
+            <Typography variant="h6" sx={{ fontWeight: 600 }}>
+              Malzeme Listesi ({filteredMaterials.length} malzeme)
+            </Typography>
+          </Box>
+          <TableContainer>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Malzeme Adı</TableCell>
+                  <TableCell>Tür</TableCell>
+                  <TableCell align="right">Stok (Adet)</TableCell>
+                  <TableCell>Durum</TableCell>
+                  <TableCell align="center">İşlemler</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {(filteredMaterials || []).map((material) => {
+                  if (!material) return null; // Null malzemeleri atla
+                  const stockStatus = getStockStatus(Number(material?.stock_quantity) || 0);
+                  return (
+                    <TableRow key={material.id} hover>
+                      <TableCell sx={{ fontWeight: 600 }}>
+                        {material.name || `${material.category}${material.color ? ` - ${material.color}` : ''}`}
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={material.category?.toUpperCase() || 'MALZEME'}
+                          size="small"
+                          variant="outlined"
                         />
-                        {color.name}
-                      </Box>
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField
-                fullWidth
-                label="Başlangıç Stok (Adet)"
-                type="number"
-                value={newProduct.stock_quantity}
-                onChange={(e) => setNewProduct({ ...newProduct, stock_quantity: e.target.value })}
-                helperText="Stoğa eklenecek deri miktarını adet cinsinden giriniz"
-                slotProps={{ htmlInput: { min: 0, step: 1 } }}
-              />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField
-                fullWidth
-                label="Açıklama (Opsiyonel)"
-                value={newProduct.description}
-                onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })}
-                helperText="Ürün hakkında ek bilgiler"
-              />
-            </Grid>
-          </Grid>
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 600 }}>
+                        {(() => {
+                          try {
+                            const qty = Number(material?.stock_quantity) || 0;
+                            return (qty || 0) + ' adet';
+                          } catch (e) {
+                            return '0 adet';
+                          }
+                        })()}
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={stockStatus.label}
+                          color={stockStatus.color as any}
+                          size="small"
+                        />
+                      </TableCell>
+                      <TableCell align="center">
+                        <IconButton
+                          size="small"
+                          onClick={() => handleOpenModal(material)}
+                          title="Stok Geçmişi"
+                        >
+                          <HistoryIcon />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          color="primary"
+                          title="Düzenle"
+                          onClick={() => {
+                            setSelectedProduct(material);
+                            setEditDialogOpen(true);
+                          }}
+                        >
+                          <EditIcon />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          color="error"
+                          title="Sil"
+                          onClick={() => {
+                            setSelectedProduct(material);
+                            setDeleteDialogOpen(true);
+                          }}
+                        >
+                          <DeleteIcon />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+                {(filteredMaterials || []).length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={5} align="center">
+                      {loading ? 'Yükleniyor...' : 'Malzeme bulunamadı'}
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </CardContent>
+      </Card>
+
+      {/* Add Product Dialog */}
+      <Dialog
+        open={addDialogOpen}
+        onClose={() => setAddDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        disableEnforceFocus
+      >
+        <DialogTitle>Yeni Ürün Ekle</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+              <Box sx={{ flex: '1 1 200px', minWidth: '200px' }}>
+                <FormControl fullWidth>
+                  <InputLabel>Deri Türü</InputLabel>
+                  <Select
+                    value={newProduct.category}
+                    label="Deri Türü"
+                    onChange={(e) => setNewProduct({ ...newProduct, category: e.target.value })}
+                  >
+                    {categories.map(category => (
+                      <MenuItem key={category.id} value={category.name}>{category.name}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Box>
+              <Box sx={{ flex: '1 1 200px', minWidth: '200px' }}>
+                <FormControl fullWidth>
+                  <InputLabel>Deri Rengi</InputLabel>
+                  <Select
+                    value={newProduct.color}
+                    label="Deri Rengi"
+                    onChange={(e) => setNewProduct({ ...newProduct, color: e.target.value })}
+                  >
+                    {colors.map(color => (
+                      <MenuItem key={color.id} value={color.name}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Box
+                            sx={{
+                              width: 16,
+                              height: 16,
+                              borderRadius: '50%',
+                              bgcolor: color.hex_code || '#F5F5DC',
+                              border: '1px solid rgba(0,0,0,0.2)',
+                            }}
+                          />
+                          {color.name}
+                        </Box>
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Box>
+            </Box>
+            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+              <Box sx={{ flex: '1 1 200px', minWidth: '200px' }}>
+                <TextField
+                  fullWidth
+                  label="Başlangıç Stok (Adet)"
+                  type="number"
+                  value={newProduct.stock_quantity}
+                  onChange={(e) => {
+                    const formatted = formatNumberWithCommas(e.target.value);
+                    setNewProduct({ ...newProduct, stock_quantity: formatted });
+                  }}
+                  helperText="Stoğa eklenecek deri miktarını adet cinsinden giriniz"
+                  slotProps={{ htmlInput: { min: 0, step: 1 } }}
+                />
+              </Box>
+              <Box sx={{ flex: '1 1 200px', minWidth: '200px' }}>
+                <TextField
+                  fullWidth
+                  label="Açıklama (Opsiyonel)"
+                  value={newProduct.description}
+                  onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })}
+                  helperText="Ürün hakkında ek bilgiler"
+                />
+              </Box>
+            </Box>
+          </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => {
@@ -600,63 +989,73 @@ const ProductManagement: React.FC = () => {
       </Dialog>
 
       {/* Edit Product Dialog */}
-      <Dialog open={editDialogOpen} onClose={() => setEditDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Deri Ürünü Düzenle</DialogTitle>
+      <Dialog
+        open={editDialogOpen}
+        onClose={() => setEditDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        disableEnforceFocus
+      >
+        <DialogTitle>Ürünü Düzenle</DialogTitle>
         <DialogContent>
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <FormControl fullWidth>
-                <InputLabel>Deri Türü</InputLabel>
-                <Select
-                  value={selectedProduct?.category || ''}
-                  label="Deri Türü"
-                  onChange={(e) => setSelectedProduct(prev => prev ? { ...prev, category: e.target.value as any } : null)}
-                >
-                  {categories.map(cat => (
-                    <MenuItem key={cat.id} value={cat.name}>{cat.name}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <FormControl fullWidth>
-                <InputLabel>Deri Rengi</InputLabel>
-                <Select
-                  value={selectedProduct?.color || ''}
-                  label="Deri Rengi"
-                  onChange={(e) => setSelectedProduct(prev => prev ? { ...prev, color: e.target.value } : null)}
-                >
-                  {colors.map(color => (
-                    <MenuItem key={color.id} value={color.name}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Box
-                          sx={{
-                            width: 16,
-                            height: 16,
-                            borderRadius: '50%',
-                            bgcolor: color.hex_code || '#F5F5DC',
-                            border: '1px solid rgba(0,0,0,0.2)',
-                          }}
-                        />
-                        {color.name}
-                      </Box>
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid size={{ xs: 12 }}>
-              <TextField
-                fullWidth
-                label="Stok Miktarı (Adet)"
-                type="number"
-                value={selectedProduct?.stock_quantity || ''}
-                onChange={(e) => setSelectedProduct(prev => prev ? { ...prev, stock_quantity: parseInt(e.target.value) || 0 } : null)}
-                helperText="Stok miktarını adet cinsinden giriniz"
-                slotProps={{ htmlInput: { min: 0, step: 1 } }}
-              />
-            </Grid>
-          </Grid>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+              <Box sx={{ flex: '1 1 200px', minWidth: '200px' }}>
+                <FormControl fullWidth>
+                  <InputLabel>Deri Türü</InputLabel>
+                  <Select
+                    value={selectedProduct?.category || ''}
+                    label="Deri Türü"
+                    onChange={(e) => setSelectedProduct(prev => prev ? { ...prev, category: e.target.value as any } : null)}
+                  >
+                    {categories.map(cat => (
+                      <MenuItem key={cat.id} value={cat.name}>{cat.name}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Box>
+              <Box sx={{ flex: '1 1 200px', minWidth: '200px' }}>
+                <FormControl fullWidth>
+                  <InputLabel>Deri Rengi</InputLabel>
+                  <Select
+                    value={selectedProduct?.color || ''}
+                    label="Deri Rengi"
+                    onChange={(e) => setSelectedProduct(prev => prev ? { ...prev, color: e.target.value } : null)}
+                  >
+                    {colors.map(color => (
+                      <MenuItem key={color.id} value={color.name}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Box
+                            sx={{
+                              width: 16,
+                              height: 16,
+                              borderRadius: '50%',
+                              bgcolor: color.hex_code || '#F5F5DC',
+                              border: '1px solid rgba(0,0,0,0.2)',
+                            }}
+                          />
+                          {color.name}
+                        </Box>
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Box>
+            </Box>
+            <TextField
+              fullWidth
+              label="Stok Miktarı (Adet)"
+              type="number"
+              value={selectedProduct?.stock_quantity != null ? formatNumberWithCommas(selectedProduct.stock_quantity.toString()) : ''}
+              onChange={(e) => {
+                const formatted = formatNumberWithCommas(e.target.value);
+                const numericValue = parseFormattedNumber(formatted);
+                setSelectedProduct(prev => prev ? { ...prev, stock_quantity: numericValue } : null);
+              }}
+              helperText="Stok miktarını adet cinsinden giriniz"
+              slotProps={{ htmlInput: { min: 0, step: 1 } }}
+            />
+          </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setEditDialogOpen(false)}>İptal</Button>
@@ -671,11 +1070,15 @@ const ProductManagement: React.FC = () => {
       </Dialog>
 
       {/* Delete Confirmation Dialog */}
-      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
-        <DialogTitle>Deri Ürünü Sil</DialogTitle>
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+        disableEnforceFocus
+      >
+        <DialogTitle>Ürünü Sil</DialogTitle>
         <DialogContent>
           <Typography>
-            "{selectedProduct?.category} - {selectedProduct?.color}" deri ürünü silmek istediğinizden emin misiniz?
+            "{selectedProduct?.name || `${selectedProduct?.category || 'Ürün'} - ${selectedProduct?.color || 'Renksiz'}`}" ürünü silmek istediğinizden emin misiniz?
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
             Bu işlem geri alınamaz ve tüm stok hareketleri silinecektir.
@@ -684,12 +1087,102 @@ const ProductManagement: React.FC = () => {
         <DialogActions>
           <Button onClick={() => setDeleteDialogOpen(false)}>İptal</Button>
           <Button
-            onClick={handleDeleteProduct}
+            onClick={() => {
+              console.log('Delete butonu tıklandı');
+              handleDeleteProduct();
+            }}
             variant="contained"
             color="error"
             disabled={loading}
           >
             {loading ? 'Siliniyor...' : 'Sil'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Add Material Dialog */}
+      <Dialog
+        open={addMaterialDialogOpen}
+        onClose={() => setAddMaterialDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        disableEnforceFocus
+      >
+        <DialogTitle>Yeni Malzeme Ekle</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+            <FormControl fullWidth>
+              <InputLabel>Malzeme Türü</InputLabel>
+              <Select
+                value={newMaterial.type}
+                label="Malzeme Türü"
+                onChange={(e) => setNewMaterial({ ...newMaterial, type: e.target.value as 'boya' | 'cila' | 'binder', color: '' })}
+              >
+                <MenuItem value="boya">Boya</MenuItem>
+                <MenuItem value="cila">Cila</MenuItem>
+                <MenuItem value="binder">Binder</MenuItem>
+              </Select>
+            </FormControl>
+            {newMaterial.type === 'boya' && (
+              <FormControl fullWidth>
+                <InputLabel>Renk</InputLabel>
+                <Select
+                  value={newMaterial.color || ''}
+                  label="Renk"
+                  onChange={(e) => setNewMaterial({ ...newMaterial, color: e.target.value })}
+                >
+                  {colors.map(color => (
+                    <MenuItem key={color.id} value={color.name}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Box
+                          sx={{
+                            width: 20,
+                            height: 20,
+                            backgroundColor: color.hex_code || '#ccc',
+                            borderRadius: '50%',
+                            border: '1px solid #ddd',
+                          }}
+                        />
+                        {color.name}
+                      </Box>
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
+            <TextField
+              fullWidth
+              label="Başlangıç Stok (Adet)"
+              value={newMaterial.stock_quantity}
+              onChange={(e) => {
+                const formatted = formatNumberWithCommas(e.target.value);
+                setNewMaterial({ ...newMaterial, stock_quantity: formatted });
+              }}
+              helperText="Stoğa eklenecek malzeme miktarını adet cinsinden giriniz"
+            />
+            <TextField
+              fullWidth
+              label="Açıklama (Opsiyonel)"
+              multiline
+              rows={2}
+              value={newMaterial.description}
+              onChange={(e) => setNewMaterial({ ...newMaterial, description: e.target.value })}
+              placeholder="Malzeme hakkında ek bilgiler..."
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setAddMaterialDialogOpen(false);
+            setNewMaterial({
+              type: 'boya',
+              color: '',
+              stock_quantity: '',
+              description: '',
+            });
+          }}>İptal</Button>
+          <Button onClick={handleAddMaterial} variant="contained" disabled={loading}>
+            {loading ? 'Ekleniyor...' : 'Ekle'}
           </Button>
         </DialogActions>
       </Dialog>

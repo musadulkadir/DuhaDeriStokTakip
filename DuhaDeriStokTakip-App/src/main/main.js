@@ -46,6 +46,7 @@ function createTables() {
           phone TEXT,
           address TEXT,
           balance REAL DEFAULT 0,
+          type TEXT DEFAULT 'customer' CHECK (type IN ('customer', 'supplier')),
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
@@ -61,6 +62,7 @@ function createTables() {
           stock_quantity INTEGER DEFAULT 0,
           unit TEXT DEFAULT 'adet',
           description TEXT,
+          type TEXT DEFAULT 'product' CHECK (type IN ('product', 'material')),
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
@@ -90,6 +92,7 @@ function createTables() {
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           customer_id INTEGER REFERENCES customers(id),
           total_amount REAL NOT NULL,
+          currency TEXT DEFAULT 'TRY',
           payment_status TEXT DEFAULT 'pending',
           sale_date DATETIME DEFAULT CURRENT_TIMESTAMP,
           notes TEXT,
@@ -137,6 +140,7 @@ function createTables() {
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           customer_id INTEGER REFERENCES customers(id),
           amount REAL NOT NULL,
+          currency TEXT DEFAULT 'TRY',
           payment_type TEXT DEFAULT 'cash',
           payment_date DATETIME DEFAULT CURRENT_TIMESTAMP,
           notes TEXT,
@@ -195,6 +199,34 @@ function createTables() {
         )
       `);
 
+      // Purchases table (Alımlar)
+      db.run(`
+        CREATE TABLE IF NOT EXISTS purchases (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          supplier_id INTEGER REFERENCES customers(id),
+          total_amount REAL NOT NULL,
+          currency TEXT DEFAULT 'TRY',
+          purchase_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+          notes TEXT,
+          status TEXT DEFAULT 'completed',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
+      // Purchase items table (Alım kalemleri)
+      db.run(`
+        CREATE TABLE IF NOT EXISTS purchase_items (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          purchase_id INTEGER REFERENCES purchases(id) ON DELETE CASCADE,
+          product_id INTEGER REFERENCES products(id),
+          quantity INTEGER NOT NULL,
+          unit_price REAL NOT NULL,
+          total_price REAL NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
       // Returns table (İade işlemleri)
       db.run(`
         CREATE TABLE IF NOT EXISTS returns (
@@ -215,7 +247,7 @@ function createTables() {
       const defaultCategories = [
         'Keçi', 'Koyun', 'Oğlak', 'Dana'
       ];
-      
+
       defaultCategories.forEach(category => {
         db.run('INSERT OR IGNORE INTO categories (name) VALUES (?)', [category]);
       });
@@ -230,9 +262,90 @@ function createTables() {
         { name: 'Bordo', hex: '#800020' },
         { name: 'Taba', hex: '#D2B48C' }
       ];
-      
+
       defaultColors.forEach(color => {
         db.run('INSERT OR IGNORE INTO colors (name, hex_code) VALUES (?, ?)', [color.name, color.hex]);
+      });
+
+      // Mevcut tabloları güncelle (ALTER TABLE komutları)
+      // customer_payments tablosuna currency kolonu ekle
+      db.run(`
+        ALTER TABLE customer_payments 
+        ADD COLUMN currency TEXT DEFAULT 'TRY'
+      `, (err) => {
+        if (err) {
+          if (err.message.includes('duplicate column name')) {
+            console.log('Currency column already exists in customer_payments');
+          } else {
+            console.log('Error adding currency column to customer_payments:', err.message);
+          }
+        } else {
+          console.log('Currency column added to customer_payments successfully');
+        }
+      });
+
+      // employee_payments tablosuna currency kolonu ekle (eğer yoksa)
+      db.run(`
+        ALTER TABLE employee_payments 
+        ADD COLUMN currency TEXT DEFAULT 'TRY'
+      `, (err) => {
+        if (err) {
+          if (err.message.includes('duplicate column name')) {
+            console.log('Currency column already exists in employee_payments');
+          } else {
+            console.log('Error adding currency column to employee_payments:', err.message);
+          }
+        } else {
+          console.log('Currency column added to employee_payments successfully');
+        }
+      });
+
+      // sales tablosuna currency kolonu ekle (eğer yoksa)
+      db.run(`
+        ALTER TABLE sales 
+        ADD COLUMN currency TEXT DEFAULT 'TRY'
+      `, (err) => {
+        if (err) {
+          if (err.message.includes('duplicate column name')) {
+            console.log('Currency column already exists in sales');
+          } else {
+            console.log('Error adding currency column to sales:', err.message);
+          }
+        } else {
+          console.log('Currency column added to sales successfully');
+        }
+      });
+
+      // customers tablosuna type kolonu ekle (eğer yoksa)
+      db.run(`
+        ALTER TABLE customers 
+        ADD COLUMN type TEXT DEFAULT 'customer'
+      `, (err) => {
+        if (err) {
+          if (err.message.includes('duplicate column name')) {
+            console.log('Type column already exists in customers');
+          } else {
+            console.log('Error adding type column to customers:', err.message);
+          }
+        } else {
+          console.log('Type column added to customers successfully');
+        }
+      });
+
+      // products tablosuna type kolonu ekle (eğer yoksa)
+      db.run(`
+        ALTER TABLE products 
+        ADD COLUMN type TEXT DEFAULT 'product'
+      `, (err) => {
+        if (err) {
+          if (err.message.includes('duplicate column name')) {
+            console.log('Type column already exists in products');
+          } else {
+            console.log('Error adding type column to products:', err.message);
+          }
+        } else {
+          console.log('Type column added to products successfully');
+        }
       });
 
       console.log('Database tables created successfully');
@@ -266,7 +379,7 @@ ipcMain.handle('db:create-tables', async () => {
 ipcMain.handle('customers:get-all', async (_, page = 1, limit = 50) => {
   return new Promise((resolve) => {
     const offset = (page - 1) * limit;
-    
+
     db.all('SELECT * FROM customers ORDER BY created_at DESC LIMIT ? OFFSET ?', [limit, offset], (err, rows) => {
       if (err) {
         resolve({
@@ -309,17 +422,18 @@ ipcMain.handle('customers:get-by-id', async (_, id) => {
 ipcMain.handle('customers:create', async (_, customer) => {
   return new Promise((resolve) => {
     const stmt = db.prepare(`
-      INSERT INTO customers (name, email, phone, address, balance) 
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO customers (name, email, phone, address, balance, type) 
+      VALUES (?, ?, ?, ?, ?, ?)
     `);
-    
+
     stmt.run([
       customer.name,
       customer.email || null,
       customer.phone || null,
       customer.address || null,
-      customer.balance || 0
-    ], function(err) {
+      customer.balance || 0,
+      customer.type || 'customer'
+    ], function (err) {
       if (err) {
         resolve({ success: false, error: err.message });
       } else {
@@ -332,7 +446,7 @@ ipcMain.handle('customers:create', async (_, customer) => {
         });
       }
     });
-    
+
     stmt.finalize();
   });
 });
@@ -341,18 +455,19 @@ ipcMain.handle('customers:update', async (_, id, customer) => {
   return new Promise((resolve) => {
     const stmt = db.prepare(`
       UPDATE customers 
-      SET name = ?, email = ?, phone = ?, address = ?, balance = ?, updated_at = CURRENT_TIMESTAMP
+      SET name = ?, email = ?, phone = ?, address = ?, balance = ?, type = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `);
-    
+
     stmt.run([
       customer.name,
       customer.email || null,
       customer.phone || null,
       customer.address || null,
       customer.balance || 0,
+      customer.type || 'customer',
       id
-    ], function(err) {
+    ], function (err) {
       if (err) {
         resolve({ success: false, error: err.message });
       } else if (this.changes === 0) {
@@ -367,7 +482,7 @@ ipcMain.handle('customers:update', async (_, id, customer) => {
         });
       }
     });
-    
+
     stmt.finalize();
   });
 });
@@ -375,8 +490,8 @@ ipcMain.handle('customers:update', async (_, id, customer) => {
 ipcMain.handle('customers:delete', async (_, id) => {
   return new Promise((resolve) => {
     const stmt = db.prepare('DELETE FROM customers WHERE id = ?');
-    
-    stmt.run([id], function(err) {
+
+    stmt.run([id], function (err) {
       if (err) {
         resolve({ success: false, error: err.message });
       } else if (this.changes === 0) {
@@ -385,7 +500,7 @@ ipcMain.handle('customers:delete', async (_, id) => {
         resolve({ success: true, data: true });
       }
     });
-    
+
     stmt.finalize();
   });
 });
@@ -394,7 +509,7 @@ ipcMain.handle('customers:delete', async (_, id) => {
 ipcMain.handle('products:get-all', async (_, page = 1, limit = 50) => {
   return new Promise((resolve) => {
     const offset = (page - 1) * limit;
-    
+
     db.all('SELECT * FROM products ORDER BY created_at DESC LIMIT ? OFFSET ?', [limit, offset], (err, rows) => {
       if (err) {
         resolve({
@@ -437,34 +552,86 @@ ipcMain.handle('products:get-by-id', async (_, id) => {
 ipcMain.handle('products:create', async (_, product) => {
   return new Promise((resolve) => {
     console.log('Creating product:', product);
-    const stmt = db.prepare(`
-      INSERT INTO products (name, category, color, stock_quantity, unit, description) 
-      VALUES (?, ?, ?, ?, ?, ?)
-    `);
-    
-    stmt.run([
-      product.name,
-      product.category,
-      product.color || null,
-      product.stock_quantity || 0,
-      'desi',
-      product.description || null
-    ], function(err) {
-      if (err) {
-        console.error('Product creation error:', err);
-        resolve({ success: false, error: err.message });
-      } else {
-        db.get('SELECT * FROM products WHERE id = ?', [this.lastID], (selectErr, newProduct) => {
-          if (selectErr) {
-            resolve({ success: false, error: selectErr.message });
-          } else {
-            resolve({ success: true, data: newProduct });
-          }
-        });
-      }
+
+    db.serialize(() => {
+      db.run('BEGIN TRANSACTION');
+
+      const stmt = db.prepare(`
+        INSERT INTO products (name, category, color, stock_quantity, unit, description) 
+        VALUES (?, ?, ?, ?, ?, ?)
+      `);
+
+      stmt.run([
+        product.name,
+        product.category,
+        product.color || null,
+        product.stock_quantity || 0,
+        'desi',
+        product.description || null
+      ], function (err) {
+        if (err) {
+          console.error('Product creation error:', err);
+          db.run('ROLLBACK');
+          resolve({ success: false, error: err.message });
+          return;
+        }
+
+        const productId = this.lastID;
+        const initialStock = product.stock_quantity || 0;
+
+        // Eğer başlangıç stoku varsa, stok hareketi oluştur
+        if (initialStock > 0) {
+          const movementStmt = db.prepare(`
+            INSERT INTO stock_movements (product_id, movement_type, quantity, previous_stock, new_stock, reference_type, notes, user) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          `);
+
+          movementStmt.run([
+            productId,
+            'in',
+            initialStock,
+            0,
+            initialStock,
+            'initial_stock',
+            `Başlangıç stoku - ${product.name}`,
+            'System'
+          ], function (movementErr) {
+            if (movementErr) {
+              console.error('Stock movement creation error:', movementErr);
+              db.run('ROLLBACK');
+              resolve({ success: false, error: movementErr.message });
+              return;
+            }
+
+            // Başarılı, ürünü döndür
+            db.get('SELECT * FROM products WHERE id = ?', [productId], (selectErr, newProduct) => {
+              if (selectErr) {
+                db.run('ROLLBACK');
+                resolve({ success: false, error: selectErr.message });
+              } else {
+                db.run('COMMIT');
+                resolve({ success: true, data: newProduct });
+              }
+            });
+          });
+
+          movementStmt.finalize();
+        } else {
+          // Stok yoksa sadece ürünü döndür
+          db.get('SELECT * FROM products WHERE id = ?', [productId], (selectErr, newProduct) => {
+            if (selectErr) {
+              db.run('ROLLBACK');
+              resolve({ success: false, error: selectErr.message });
+            } else {
+              db.run('COMMIT');
+              resolve({ success: true, data: newProduct });
+            }
+          });
+        }
+      });
+
+      stmt.finalize();
     });
-    
-    stmt.finalize();
   });
 });
 
@@ -475,7 +642,7 @@ ipcMain.handle('products:update', async (_, id, product) => {
       SET name = ?, category = ?, color = ?, stock_quantity = ?, description = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `);
-    
+
     stmt.run([
       product.name,
       product.category,
@@ -483,7 +650,7 @@ ipcMain.handle('products:update', async (_, id, product) => {
       product.stock_quantity || 0,
       product.description || null,
       id
-    ], function(err) {
+    ], function (err) {
       if (err) {
         resolve({ success: false, error: err.message });
       } else if (this.changes === 0) {
@@ -498,16 +665,16 @@ ipcMain.handle('products:update', async (_, id, product) => {
         });
       }
     });
-    
-    stmt.finalize();  
+
+    stmt.finalize();
   });
 });
 
 ipcMain.handle('products:delete', async (_, id) => {
   return new Promise((resolve) => {
     const stmt = db.prepare('DELETE FROM products WHERE id = ?');
-    
-    stmt.run([id], function(err) {
+
+    stmt.run([id], function (err) {
       if (err) {
         resolve({ success: false, error: err.message });
       } else if (this.changes === 0) {
@@ -516,7 +683,7 @@ ipcMain.handle('products:delete', async (_, id) => {
         resolve({ success: true, data: true });
       }
     });
-    
+
     stmt.finalize();
   });
 });
@@ -524,8 +691,8 @@ ipcMain.handle('products:delete', async (_, id) => {
 ipcMain.handle('products:update-stock', async (_, id, newStock) => {
   return new Promise((resolve) => {
     const stmt = db.prepare('UPDATE products SET stock_quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?');
-    
-    stmt.run([newStock, id], function(err) {
+
+    stmt.run([newStock, id], function (err) {
       if (err) {
         resolve({ success: false, error: err.message });
       } else if (this.changes === 0) {
@@ -540,7 +707,7 @@ ipcMain.handle('products:update-stock', async (_, id, newStock) => {
         });
       }
     });
-    
+
     stmt.finalize();
   });
 });
@@ -549,7 +716,7 @@ ipcMain.handle('products:update-stock', async (_, id, newStock) => {
 ipcMain.handle('employees:get-all', async (_, page = 1, limit = 50) => {
   return new Promise((resolve) => {
     const offset = (page - 1) * limit;
-    
+
     db.all('SELECT * FROM employees ORDER BY created_at DESC LIMIT ? OFFSET ?', [limit, offset], (err, rows) => {
       if (err) {
         resolve({
@@ -582,7 +749,7 @@ ipcMain.handle('employees:create', async (_, employee) => {
       INSERT INTO employees (name, email, phone, position, salary, salary_currency, balance, hire_date, status) 
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    
+
     stmt.run([
       employee.name,
       employee.email || null,
@@ -593,7 +760,7 @@ ipcMain.handle('employees:create', async (_, employee) => {
       employee.balance || 0,
       employee.hire_date || new Date().toISOString(),
       employee.status || 'active'
-    ], function(err) {
+    ], function (err) {
       if (err) {
         console.error('Employee creation error:', err);
         resolve({ success: false, error: err.message });
@@ -607,7 +774,7 @@ ipcMain.handle('employees:create', async (_, employee) => {
         });
       }
     });
-    
+
     stmt.finalize();
   });
 });
@@ -619,7 +786,7 @@ ipcMain.handle('employees:update', async (_, id, employee) => {
       SET name = ?, email = ?, phone = ?, position = ?, salary = ?, salary_currency = ?, balance = ?, status = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `);
-    
+
     stmt.run([
       employee.name,
       employee.email || null,
@@ -630,7 +797,7 @@ ipcMain.handle('employees:update', async (_, id, employee) => {
       employee.balance || 0,
       employee.status || 'active',
       id
-    ], function(err) {
+    ], function (err) {
       if (err) {
         resolve({ success: false, error: err.message });
       } else if (this.changes === 0) {
@@ -645,7 +812,7 @@ ipcMain.handle('employees:update', async (_, id, employee) => {
         });
       }
     });
-    
+
     stmt.finalize();
   });
 });
@@ -667,8 +834,8 @@ ipcMain.handle('employees:get-by-id', async (_, id) => {
 ipcMain.handle('employees:delete', async (_, id) => {
   return new Promise((resolve) => {
     const stmt = db.prepare('DELETE FROM employees WHERE id = ?');
-    
-    stmt.run([id], function(err) {
+
+    stmt.run([id], function (err) {
       if (err) {
         resolve({ success: false, error: err.message });
       } else if (this.changes === 0) {
@@ -677,7 +844,7 @@ ipcMain.handle('employees:delete', async (_, id) => {
         resolve({ success: true, data: true });
       }
     });
-    
+
     stmt.finalize();
   });
 });
@@ -713,7 +880,7 @@ ipcMain.handle('stock-movements:create', async (_, movement) => {
       INSERT INTO stock_movements (product_id, movement_type, quantity, previous_stock, new_stock, reference_type, reference_id, customer_id, unit_price, total_amount, notes, user) 
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    
+
     stmt.run([
       movement.product_id,
       movement.movement_type,
@@ -727,7 +894,7 @@ ipcMain.handle('stock-movements:create', async (_, movement) => {
       movement.total_amount || null,
       movement.notes || null,
       movement.user || 'System'
-    ], function(err) {
+    ], function (err) {
       if (err) {
         resolve({ success: false, error: err.message });
       } else {
@@ -740,15 +907,47 @@ ipcMain.handle('stock-movements:create', async (_, movement) => {
         });
       }
     });
-    
+
     stmt.finalize();
   });
 });
 
 // Sales handlers
-ipcMain.handle('sales:get-all', async () => {
+ipcMain.handle('sales:get-all', async (_, startDate, endDate) => {
   return new Promise((resolve) => {
-    db.all('SELECT * FROM sales ORDER BY created_at DESC', (err, rows) => {
+    let query = `
+      SELECT 
+        s.*,
+        c.name as customer_name,
+        si.product_id,
+        si.quantity_pieces,
+        si.quantity_desi,
+        si.unit_price_per_desi,
+        si.total_price,
+        p.category,
+        p.color
+      FROM sales s
+      LEFT JOIN customers c ON s.customer_id = c.id
+      LEFT JOIN sale_items si ON s.id = si.sale_id
+      LEFT JOIN products p ON si.product_id = p.id
+    `;
+
+    const params = [];
+
+    if (startDate && endDate) {
+      query += ` WHERE DATE(s.sale_date) BETWEEN ? AND ?`;
+      params.push(startDate, endDate);
+    } else if (startDate) {
+      query += ` WHERE DATE(s.sale_date) >= ?`;
+      params.push(startDate);
+    } else if (endDate) {
+      query += ` WHERE DATE(s.sale_date) <= ?`;
+      params.push(endDate);
+    }
+
+    query += ` ORDER BY s.created_at DESC`;
+
+    db.all(query, params, (err, rows) => {
       if (err) {
         resolve({ success: false, data: [], error: err.message });
       } else {
@@ -762,46 +961,47 @@ ipcMain.handle('sales:create', async (_, sale) => {
   return new Promise((resolve) => {
     db.serialize(() => {
       db.run('BEGIN TRANSACTION');
-      
+
       try {
         // Satış kaydı oluştur
         const saleStmt = db.prepare(`
-          INSERT INTO sales (customer_id, total_amount, payment_status, sale_date, notes) 
-          VALUES (?, ?, ?, ?, ?)
+          INSERT INTO sales (customer_id, total_amount, currency, payment_status, sale_date, notes) 
+          VALUES (?, ?, ?, ?, ?, ?)
         `);
-        
+
         saleStmt.run([
           sale.customer_id,
           sale.total_amount,
+          sale.currency || 'TRY',
           sale.payment_status || 'pending',
           sale.sale_date || new Date().toISOString(),
           sale.notes || null
-        ], function(saleErr) {
+        ], function (saleErr) {
           if (saleErr) {
             db.run('ROLLBACK');
             resolve({ success: false, error: saleErr.message });
             return;
           }
-          
+
           const saleId = this.lastID;
-          
+
           // Satış detaylarını ekle ve stok güncelle
           let completedItems = 0;
           const totalItems = sale.items.length;
-          
+
           if (totalItems === 0) {
             db.run('COMMIT');
             resolve({ success: true, data: { id: saleId, ...sale } });
             return;
           }
-          
+
           sale.items.forEach((item) => {
             // Satış detayı ekle
             const itemStmt = db.prepare(`
               INSERT INTO sale_items (sale_id, product_id, quantity_pieces, quantity_desi, unit_price_per_desi, total_price) 
               VALUES (?, ?, ?, ?, ?, ?)
             `);
-            
+
             itemStmt.run([
               saleId,
               item.product_id,
@@ -809,33 +1009,33 @@ ipcMain.handle('sales:create', async (_, sale) => {
               item.quantity_desi,
               item.unit_price_per_desi,
               item.total_price
-            ], function(itemErr) {
+            ], function (itemErr) {
               if (itemErr) {
                 db.run('ROLLBACK');
                 resolve({ success: false, error: itemErr.message });
                 return;
               }
-              
+
               // Ürün stokunu güncelle (adet cinsinden düş)
               const updateStockStmt = db.prepare(`
                 UPDATE products 
                 SET stock_quantity = stock_quantity - ?, updated_at = CURRENT_TIMESTAMP 
                 WHERE id = ?
               `);
-              
-              updateStockStmt.run([item.quantity_pieces, item.product_id], function(stockErr) {
+
+              updateStockStmt.run([item.quantity_pieces, item.product_id], function (stockErr) {
                 if (stockErr) {
                   db.run('ROLLBACK');
                   resolve({ success: false, error: stockErr.message });
                   return;
                 }
-                
+
                 // Stok hareketi kaydet
                 const movementStmt = db.prepare(`
                   INSERT INTO stock_movements (product_id, movement_type, quantity, reference_type, reference_id, customer_id, unit_price, total_amount, notes, user) 
                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `);
-                
+
                 movementStmt.run([
                   item.product_id,
                   'out',
@@ -847,30 +1047,30 @@ ipcMain.handle('sales:create', async (_, sale) => {
                   item.total_price,
                   `Satış - ${item.quantity_pieces} adet (${item.quantity_desi} desi) - ${sale.notes || ''}`,
                   'System'
-                ], function(movementErr) {
+                ], function (movementErr) {
                   if (movementErr) {
                     db.run('ROLLBACK');
                     resolve({ success: false, error: movementErr.message });
                     return;
                   }
-                  
+
                   completedItems++;
                   if (completedItems === totalItems) {
                     db.run('COMMIT');
                     resolve({ success: true, data: { id: saleId, ...sale } });
                   }
                 });
-                
+
                 movementStmt.finalize();
               });
-              
+
               updateStockStmt.finalize();
             });
-            
+
             itemStmt.finalize();
           });
         });
-        
+
         saleStmt.finalize();
       } catch (error) {
         db.run('ROLLBACK');
@@ -896,19 +1096,50 @@ ipcMain.handle('customer-payments:get-by-customer', async (_, customerId) => {
 ipcMain.handle('customer-payments:create', async (_, payment) => {
   return new Promise((resolve) => {
     const stmt = db.prepare(`
-      INSERT INTO customer_payments (customer_id, amount, payment_type, payment_date, notes) 
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO customer_payments (customer_id, amount, currency, payment_type, payment_date, notes) 
+      VALUES (?, ?, ?, ?, ?, ?)
     `);
-    
+
     stmt.run([
       payment.customer_id,
       payment.amount,
+      payment.currency || 'TRY',
       payment.payment_type || 'cash',
       payment.payment_date || new Date().toISOString(),
       payment.notes || null
-    ], function(err) {
+    ], function (err) {
       if (err) {
-        resolve({ success: false, error: err.message });
+        // Eğer currency kolonu yoksa, eski şekilde dene
+        if (err.message.includes('no column named currency')) {
+          const oldStmt = db.prepare(`
+            INSERT INTO customer_payments (customer_id, amount, payment_type, payment_date, notes) 
+            VALUES (?, ?, ?, ?, ?)
+          `);
+
+          oldStmt.run([
+            payment.customer_id,
+            payment.amount,
+            payment.payment_type || 'cash',
+            payment.payment_date || new Date().toISOString(),
+            payment.notes || null
+          ], function (oldErr) {
+            if (oldErr) {
+              resolve({ success: false, error: oldErr.message });
+            } else {
+              db.get('SELECT * FROM customer_payments WHERE id = ?', [this.lastID], (selectErr, newPayment) => {
+                if (selectErr) {
+                  resolve({ success: false, error: selectErr.message });
+                } else {
+                  resolve({ success: true, data: newPayment });
+                }
+              });
+            }
+          });
+
+          oldStmt.finalize();
+        } else {
+          resolve({ success: false, error: err.message });
+        }
       } else {
         db.get('SELECT * FROM customer_payments WHERE id = ?', [this.lastID], (selectErr, newPayment) => {
           if (selectErr) {
@@ -919,7 +1150,7 @@ ipcMain.handle('customer-payments:create', async (_, payment) => {
         });
       }
     });
-    
+
     stmt.finalize();
   });
 });
@@ -927,8 +1158,8 @@ ipcMain.handle('customer-payments:create', async (_, payment) => {
 ipcMain.handle('customer-payments:delete', async (_, id) => {
   return new Promise((resolve) => {
     const stmt = db.prepare('DELETE FROM customer_payments WHERE id = ?');
-    
-    stmt.run([id], function(err) {
+
+    stmt.run([id], function (err) {
       if (err) {
         resolve({ success: false, error: err.message });
       } else if (this.changes === 0) {
@@ -937,7 +1168,7 @@ ipcMain.handle('customer-payments:delete', async (_, id) => {
         resolve({ success: true, data: true });
       }
     });
-    
+
     stmt.finalize();
   });
 });
@@ -946,8 +1177,8 @@ ipcMain.handle('customer-payments:delete', async (_, id) => {
 ipcMain.handle('customers:update-balance', async (_, customerId, newBalance) => {
   return new Promise((resolve) => {
     const stmt = db.prepare('UPDATE customers SET balance = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?');
-    
-    stmt.run([newBalance, customerId], function(err) {
+
+    stmt.run([newBalance, customerId], function (err) {
       if (err) {
         resolve({ success: false, error: err.message });
       } else if (this.changes === 0) {
@@ -956,7 +1187,7 @@ ipcMain.handle('customers:update-balance', async (_, customerId, newBalance) => 
         resolve({ success: true, data: { id: customerId, balance: newBalance } });
       }
     });
-    
+
     stmt.finalize();
   });
 });
@@ -980,15 +1211,15 @@ ipcMain.handle('employee-payments:create', async (_, payment) => {
       INSERT INTO employee_payments (employee_id, amount, currency, payment_type, payment_date, notes) 
       VALUES (?, ?, ?, ?, ?, ?)
     `);
-    
+
     stmt.run([
       payment.employee_id,
       payment.amount,
-      payment.currency || 'USD',
+      payment.currency || 'TRY',
       payment.payment_type || 'salary',
       payment.payment_date || new Date().toISOString(),
       payment.notes || null
-    ], function(err) {
+    ], function (err) {
       if (err) {
         resolve({ success: false, error: err.message });
       } else {
@@ -1001,7 +1232,7 @@ ipcMain.handle('employee-payments:create', async (_, payment) => {
         });
       }
     });
-    
+
     stmt.finalize();
   });
 });
@@ -1009,8 +1240,8 @@ ipcMain.handle('employee-payments:create', async (_, payment) => {
 ipcMain.handle('employee-payments:delete', async (_, id) => {
   return new Promise((resolve) => {
     const stmt = db.prepare('DELETE FROM employee_payments WHERE id = ?');
-    
-    stmt.run([id], function(err) {
+
+    stmt.run([id], function (err) {
       if (err) {
         resolve({ success: false, error: err.message });
       } else if (this.changes === 0) {
@@ -1019,7 +1250,7 @@ ipcMain.handle('employee-payments:delete', async (_, id) => {
         resolve({ success: true, data: true });
       }
     });
-    
+
     stmt.finalize();
   });
 });
@@ -1028,8 +1259,8 @@ ipcMain.handle('employee-payments:delete', async (_, id) => {
 ipcMain.handle('employees:update-balance', async (_, employeeId, newBalance) => {
   return new Promise((resolve) => {
     const stmt = db.prepare('UPDATE employees SET balance = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?');
-    
-    stmt.run([newBalance, employeeId], function(err) {
+
+    stmt.run([newBalance, employeeId], function (err) {
       if (err) {
         resolve({ success: false, error: err.message });
       } else if (this.changes === 0) {
@@ -1038,7 +1269,7 @@ ipcMain.handle('employees:update-balance', async (_, employeeId, newBalance) => 
         resolve({ success: true, data: { id: employeeId, balance: newBalance } });
       }
     });
-    
+
     stmt.finalize();
   });
 });
@@ -1059,8 +1290,8 @@ ipcMain.handle('categories:get-all', async () => {
 ipcMain.handle('categories:create', async (_, category) => {
   return new Promise((resolve) => {
     const stmt = db.prepare('INSERT INTO categories (name, description) VALUES (?, ?)');
-    
-    stmt.run([category.name, category.description || null], function(err) {
+
+    stmt.run([category.name, category.description || null], function (err) {
       if (err) {
         resolve({ success: false, error: err.message });
       } else {
@@ -1073,7 +1304,7 @@ ipcMain.handle('categories:create', async (_, category) => {
         });
       }
     });
-    
+
     stmt.finalize();
   });
 });
@@ -1094,8 +1325,8 @@ ipcMain.handle('colors:get-all', async () => {
 ipcMain.handle('colors:create', async (_, color) => {
   return new Promise((resolve) => {
     const stmt = db.prepare('INSERT INTO colors (name, hex_code) VALUES (?, ?)');
-    
-    stmt.run([color.name, color.hex_code || null], function(err) {
+
+    stmt.run([color.name, color.hex_code || null], function (err) {
       if (err) {
         resolve({ success: false, error: err.message });
       } else {
@@ -1108,7 +1339,7 @@ ipcMain.handle('colors:create', async (_, color) => {
         });
       }
     });
-    
+
     stmt.finalize();
   });
 });
@@ -1118,14 +1349,14 @@ ipcMain.handle('returns:create', async (_, returnData) => {
   return new Promise((resolve) => {
     db.serialize(() => {
       db.run('BEGIN TRANSACTION');
-      
+
       try {
         // İade kaydı oluştur
         const returnStmt = db.prepare(`
           INSERT INTO returns (sale_id, customer_id, product_id, quantity, unit_price, total_amount, return_date, notes) 
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `);
-        
+
         returnStmt.run([
           returnData.sale_id,
           returnData.customer_id,
@@ -1135,35 +1366,35 @@ ipcMain.handle('returns:create', async (_, returnData) => {
           returnData.total_amount,
           returnData.return_date || new Date().toISOString(),
           returnData.notes || null
-        ], function(returnErr) {
+        ], function (returnErr) {
           if (returnErr) {
             db.run('ROLLBACK');
             resolve({ success: false, error: returnErr.message });
             return;
           }
-          
+
           const returnId = this.lastID;
-          
+
           // Stok güncelle (iade edilen miktar kadar artır)
           const updateStockStmt = db.prepare(`
             UPDATE products 
             SET stock_quantity = stock_quantity + ?, updated_at = CURRENT_TIMESTAMP 
             WHERE id = ?
           `);
-          
-          updateStockStmt.run([returnData.quantity, returnData.product_id], function(stockErr) {
+
+          updateStockStmt.run([returnData.quantity, returnData.product_id], function (stockErr) {
             if (stockErr) {
               db.run('ROLLBACK');
               resolve({ success: false, error: stockErr.message });
               return;
             }
-            
+
             // Stok hareketi kaydet
             const movementStmt = db.prepare(`
               INSERT INTO stock_movements (product_id, movement_type, quantity, reference_type, reference_id, customer_id, unit_price, total_amount, notes, user) 
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `);
-            
+
             movementStmt.run([
               returnData.product_id,
               'in',
@@ -1175,40 +1406,40 @@ ipcMain.handle('returns:create', async (_, returnData) => {
               returnData.total_amount,
               `İade - ${returnData.notes || ''}`,
               'System'
-            ], function(movementErr) {
+            ], function (movementErr) {
               if (movementErr) {
                 db.run('ROLLBACK');
                 resolve({ success: false, error: movementErr.message });
                 return;
               }
-              
+
               // Müşteri bakiyesini güncelle (iade tutarı kadar borç azalt)
               const updateBalanceStmt = db.prepare(`
                 UPDATE customers 
                 SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP 
                 WHERE id = ?
               `);
-              
-              updateBalanceStmt.run([returnData.total_amount, returnData.customer_id], function(balanceErr) {
+
+              updateBalanceStmt.run([returnData.total_amount, returnData.customer_id], function (balanceErr) {
                 if (balanceErr) {
                   db.run('ROLLBACK');
                   resolve({ success: false, error: balanceErr.message });
                   return;
                 }
-                
+
                 db.run('COMMIT');
                 resolve({ success: true, data: { id: returnId, ...returnData } });
               });
-              
+
               updateBalanceStmt.finalize();
             });
-            
+
             movementStmt.finalize();
           });
-          
+
           updateStockStmt.finalize();
         });
-        
+
         returnStmt.finalize();
       } catch (error) {
         db.run('ROLLBACK');
@@ -1233,35 +1464,254 @@ ipcMain.handle('cash:get-all', async () => {
 
 ipcMain.handle('cash:create', async (_, transaction) => {
   return new Promise((resolve) => {
+    const currency = transaction.currency || 'TRY';
+
     const stmt = db.prepare(`
       INSERT INTO cash_transactions (type, amount, currency, category, description, reference_type, reference_id, customer_id, user) 
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    
+
     stmt.run([
       transaction.type,
       transaction.amount,
-      transaction.currency || 'USD',
+      currency,
       transaction.category,
       transaction.description,
       transaction.reference_type || null,
       transaction.reference_id || null,
       transaction.customer_id || null,
       transaction.user
-    ], function(err) {
+    ], function (err) {
       if (err) {
+
         resolve({ success: false, error: err.message });
       } else {
         db.get('SELECT * FROM cash_transactions WHERE id = ?', [this.lastID], (selectErr, newTransaction) => {
           if (selectErr) {
+
             resolve({ success: false, error: selectErr.message });
           } else {
+
             resolve({ success: true, data: newTransaction });
           }
         });
       }
     });
-    
+
+    stmt.finalize();
+  });
+});
+
+ipcMain.handle('cash:update', async (_, id, transaction) => {
+  return new Promise((resolve) => {
+    const stmt = db.prepare(`
+      UPDATE cash_transactions 
+      SET type = ?, amount = ?, currency = ?, category = ?, description = ?
+      WHERE id = ?
+    `);
+
+    stmt.run([
+      transaction.type,
+      transaction.amount,
+      transaction.currency || 'TRY',
+      transaction.category,
+      transaction.description,
+      id
+    ], function (err) {
+      if (err) {
+        resolve({ success: false, error: err.message });
+      } else if (this.changes === 0) {
+        resolve({ success: false, error: 'İşlem bulunamadı' });
+      } else {
+        db.get('SELECT * FROM cash_transactions WHERE id = ?', [id], (selectErr, updatedTransaction) => {
+          if (selectErr) {
+            resolve({ success: false, error: selectErr.message });
+          } else {
+            resolve({ success: true, data: updatedTransaction });
+          }
+        });
+      }
+    });
+
+    stmt.finalize();
+  });
+});
+
+ipcMain.handle('cash:delete', async (_, id) => {
+  return new Promise((resolve) => {
+    const stmt = db.prepare('DELETE FROM cash_transactions WHERE id = ?');
+
+    stmt.run([id], function (err) {
+      if (err) {
+        resolve({ success: false, error: err.message });
+      } else if (this.changes === 0) {
+        resolve({ success: false, error: 'İşlem bulunamadı' });
+      } else {
+        resolve({ success: true, data: true });
+      }
+    });
+
+    stmt.finalize();
+  });
+});
+
+// Purchase handlers
+ipcMain.handle('purchases:get-all', async (_, page = 1, limit = 50) => {
+  return new Promise((resolve) => {
+    const offset = (page - 1) * limit;
+
+    db.all(`
+      SELECT p.*, c.name as supplier_name 
+      FROM purchases p 
+      LEFT JOIN customers c ON p.supplier_id = c.id 
+      ORDER BY p.created_at DESC 
+      LIMIT ? OFFSET ?
+    `, [limit, offset], (err, rows) => {
+      if (err) {
+        resolve({
+          success: false,
+          data: [],
+          total: 0,
+          page,
+          limit,
+          error: err.message
+        });
+      } else {
+        db.get('SELECT COUNT(*) as count FROM purchases', (countErr, countResult) => {
+          resolve({
+            success: true,
+            data: rows,
+            total: countResult ? countResult.count : 0,
+            page,
+            limit
+          });
+        });
+      }
+    });
+  });
+});
+
+ipcMain.handle('purchases:get-by-id', async (_, id) => {
+  return new Promise((resolve) => {
+    db.get(`
+      SELECT p.*, c.name as supplier_name 
+      FROM purchases p 
+      LEFT JOIN customers c ON p.supplier_id = c.id 
+      WHERE p.id = ?
+    `, [id], (err, row) => {
+      if (err) {
+        resolve({ success: false, error: err.message });
+      } else if (!row) {
+        resolve({ success: false, error: 'Alım bulunamadı' });
+      } else {
+        resolve({ success: true, data: row });
+      }
+    });
+  });
+});
+
+ipcMain.handle('purchases:create', async (_, purchase) => {
+  return new Promise((resolve) => {
+    db.serialize(() => {
+      db.run('BEGIN TRANSACTION');
+
+      const stmt = db.prepare(`
+        INSERT INTO purchases (supplier_id, total_amount, currency, purchase_date, notes, status) 
+        VALUES (?, ?, ?, ?, ?, ?)
+      `);
+
+      stmt.run([
+        purchase.supplier_id,
+        purchase.total_amount,
+        purchase.currency || 'TRY',
+        purchase.purchase_date || new Date().toISOString(),
+        purchase.notes || null,
+        purchase.status || 'completed'
+      ], function (err) {
+        if (err) {
+          db.run('ROLLBACK');
+          resolve({ success: false, error: err.message });
+          return;
+        }
+
+        const purchaseId = this.lastID;
+
+        // Purchase items ekle
+        if (purchase.items && purchase.items.length > 0) {
+          const itemStmt = db.prepare(`
+            INSERT INTO purchase_items (purchase_id, product_id, quantity, unit_price, total_price) 
+            VALUES (?, ?, ?, ?, ?)
+          `);
+
+          let itemsProcessed = 0;
+          let hasError = false;
+
+          purchase.items.forEach((item) => {
+            itemStmt.run([
+              purchaseId,
+              item.product_id,
+              item.quantity,
+              item.unit_price,
+              item.total_price
+            ], function (itemErr) {
+              itemsProcessed++;
+              
+              if (itemErr && !hasError) {
+                hasError = true;
+                db.run('ROLLBACK');
+                resolve({ success: false, error: itemErr.message });
+                return;
+              }
+
+              if (itemsProcessed === purchase.items.length && !hasError) {
+                // Tüm items başarıyla eklendi
+                db.get('SELECT * FROM purchases WHERE id = ?', [purchaseId], (selectErr, newPurchase) => {
+                  if (selectErr) {
+                    db.run('ROLLBACK');
+                    resolve({ success: false, error: selectErr.message });
+                  } else {
+                    db.run('COMMIT');
+                    resolve({ success: true, data: newPurchase });
+                  }
+                });
+              }
+            });
+          });
+
+          itemStmt.finalize();
+        } else {
+          // Items yoksa sadece purchase kaydını döndür
+          db.get('SELECT * FROM purchases WHERE id = ?', [purchaseId], (selectErr, newPurchase) => {
+            if (selectErr) {
+              db.run('ROLLBACK');
+              resolve({ success: false, error: selectErr.message });
+            } else {
+              db.run('COMMIT');
+              resolve({ success: true, data: newPurchase });
+            }
+          });
+        }
+      });
+
+      stmt.finalize();
+    });
+  });
+});
+
+ipcMain.handle('purchases:delete', async (_, id) => {
+  return new Promise((resolve) => {
+    const stmt = db.prepare('DELETE FROM purchases WHERE id = ?');
+
+    stmt.run([id], function (err) {
+      if (err) {
+        resolve({ success: false, error: err.message });
+      } else if (this.changes === 0) {
+        resolve({ success: false, error: 'Alım bulunamadı' });
+      } else {
+        resolve({ success: true, data: true });
+      }
+    });
+
     stmt.finalize();
   });
 });
@@ -1282,7 +1732,7 @@ function createWindow() {
   if (isDev) {
     // Development mode: load from Vite dev server
     mainWindow.loadURL('http://localhost:3000');
-    
+
     // Open DevTools in development
     mainWindow.webContents.openDevTools();
   } else {
@@ -1291,7 +1741,7 @@ function createWindow() {
     const projectRoot = path.join(__dirname, '../..');
     const htmlPath = path.join(projectRoot, 'dist-react/index.html');
     console.log('Production HTML path:', htmlPath);
-    
+
     if (fs.existsSync(htmlPath)) {
       mainWindow.loadFile(htmlPath);
     } else {

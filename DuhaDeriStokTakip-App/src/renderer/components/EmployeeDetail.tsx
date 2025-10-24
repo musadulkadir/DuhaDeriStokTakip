@@ -354,7 +354,7 @@ const EmployeeDetail: React.FC = () => {
                   <AttachMoney sx={{ mr: 2, color: 'text.secondary' }} />
                   <ListItemText 
                     primary="Maaş" 
-                    secondary={`$${(employee.salary || 0).toLocaleString()}`} 
+                    secondary={`₺${(employee.salary || 0).toLocaleString('tr-TR')}`} 
                   />
                 </ListItem>
               </List>
@@ -387,7 +387,7 @@ const EmployeeDetail: React.FC = () => {
                     <TrendingUp />
                   </Avatar>
                   <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                    ${stats.totalPaid.toLocaleString()}
+                    ₺{stats.totalPaid.toLocaleString('tr-TR')}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
                     Toplam Ödenen
@@ -402,7 +402,7 @@ const EmployeeDetail: React.FC = () => {
                     <AccountBalance />
                   </Avatar>
                   <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                    ${stats.currentBalance.toLocaleString()}
+                    ₺{stats.currentBalance.toLocaleString('tr-TR')}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
                     Güncel Bakiye
@@ -457,7 +457,7 @@ const EmployeeDetail: React.FC = () => {
                     </TableCell>
                     <TableCell align="right">
                       <Typography variant="body2" sx={{ color: 'success.main', fontWeight: 600 }}>
-                        +${payment.amount.toLocaleString()}
+                        +₺{payment.amount.toLocaleString('tr-TR')}
                       </Typography>
                     </TableCell>
                     <TableCell>
@@ -575,7 +575,7 @@ const EmployeeDetail: React.FC = () => {
           {selectedPayment && (
             <Box sx={{ mt: 2, p: 2, bgcolor: 'background.paper', borderRadius: 1 }}>
               <Typography variant="body2">
-                <strong>Tutar:</strong> ${selectedPayment.amount.toLocaleString()}
+                <strong>Tutar:</strong> ₺{selectedPayment.amount.toLocaleString('tr-TR')}
               </Typography>
               <Typography variant="body2">
                 <strong>Tarih:</strong> {new Date(selectedPayment.paymentDate).toLocaleDateString('tr-TR')}

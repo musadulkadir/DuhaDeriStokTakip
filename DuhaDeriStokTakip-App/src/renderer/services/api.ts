@@ -187,6 +187,23 @@ class DatabaseAPI {
   async createReturn(returnData: Omit<Return, 'id' | 'created_at' | 'updated_at'>): Promise<ApiResponse<Return>> {
     return window.require("electron").ipcRenderer.invoke('returns:create', returnData);
   }
+
+  // Purchase operations
+  async getPurchases(page = 1, limit = 50): Promise<PaginatedResponse<any>> {
+    return window.require("electron").ipcRenderer.invoke('purchases:get-all', page, limit);
+  }
+
+  async getPurchaseById(id: number): Promise<ApiResponse<any>> {
+    return window.require("electron").ipcRenderer.invoke('purchases:get-by-id', id);
+  }
+
+  async createPurchase(purchase: any): Promise<ApiResponse<any>> {
+    return window.require("electron").ipcRenderer.invoke('purchases:create', purchase);
+  }
+
+  async deletePurchase(id: number): Promise<ApiResponse<boolean>> {
+    return window.require("electron").ipcRenderer.invoke('purchases:delete', id);
+  }
 }
 
 export const dbAPI = new DatabaseAPI();

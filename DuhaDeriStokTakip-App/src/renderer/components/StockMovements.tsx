@@ -66,6 +66,7 @@ const StockMovements: React.FC = () => {
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [movements, setMovements] = useState<MovementDisplay[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
   const [newMovement, setNewMovement] = useState({
@@ -76,20 +77,48 @@ const StockMovements: React.FC = () => {
     reference: '',
   });
 
+  // Sayı formatlama fonksiyonları
+  const formatNumberWithCommas = (value: string): string => {
+    // Sadece rakam karakterlerini al
+    const numericValue = value.replace(/[^\d]/g, '');
+    
+    // Eğer boşsa boş döndür
+    if (!numericValue) return '';
+    
+    // Üç haneli ayraçlarla formatla
+    return numericValue.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  };
+
+  const parseFormattedNumber = (value: string): number => {
+    // Virgülleri kaldır ve sayıya çevir
+    return parseInt(value.replace(/,/g, '')) || 0;
+  };
+
   // Load data
   const loadMovements = async () => {
     setLoading(true);
     try {
       const response = await dbAPI.getStockMovements();
       if (response.success) {
-        // Ürün bilgilerini ekleyerek movements'ı zenginleştir
+        // Ürün ve müşteri bilgilerini ekleyerek movements'ı zenginleştir
         const enrichedMovements = response.data.map((movement: StockMovement) => {
           const product = products.find(p => p.id === movement.product_id);
+          const customer = customers.find(c => c.id === movement.customer_id);
+          
+          let description = movement.notes || '';
+          if (movement.reference_type === 'sale' && customer) {
+            description = `Satış - ${customer.name}`;
+          } else if (movement.reference_type === 'sale' && !customer) {
+            description = 'Satış - Müşteri bilgisi bulunamadı';
+          }
+          
           return {
             ...movement,
             productName: product ? `${product.category} - ${product.color}` : 'Bilinmeyen Ürün',
             productCategory: product?.category,
             productColor: product?.color,
+            customerName: customer?.name,
+            notes: description,
             date: movement.created_at ? new Date(movement.created_at).toISOString().split('T')[0] : '',
             time: movement.created_at ? new Date(movement.created_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : '',
           };
@@ -114,6 +143,17 @@ const StockMovements: React.FC = () => {
     }
   };
 
+  const loadCustomers = async () => {
+    try {
+      const response = await dbAPI.getCustomers();
+      if (response.success) {
+        setCustomers(response.data);
+      }
+    } catch (error) {
+      console.error('Error loading customers:', error);
+    }
+  };
+
   const getColorDisplay = (color: string) => {
     const colorMap: { [key: string]: string } = {
       'Siyah': '#000000',
@@ -132,13 +172,14 @@ const StockMovements: React.FC = () => {
 
   useEffect(() => {
     loadProducts();
+    loadCustomers();
   }, []);
 
   useEffect(() => {
-    if (products.length > 0) {
+    if (products.length > 0 && customers.length > 0) {
       loadMovements();
     }
-  }, [products]);
+  }, [products, customers]);
 
   const filteredMovements = movements.filter(movement => {
     const matchesSearch = (movement.productName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -182,8 +223,8 @@ const StockMovements: React.FC = () => {
     }
   };
 
-  const totalIn = movements.filter(m => m.movement_type === 'in').reduce((sum, m) => sum + (m.quantity || 0), 0);
-  const totalOut = movements.filter(m => m.movement_type === 'out').reduce((sum, m) => sum + (m.quantity || 0), 0);
+  const totalIn = filteredMovements.filter(m => m.movement_type === 'in').reduce((sum, m) => sum + (m.quantity || 0), 0);
+  const totalOut = filteredMovements.filter(m => m.movement_type === 'out').reduce((sum, m) => sum + (m.quantity || 0), 0);
   const netChange = totalIn - totalOut;
 
   const handleAddMovement = async () => {
@@ -200,7 +241,7 @@ const StockMovements: React.FC = () => {
         return;
       }
 
-      const quantity = parseInt(newMovement.quantity);
+      const quantity = parseFormattedNumber(newMovement.quantity);
       const previousStock = product.stock_quantity || 0;
       const newStock = newMovement.type === 'in' ? previousStock + quantity : previousStock - quantity;
 
@@ -270,7 +311,7 @@ const StockMovements: React.FC = () => {
               </Avatar>
               <Box>
                 <Typography variant="h6" sx={{ fontWeight: 600, color: '#4CAF50' }}>
-                  +{totalIn}
+                  +{totalIn.toLocaleString('tr-TR')}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   Toplam Giriş
@@ -287,7 +328,7 @@ const StockMovements: React.FC = () => {
               </Avatar>
               <Box>
                 <Typography variant="h6" sx={{ fontWeight: 600, color: '#F44336' }}>
-                  -{totalOut}
+                  -{totalOut.toLocaleString('tr-TR')}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   Toplam Çıkış
@@ -304,7 +345,7 @@ const StockMovements: React.FC = () => {
               </Avatar>
               <Box>
                 <Typography variant="h6" sx={{ fontWeight: 600, color: netChange >= 0 ? '#4CAF50' : '#F44336' }}>
-                  {netChange >= 0 ? '+' : ''}{netChange}
+                  {netChange >= 0 ? '+' : ''}{netChange.toLocaleString('tr-TR')}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   Net Değişim
@@ -346,7 +387,16 @@ const StockMovements: React.FC = () => {
                 placeholder="Ürün, açıklama veya kullanıcı ara..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                sx={{ '& .MuiOutlinedInput-root': { minHeight: '56px' } }}
+                sx={{ 
+                  '& .MuiOutlinedInput-root': { 
+                    minHeight: '56px',
+                    fontSize: '1.1rem',
+                  },
+                  '& .MuiOutlinedInput-input': {
+                    fontSize: '1.1rem',
+                    fontWeight: 500,
+                  }
+                }}
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">
@@ -358,13 +408,27 @@ const StockMovements: React.FC = () => {
             </Grid>
             <Grid item xs={12} md={3}>
               <FormControl fullWidth size="large" variant="outlined">
-                <InputLabel id="movement-type-filter-label">Hareket Tipi</InputLabel>
+                <InputLabel 
+                  id="movement-type-filter-label"
+                  sx={{ 
+                    fontSize: '1.1rem',
+                    fontWeight: 600,
+                  }}
+                >
+                  Hareket Tipi
+                </InputLabel>
                 <Select
                   labelId="movement-type-filter-label"
                   value={filterType}
                   label="Hareket Tipi"
                   onChange={(e) => setFilterType(e.target.value)}
-                  sx={{ minHeight: '56px' }}
+                  sx={{ 
+                    minHeight: '56px',
+                    '& .MuiSelect-select': {
+                      fontSize: '1.1rem',
+                      fontWeight: 500,
+                    }
+                  }}
                 >
                   <MenuItem value="">Tüm Hareketler</MenuItem>
                   <MenuItem value="in">
@@ -397,7 +461,20 @@ const StockMovements: React.FC = () => {
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
                 InputLabelProps={{ shrink: true }}
-                sx={{ '& .MuiOutlinedInput-root': { minHeight: '56px' } }}
+                sx={{ 
+                  '& .MuiOutlinedInput-root': { 
+                    minHeight: '56px',
+                    fontSize: '1.1rem',
+                  },
+                  '& .MuiInputLabel-root': {
+                    fontSize: '1.1rem',
+                    fontWeight: 600,
+                  },
+                  '& .MuiOutlinedInput-input': {
+                    fontSize: '1.1rem',
+                    fontWeight: 500,
+                  }
+                }}
               />
             </Grid>
             <Grid item xs={12} md={2}>
@@ -409,7 +486,20 @@ const StockMovements: React.FC = () => {
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
                 InputLabelProps={{ shrink: true }}
-                sx={{ '& .MuiOutlinedInput-root': { minHeight: '56px' } }}
+                sx={{ 
+                  '& .MuiOutlinedInput-root': { 
+                    minHeight: '56px',
+                    fontSize: '1.1rem',
+                  },
+                  '& .MuiInputLabel-root': {
+                    fontSize: '1.1rem',
+                    fontWeight: 600,
+                  },
+                  '& .MuiOutlinedInput-input': {
+                    fontSize: '1.1rem',
+                    fontWeight: 500,
+                  }
+                }}
               />
             </Grid>
             <Grid item xs={12} md={3}>
@@ -489,7 +579,7 @@ const StockMovements: React.FC = () => {
                     </TableCell>
                     <TableCell align="center">
                       <Chip
-                        label={movement.movement_type === 'out' ? `-${movement.quantity}` : `+${movement.quantity}`}
+                        label={movement.movement_type === 'out' ? `-${(movement.quantity || 0).toLocaleString('tr-TR')}` : `+${(movement.quantity || 0).toLocaleString('tr-TR')}`}
                         color={movement.movement_type === 'out' ? 'error' : 'success'}
                         size="small"
                         sx={{ fontWeight: 600 }}
@@ -598,7 +688,7 @@ const StockMovements: React.FC = () => {
                         />
                         {product.category} - {product.color} 
                         <Chip 
-                          label={`${product.stock_quantity || 0} adet`} 
+                          label={`${(product.stock_quantity || 0).toLocaleString('tr-TR')} adet`} 
                           size="small" 
                           variant="outlined"
                           sx={{ ml: 'auto' }}
@@ -639,7 +729,10 @@ const StockMovements: React.FC = () => {
                 label="Miktar"
                 type="number"
                 value={newMovement.quantity}
-                onChange={(e) => setNewMovement({...newMovement, quantity: e.target.value})}
+                onChange={(e) => {
+                  const formatted = formatNumberWithCommas(e.target.value);
+                  setNewMovement({...newMovement, quantity: formatted});
+                }}
               />
             </Grid>
             <Grid item xs={12}>

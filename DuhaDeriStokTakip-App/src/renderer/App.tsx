@@ -12,9 +12,12 @@ import Dashboard from './components/Dashboard';
 import ProductManagement from './components/ProductManagement';
 import CustomerManagement from './components/CustomerManagement';
 import CustomerDetail from './components/CustomerDetail';
+import SupplierDetail from './components/SupplierDetail';
 import EmployeeManagement from './components/EmployeeManagement';
+import ErrorBoundary from './components/ErrorBoundary';
 import EmployeeDetail from './components/EmployeeDetail';
 import SalesManagement from './components/SalesManagement';
+import PurchaseManagement from './components/PurchaseManagement';
 import StockMovements from './components/StockMovements';
 import CashManagement from './components/CashManagement';
 import Reports from './components/Reports';
@@ -238,19 +241,23 @@ export default function App() {
             }}
           >
             <Box sx={{ position: 'relative', zIndex: 1 }}>
-              <Routes>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/products" element={<ProductManagement />} />
-                <Route path="/customers" element={<CustomerManagement />} />
-                <Route path="/customers/:id" element={<CustomerDetail />} />
-                <Route path="/employees" element={<EmployeeManagement />} />
-                <Route path="/employees/:id" element={<EmployeeDetail />} />
-                <Route path="/sales" element={<SalesManagement />} />
-                <Route path="/cash" element={<CashManagement />} />
-                <Route path="/movements" element={<StockMovements />} />
-                <Route path="/reports" element={<Reports />} />
-                <Route path="/settings" element={<Settings />} />
-              </Routes>
+              <ErrorBoundary>
+                <Routes>
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/products" element={<ProductManagement />} />
+                  <Route path="/customers" element={<CustomerManagement />} />
+                  <Route path="/customers/:id" element={<CustomerDetail />} />
+                  <Route path="/suppliers/:id" element={<SupplierDetail />} />
+                  <Route path="/employees" element={<EmployeeManagement />} />
+                  <Route path="/employees/:id" element={<EmployeeDetail />} />
+                  <Route path="/sales" element={<SalesManagement />} />
+                  <Route path="/purchases" element={<PurchaseManagement />} />
+                  <Route path="/cash" element={<CashManagement />} />
+                  <Route path="/movements" element={<StockMovements />} />
+                  <Route path="/reports" element={<Reports />} />
+                  <Route path="/settings" element={<Settings />} />
+                </Routes>
+              </ErrorBoundary>
             </Box>
           </Box>
         </Box>

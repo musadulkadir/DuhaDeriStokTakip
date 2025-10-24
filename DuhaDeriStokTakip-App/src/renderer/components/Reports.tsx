@@ -17,21 +17,15 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  Chip,
-  Paper,
-  Divider,
   Alert,
 } from '@mui/material';
 import {
   Assessment,
   TrendingUp,
   Inventory,
-  People,
   Download,
   Print,
-  DateRange,
   AttachMoney,
-  Warning,
 } from '@mui/icons-material';
 import { dbAPI } from '../services/api';
 
@@ -44,12 +38,13 @@ interface SaleReport {
   quantityInDesi: number;
   unitPrice: number;
   total: number;
+  currency: string;
 }
 
 const Reports: React.FC = () => {
   const [reportType, setReportType] = useState('sales');
-  const [startDate, setStartDate] = useState('2024-01-01');
-  const [endDate, setEndDate] = useState('2024-01-31');
+  const [startDate, setStartDate] = useState('2025-01-01');
+  const [endDate, setEndDate] = useState('2025-12-31');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [salesData, setSalesData] = useState<SaleReport[]>([]);
@@ -64,13 +59,14 @@ const Reports: React.FC = () => {
         // Veriyi uygun formata dönüştür
         const formattedData: SaleReport[] = response.data.map((row: any) => ({
           date: row.sale_date || new Date().toISOString(),
-          customerName: row.customer_name || 'Bilinmeyen Müşteri',
+          customerName: row.customer_name || row.name || 'Bilinmeyen Müşteri',
           productName: `${row.category || 'Ürün'} - ${row.color || 'Renk'}`,
-          quantity: row.quantity || 0,
+          quantity: row.quantity_pieces || row.quantity || 0, // Adet cinsinden
           unit: 'desi' as const,
-          quantityInDesi: row.quantity || 0,
-          unitPrice: row.unit_price || 0,
-          total: row.total_price || 0,
+          quantityInDesi: row.quantity_desi || row.quantity || 0, // Desi cinsinden
+          unitPrice: row.unit_price_per_desi || row.unit_price || 0,
+          total: row.total_price || row.total_amount || 0,
+          currency: row.currency || 'TRY',
         }));
         setSalesData(formattedData);
       } else {
@@ -87,16 +83,23 @@ const Reports: React.FC = () => {
   };
 
   useEffect(() => {
-    loadSalesData();
-  }, [startDate, endDate]);
+    if (reportType === 'sales') {
+      loadSalesData();
+    }
+  }, [reportType, startDate, endDate]);
 
   // Toplam satış istatistikleri
   const stats = {
     totalSales: salesData?.length || 0,
-    totalRevenue: salesData?.reduce((sum, sale) => sum + (sale?.total || 0), 0) || 0,
+    totalRevenueTRY: salesData?.filter(sale => sale.currency === 'TRY').reduce((sum, sale) => sum + (sale?.total || 0), 0) || 0,
+    totalRevenueUSD: salesData?.filter(sale => sale.currency === 'USD').reduce((sum, sale) => sum + (sale?.total || 0), 0) || 0,
     totalQuantityDesi: salesData?.reduce((sum, sale) => sum + (sale?.quantityInDesi || 0), 0) || 0,
-    totalQuantityAyak: salesData?.reduce((sum, sale) => sum + (sale?.unit === 'ayak' ? (sale?.quantity || 0) : (sale?.quantity || 0) / 10), 0) || 0,
-    averageOrderValue: (salesData?.length || 0) > 0 ? (salesData?.reduce((sum, sale) => sum + (sale?.total || 0), 0) || 0) / salesData.length : 0,
+    totalQuantityPieces: salesData?.reduce((sum, sale) => sum + (sale?.quantity || 0), 0) || 0,
+    totalQuantityAyak: Math.round((salesData?.reduce((sum, sale) => sum + (sale?.quantityInDesi || 0), 0) || 0) / 10 * 100) / 100, // 10 desi = 1 ayak
+    averageOrderValueTRY: salesData?.filter(sale => sale.currency === 'TRY').length > 0 ? 
+      (salesData?.filter(sale => sale.currency === 'TRY').reduce((sum, sale) => sum + (sale?.total || 0), 0) || 0) / salesData.filter(sale => sale.currency === 'TRY').length : 0,
+    averageOrderValueUSD: salesData?.filter(sale => sale.currency === 'USD').length > 0 ? 
+      (salesData?.filter(sale => sale.currency === 'USD').reduce((sum, sale) => sum + (sale?.total || 0), 0) || 0) / salesData.filter(sale => sale.currency === 'USD').length : 0,
   };
 
   return (
@@ -115,7 +118,7 @@ const Reports: React.FC = () => {
       <Card sx={{ mb: 3 }}>
         <CardContent>
           <Grid container spacing={3} alignItems="center">
-            <Grid item xs={12} md={3}>
+            <Grid xs={12} md={3}>
               <FormControl fullWidth>
                 <InputLabel>Rapor Tipi</InputLabel>
                 <Select
@@ -129,7 +132,7 @@ const Reports: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid item xs={12} md={3}>
+            <Grid xs={12} md={3}>
               <TextField
                 fullWidth
                 label="Başlangıç Tarihi"
@@ -139,7 +142,7 @@ const Reports: React.FC = () => {
                 InputLabelProps={{ shrink: true }}
               />
             </Grid>
-            <Grid item xs={12} md={3}>
+            <Grid xs={12} md={3}>
               <TextField
                 fullWidth
                 label="Bitiş Tarihi"
@@ -149,7 +152,7 @@ const Reports: React.FC = () => {
                 InputLabelProps={{ shrink: true }}
               />
             </Grid>
-            <Grid item xs={12} md={3}>
+            <Grid xs={12} md={3}>
               <Box sx={{ display: 'flex', gap: 1 }}>
                 <Button
                   variant="outlined"
@@ -177,7 +180,7 @@ const Reports: React.FC = () => {
 
       {/* Stats Cards */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid xs={12} sm={6} md={3}>
           <Card>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -193,23 +196,39 @@ const Reports: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid xs={12} sm={6} md={2.4}>
           <Card>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                 <AttachMoney sx={{ color: 'success.main', mr: 1 }} />
-                <Typography variant="h6">Toplam Gelir</Typography>
+                <Typography variant="h6">Gelir (TL)</Typography>
               </Box>
               <Typography variant="h4" sx={{ mb: 1 }}>
-                ${(stats.totalRevenue || 0).toLocaleString()}
+                ₺{(stats.totalRevenueTRY || 0).toLocaleString()}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                ortalama ${(stats.averageOrderValue || 0).toLocaleString()}/satış
+                ortalama ₺{(stats.averageOrderValueTRY || 0).toLocaleString()}/satış
               </Typography>
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid xs={12} sm={6} md={2.4}>
+          <Card>
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                <AttachMoney sx={{ color: 'info.main', mr: 1 }} />
+                <Typography variant="h6">Gelir (USD)</Typography>
+              </Box>
+              <Typography variant="h4" sx={{ mb: 1 }}>
+                ${(stats.totalRevenueUSD || 0).toLocaleString()}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                ortalama ${(stats.averageOrderValueUSD || 0).toLocaleString()}/satış
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid xs={12} sm={6} md={3}>
           <Card>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -217,10 +236,10 @@ const Reports: React.FC = () => {
                 <Typography variant="h6">Toplam Miktar</Typography>
               </Box>
               <Typography variant="h4" sx={{ mb: 1 }}>
-                {(stats.totalQuantityDesi || 0).toLocaleString()}
+                {(stats.totalQuantityDesi || 0).toLocaleString('tr-TR')} desi
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                desi ({(stats.totalQuantityAyak || 0).toLocaleString()} ayak)
+                {(stats.totalQuantityAyak || 0).toLocaleString('tr-TR')} ayak • {(stats.totalQuantityPieces || 0).toLocaleString('tr-TR')} adet
               </Typography>
             </CardContent>
           </Card>
@@ -259,15 +278,15 @@ const Reports: React.FC = () => {
                     <TableCell>{sale?.customerName || '-'}</TableCell>
                     <TableCell>{sale?.productName || '-'}</TableCell>
                     <TableCell align="right">
-                      {sale?.quantity || 0} {sale?.unit || 'desi'}
-                      {sale?.unit === 'ayak' && (
-                        <Typography variant="caption" display="block" color="text.secondary">
-                          ({sale?.quantityInDesi || 0} desi)
-                        </Typography>
-                      )}
+                      <Typography variant="body2">
+                        {(sale?.quantity || 0).toLocaleString('tr-TR')} adet
+                      </Typography>
+                      <Typography variant="caption" display="block" color="text.secondary">
+                        {(sale?.quantityInDesi || 0).toLocaleString('tr-TR')} desi ({Math.round((sale?.quantityInDesi || 0) / 10 * 100) / 100} ayak)
+                      </Typography>
                     </TableCell>
-                    <TableCell align="right">${sale?.unitPrice || 0}/{sale?.unit || 'desi'}</TableCell>
-                    <TableCell align="right">${(sale?.total || 0).toLocaleString()}</TableCell>
+                    <TableCell align="right">{sale?.currency === 'USD' ? '$' : '₺'}{(sale?.unitPrice || 0).toLocaleString('tr-TR')}/{sale?.unit || 'desi'}</TableCell>
+                    <TableCell align="right">{sale?.currency === 'USD' ? '$' : '₺'}{(sale?.total || 0).toLocaleString()}</TableCell>
                   </TableRow>
                 ))}
                 {salesData.length === 0 && (
