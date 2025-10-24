@@ -110,9 +110,9 @@ const CustomerManagement: React.FC = () => {
 
       // Müşteri için: Bakiye = Ödemeler - Satışlar (negatif değer borç demek)
       // Tedarikçi için: Bakiye = Alımlar - Ödemeler (pozitif değer borç demek)
-      const balanceTRY = totalPaymentsTRY - totalSalesTRY + totalPurchasesTRY;
-      const balanceUSD = totalPaymentsUSD - totalSalesUSD + totalPurchasesUSD;
-      const balanceEUR = totalPaymentsEUR - totalSalesEUR + totalPurchasesEUR;
+      const balanceTRY = totalPurchasesTRY - totalPaymentsTRY;
+      const balanceUSD = totalPurchasesUSD - totalPaymentsUSD;
+      const balanceEUR = totalPurchasesEUR - totalPaymentsEUR;
 
       return { balanceTRY, balanceUSD, balanceEUR };
     } catch (error) {
@@ -131,6 +131,7 @@ const CustomerManagement: React.FC = () => {
         const customersWithBalance = await Promise.all(
           response.data.map(async (customer: Customer) => {
             const balance = await calculateCustomerBalance(customer.id!);
+            console.log(`Müşteri ${customer.name} (${customer.type}) bakiye:`, balance);
             return {
               ...customer,
               balanceTRY: balance.balanceTRY,

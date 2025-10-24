@@ -45,7 +45,9 @@ import { Customer } from '../../main/database/models';
 
 interface Purchase {
   id: number;
-  date: string;
+  date?: string;
+  purchase_date?: string;
+  created_at?: string;
   total_amount: number;
   currency: string;
   description?: string;
@@ -54,10 +56,13 @@ interface Purchase {
 
 interface Payment {
   id: number;
-  date: string;
+  date?: string;
+  payment_date?: string;
+  created_at?: string;
   amount: number;
   currency: string;
-  payment_method: string;
+  payment_type: string;
+  payment_method?: string;
   description?: string;
 }
 
@@ -132,6 +137,7 @@ const SupplierDetail: React.FC = () => {
       if (response.success) {
         // Sadece bu tedarikçiye ait alımları filtrele
         const supplierPurchases = response.data.filter((purchase: any) => purchase.supplier_id === parseInt(id));
+        console.log('Alım verileri:', supplierPurchases);
         setPurchases(supplierPurchases);
       } else {
         console.error('Alım geçmişi yüklenemedi:', response.error);
@@ -177,7 +183,7 @@ const SupplierDetail: React.FC = () => {
         date: new Date().toISOString(),
       };
 
-      const response = await dbAPI.createCustomerPayment(paymentData);
+      const response = await dbAPI.createPayment(paymentData);
       if (response.success) {
         // Kasadan ödeme tutarını düş
         const cashTransactionData = {
@@ -390,14 +396,27 @@ const SupplierDetail: React.FC = () => {
                       purchases.map((purchase) => (
                         <TableRow key={purchase.id}>
                           <TableCell>
-                            {new Date(purchase.date).toLocaleDateString('tr-TR')}
+                            {(() => {
+                              try {
+                                // Önce purchase_date, sonra date, sonra created_at kontrol et
+                                const dateValue = purchase.purchase_date || purchase.date || purchase.created_at;
+                                if (!dateValue) return 'Tarih Belirtilmemiş';
+                                const date = new Date(dateValue);
+                                return isNaN(date.getTime()) ? 'Geçersiz Tarih' : date.toLocaleDateString('tr-TR');
+                              } catch (error) {
+                                return 'Geçersiz Tarih';
+                              }
+                            })()}
                           </TableCell>
                           <TableCell>
                             {formatCurrency(purchase.total_amount, purchase.currency)}
                           </TableCell>
                           <TableCell>
                             <Chip
-                              label={purchase.status}
+                              label={purchase.status === 'completed' ? 'Tamamlandı' : 
+                                     purchase.status === 'pending' ? 'Beklemede' : 
+                                     purchase.status === 'cancelled' ? 'İptal Edildi' : 
+                                     purchase.status || 'Bilinmiyor'}
                               size="small"
                               color={purchase.status === 'completed' ? 'success' : 'warning'}
                             />
@@ -442,17 +461,30 @@ const SupplierDetail: React.FC = () => {
                       payments.map((payment) => (
                         <TableRow key={payment.id}>
                           <TableCell>
-                            {new Date(payment.date).toLocaleDateString('tr-TR')}
+                            {(() => {
+                              try {
+                                // Önce payment_date, sonra date, sonra created_at kontrol et
+                                const dateValue = payment.payment_date || payment.date || payment.created_at;
+                                if (!dateValue) return 'Tarih Belirtilmemiş';
+                                const date = new Date(dateValue);
+                                return isNaN(date.getTime()) ? 'Geçersiz Tarih' : date.toLocaleDateString('tr-TR');
+                              } catch (error) {
+                                return 'Geçersiz Tarih';
+                              }
+                            })()}
                           </TableCell>
                           <TableCell>
                             {formatCurrency(payment.amount, payment.currency)}
                           </TableCell>
                           <TableCell>
                             <Chip
-                              label={payment.payment_method === 'cash' ? 'Nakit' : 
-                                     payment.payment_method === 'card' ? 'Kart' : 
-                                     payment.payment_method === 'transfer' ? 'Transfer' : payment.payment_method}
+                              label={payment.payment_type === 'cash' ? 'Nakit' : 
+                                     payment.payment_type === 'card' ? 'Kart' : 
+                                     payment.payment_type === 'transfer' ? 'Banka Transferi' : 
+                                     payment.payment_type === 'check' ? 'Çek' : 
+                                     payment.payment_type || 'Belirtilmemiş'}
                               size="small"
+                              color="primary"
                             />
                           </TableCell>
                         </TableRow>
