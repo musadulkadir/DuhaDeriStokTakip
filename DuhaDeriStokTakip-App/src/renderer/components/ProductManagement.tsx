@@ -103,6 +103,11 @@ const ProductManagement: React.FC = () => {
     return parseInt(value.replace(/,/g, '')) || 0;
   };
 
+  // Güvenli toLocaleString
+  const safeToLocaleString = (value: any): string => {
+    const num = Number(value);
+    return !isNaN(num) && value !== null && value !== undefined && value !== '' ? num.toLocaleString('tr-TR') : '0';
+  };
 
 
   // Kategoriler ve renkleri yükle
@@ -370,6 +375,7 @@ const ProductManagement: React.FC = () => {
   const handleDeleteProduct = async () => {
     if (!selectedProduct) {
       console.log('selectedProduct null, işlem iptal edildi');
+      setDeleteDialogOpen(false);
       return;
     }
 
@@ -386,13 +392,13 @@ const ProductManagement: React.FC = () => {
         setSnackbar({ open: true, message: 'Ürün başarıyla silindi', severity: 'success' });
         setDeleteDialogOpen(false);
         setSelectedProduct(null);
-
-        console.log('Ürünler yeniden yükleniyor...');
         await loadProducts();
         console.log('Ürünler yeniden yüklendi');
       } else {
         console.error('Silme başarısız:', response.error);
         setSnackbar({ open: true, message: response.error || 'Ürün silinemedi', severity: 'error' });
+        setDeleteDialogOpen(false); // Başarısız da olsa dialogu kapat!
+        setSelectedProduct(null);  // Ve seçimi sıfırla
       }
     } catch (error) {
       console.error('Ürün silme hatası:', error);
@@ -404,8 +410,9 @@ const ProductManagement: React.FC = () => {
         errorMessage += ': ' + error;
       }
       setSnackbar({ open: true, message: errorMessage, severity: 'error' });
+      setDeleteDialogOpen(false); // Hata da olsa dialogu kapat!
+      setSelectedProduct(null);  // Ve seçimi sıfırla
     } finally {
-      console.log('Loading false yapılıyor...');
       setLoading(false);
     }
   };
@@ -460,6 +467,10 @@ const ProductManagement: React.FC = () => {
     return color?.hex_code || '#F5F5DC';
   };
 
+  // --- DEBUG LOGLARI ---
+  console.log('filteredProducts:', filteredProducts);
+  console.log('colors:', colors);
+
   return (
     <Box>
       {/* Header */}
@@ -499,7 +510,7 @@ const ProductManagement: React.FC = () => {
                 {(() => {
                   try {
                     const total = (products || []).reduce((sum, p) => sum + (Number(p?.stock_quantity) || 0), 0) || 0;
-                    return (total || 0) + ' adet';
+                    return safeToLocaleString(total) + ' adet';
                   } catch (e) {
                     return '0 adet';
                   }
@@ -738,8 +749,7 @@ const ProductManagement: React.FC = () => {
                       <TableCell align="right" sx={{ fontWeight: 600 }}>
                         {(() => {
                           try {
-                            const qty = Number(product?.stock_quantity) || 0;
-                            return (qty || 0) + ' adet';
+                            return safeToLocaleString(product?.stock_quantity) + ' adet';
                           } catch (e) {
                             return '0 adet';
                           }
@@ -755,7 +765,7 @@ const ProductManagement: React.FC = () => {
                       <TableCell align="center">
                         <IconButton
                           size="small"
-                          onClick={() => handleOpenModal(product)}
+                          onClick={() => { console.log('Stok geçmişi butonu:', product); handleOpenModal(product); }}
                           title="Stok Geçmişi"
                         >
                           <HistoryIcon />
@@ -764,10 +774,7 @@ const ProductManagement: React.FC = () => {
                           size="small"
                           color="primary"
                           title="Düzenle"
-                          onClick={() => {
-                            setSelectedProduct(product);
-                            setEditDialogOpen(true);
-                          }}
+                          onClick={() => { console.log('Düzenle butonu:', product); setSelectedProduct(product); setEditDialogOpen(true); }}
                         >
                           <EditIcon />
                         </IconButton>
@@ -775,10 +782,7 @@ const ProductManagement: React.FC = () => {
                           size="small"
                           color="error"
                           title="Sil"
-                          onClick={() => {
-                            setSelectedProduct(product);
-                            setDeleteDialogOpen(true);
-                          }}
+                          onClick={() => { console.log('Sil butonu:', product); setSelectedProduct(product); setDeleteDialogOpen(true); }}
                         >
                           <DeleteIcon />
                         </IconButton>
@@ -830,8 +834,7 @@ const ProductManagement: React.FC = () => {
                       <TableCell align="right" sx={{ fontWeight: 600 }}>
                         {(() => {
                           try {
-                            const qty = Number(material?.stock_quantity) || 0;
-                            return (qty || 0) + ' adet';
+                            return safeToLocaleString(material?.stock_quantity) + ' adet';
                           } catch (e) {
                             return '0 adet';
                           }
@@ -1072,7 +1075,10 @@ const ProductManagement: React.FC = () => {
       {/* Delete Confirmation Dialog */}
       <Dialog
         open={deleteDialogOpen}
-        onClose={() => setDeleteDialogOpen(false)}
+        onClose={() => {
+          setDeleteDialogOpen(false);
+          setSelectedProduct(null);
+        }}
         disableEnforceFocus
       >
         <DialogTitle>Ürünü Sil</DialogTitle>
@@ -1085,10 +1091,13 @@ const ProductManagement: React.FC = () => {
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteDialogOpen(false)}>İptal</Button>
+          <Button onClick={() => {
+            setDeleteDialogOpen(false);
+            setSelectedProduct(null); // Kapatınca seçimi sıfırla
+          }}>İptal</Button>
           <Button
             onClick={() => {
-              console.log('Delete butonu tıklandı');
+              console.log('Delete butonu tıklandı, işlem başlıyor');
               handleDeleteProduct();
             }}
             variant="contained"

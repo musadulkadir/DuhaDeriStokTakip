@@ -186,11 +186,15 @@ const EmployeeManagement: React.FC = () => {
 
   // Çalışan sil
   const handleDeleteEmployee = async () => {
-    if (!selectedEmployee) return;
-
+    if (!selectedEmployee) {
+      console.log('selectedEmployee null, işlem iptal edildi');
+      setDeleteDialogOpen(false);
+      return;
+    }
     setLoading(true);
     try {
       const response = await dbAPI.deleteEmployee(selectedEmployee.id!);
+      console.log('Silme yanıtı:', response);
       if (response.success) {
         await loadEmployees();
         setSnackbar({ open: true, message: 'Çalışan başarıyla silindi', severity: 'success' });
@@ -198,9 +202,13 @@ const EmployeeManagement: React.FC = () => {
         setSelectedEmployee(null);
       } else {
         setSnackbar({ open: true, message: response.error || 'Çalışan silinemedi', severity: 'error' });
+        setDeleteDialogOpen(false); // Başarısız da olsa dialogu kapat
+        setSelectedEmployee(null);  // Seçimi sıfırla
       }
     } catch (error) {
       setSnackbar({ open: true, message: 'Çalışan silinirken hata oluştu', severity: 'error' });
+      setDeleteDialogOpen(false);
+      setSelectedEmployee(null);
     } finally {
       setLoading(false);
     }
@@ -577,7 +585,10 @@ const EmployeeManagement: React.FC = () => {
       </Dialog>
 
       {/* Delete Confirmation Dialog */}
-      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
+      <Dialog open={deleteDialogOpen} onClose={() => {
+          setDeleteDialogOpen(false);
+          setSelectedEmployee(null);
+        }}>
         <DialogTitle>Çalışanı Sil</DialogTitle>
         <DialogContent>
           <Typography>
@@ -595,8 +606,14 @@ const EmployeeManagement: React.FC = () => {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteDialogOpen(false)}>İptal</Button>
-          <Button onClick={handleDeleteEmployee} color="error" variant="contained" disabled={loading}>
+          <Button onClick={() => {
+            setDeleteDialogOpen(false);
+            setSelectedEmployee(null);
+          }}>İptal</Button>
+          <Button onClick={() => {
+            console.log('Delete butonu tıklandı, işlem başlıyor');
+            handleDeleteEmployee();
+          }} color="error" variant="contained" disabled={loading}>
             {loading ? 'Siliniyor...' : 'Sil'}
           </Button>
         </DialogActions>

@@ -110,7 +110,7 @@ const SupplierDetail: React.FC = () => {
     
     setLoading(true);
     try {
-      const response = await dbAPI.getCustomer(parseInt(id));
+      const response = await dbAPI.getCustomerById(parseInt(id));
       if (response.success) {
         setSupplier(response.data);
       } else {
@@ -128,10 +128,18 @@ const SupplierDetail: React.FC = () => {
     if (!id) return;
     
     try {
-      // Bu fonksiyon henüz API'de yok, şimdilik boş array
-      setPurchases([]);
+      const response = await dbAPI.getPurchases();
+      if (response.success) {
+        // Sadece bu tedarikçiye ait alımları filtrele
+        const supplierPurchases = response.data.filter((purchase: any) => purchase.supplier_id === parseInt(id));
+        setPurchases(supplierPurchases);
+      } else {
+        console.error('Alım geçmişi yüklenemedi:', response.error);
+        setPurchases([]);
+      }
     } catch (error) {
       console.error('Alım geçmişi yüklenirken hata:', error);
+      setPurchases([]);
     }
   };
 

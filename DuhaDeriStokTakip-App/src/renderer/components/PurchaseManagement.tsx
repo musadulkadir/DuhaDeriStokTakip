@@ -281,6 +281,18 @@ const PurchaseManagement: React.FC = () => {
 
       await dbAPI.createCashTransaction(cashTransactionData);
 
+      // Tedarikçi hesabına borç ekleme (alım tutarı kadar borç)
+      const supplier = suppliers.find(s => s.id === parseInt(newPurchase.supplier_id));
+      if (supplier) {
+        // Tedarikçi bakiyesini güncelle (borç = pozitif değer)
+        const currentBalance = supplier.balance || 0;
+        const newBalance = currentBalance + totalAmount;
+        
+        await dbAPI.updateCustomer(parseInt(newPurchase.supplier_id), {
+          balance: newBalance
+        });
+      }
+
       setSnackbar({ open: true, message: 'Alım başarıyla kaydedildi', severity: 'success' });
       setAddDialogOpen(false);
       setNewPurchase({
@@ -345,7 +357,58 @@ const PurchaseManagement: React.FC = () => {
         <Grid item xs={12} sm={6} md={3}>
           <Card>
             <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
+              <Avatar sx={{ bgcolor: 'warning.main', mr: 2 }}>
+                <AccountBalance />
+              </Avatar>
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  ₺{purchases.filter(p => p.currency === 'TRY').reduce((sum, p) => sum + p.total_amount, 0).toLocaleString('tr-TR')}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Toplam Alım (TL)
+                </Typography>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card>
+            <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
+              <Avatar sx={{ bgcolor: 'info.main', mr: 2 }}>
+                <TrendingUp />
+              </Avatar>
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  ${purchases.filter(p => p.currency === 'USD').reduce((sum, p) => sum + p.total_amount, 0).toLocaleString('tr-TR')}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Toplam Alım (USD)
+                </Typography>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card>
+            <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
               <Avatar sx={{ bgcolor: 'success.main', mr: 2 }}>
+                <TrendingDown />
+              </Avatar>
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  €{purchases.filter(p => p.currency === 'EUR').reduce((sum, p) => sum + p.total_amount, 0).toLocaleString('tr-TR')}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Toplam Alım (EUR)
+                </Typography>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card>
+            <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
+              <Avatar sx={{ bgcolor: 'secondary.main', mr: 2 }}>
                 <Business />
               </Avatar>
               <Box>
@@ -362,7 +425,7 @@ const PurchaseManagement: React.FC = () => {
         <Grid item xs={12} sm={6} md={3}>
           <Card>
             <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
-              <Avatar sx={{ bgcolor: 'info.main', mr: 2 }}>
+              <Avatar sx={{ bgcolor: 'error.main', mr: 2 }}>
                 <TrendingUp />
               </Avatar>
               <Box>
@@ -481,10 +544,41 @@ const PurchaseManagement: React.FC = () => {
                       </TableCell>
                       <TableCell>{purchase.notes || '-'}</TableCell>
                       <TableCell align="center">
-                        <IconButton size="small" color="primary" title="Düzenle">
+                        <IconButton 
+                          size="small" 
+                          color="primary" 
+                          title="Düzenle"
+                          onClick={() => {
+                            console.log('Düzenle butonu tıklandı:', purchase);
+                            setSnackbar({ open: true, message: 'Düzenleme özelliği yakında eklenecek', severity: 'info' });
+                          }}
+                        >
                           <EditIcon />
                         </IconButton>
-                        <IconButton size="small" color="error" title="Sil">
+                        <IconButton 
+                          size="small" 
+                          color="error" 
+                          title="Sil"
+                          onClick={async () => {
+                            console.log('Sil butonu tıklandı:', purchase);
+                            if (window.confirm('Bu alım kaydını silmek istediğinizden emin misiniz?')) {
+                              setLoading(true);
+                              try {
+                                const response = await dbAPI.deletePurchase(purchase.id);
+                                if (response.success) {
+                                  setSnackbar({ open: true, message: 'Alım kaydı başarıyla silindi', severity: 'success' });
+                                  await loadPurchases();
+                                } else {
+                                  setSnackbar({ open: true, message: response.error || 'Alım kaydı silinemedi', severity: 'error' });
+                                }
+                              } catch (error) {
+                                setSnackbar({ open: true, message: 'Alım kaydı silinirken hata oluştu', severity: 'error' });
+                              } finally {
+                                setLoading(false);
+                              }
+                            }
+                          }}
+                        >
                           <DeleteIcon />
                         </IconButton>
                       </TableCell>

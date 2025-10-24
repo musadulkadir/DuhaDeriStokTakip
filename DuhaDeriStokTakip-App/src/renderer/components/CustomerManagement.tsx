@@ -90,19 +90,29 @@ const CustomerManagement: React.FC = () => {
       const allSales = salesResponse.success ? salesResponse.data || [] : [];
       const customerSales = allSales.filter((sale: any) => sale.customer_id === customerId);
 
+      // Tedarikçi alımlarını al (sadece tedarikçiler için)
+      const purchasesResponse = await dbAPI.getPurchases();
+      const allPurchases = purchasesResponse.success ? purchasesResponse.data || [] : [];
+      const supplierPurchases = allPurchases.filter((purchase: any) => purchase.supplier_id === customerId);
+
       // Para birimi bazında hesaplama
-      const totalPurchasesTRY = customerSales.filter((sale: any) => (sale.currency || 'TRY') === 'TRY').reduce((sum: number, sale: any) => sum + (sale.total_amount || 0), 0);
-      const totalPurchasesUSD = customerSales.filter((sale: any) => (sale.currency || 'TRY') === 'USD').reduce((sum: number, sale: any) => sum + (sale.total_amount || 0), 0);
-      const totalPurchasesEUR = customerSales.filter((sale: any) => (sale.currency || 'TRY') === 'EUR').reduce((sum: number, sale: any) => sum + (sale.total_amount || 0), 0);
+      const totalSalesTRY = customerSales.filter((sale: any) => (sale.currency || 'TRY') === 'TRY').reduce((sum: number, sale: any) => sum + (sale.total_amount || 0), 0);
+      const totalSalesUSD = customerSales.filter((sale: any) => (sale.currency || 'TRY') === 'USD').reduce((sum: number, sale: any) => sum + (sale.total_amount || 0), 0);
+      const totalSalesEUR = customerSales.filter((sale: any) => (sale.currency || 'TRY') === 'EUR').reduce((sum: number, sale: any) => sum + (sale.total_amount || 0), 0);
+
+      const totalPurchasesTRY = supplierPurchases.filter((purchase: any) => (purchase.currency || 'TRY') === 'TRY').reduce((sum: number, purchase: any) => sum + (purchase.total_amount || 0), 0);
+      const totalPurchasesUSD = supplierPurchases.filter((purchase: any) => (purchase.currency || 'TRY') === 'USD').reduce((sum: number, purchase: any) => sum + (purchase.total_amount || 0), 0);
+      const totalPurchasesEUR = supplierPurchases.filter((purchase: any) => (purchase.currency || 'TRY') === 'EUR').reduce((sum: number, purchase: any) => sum + (purchase.total_amount || 0), 0);
 
       const totalPaymentsTRY = payments.filter((payment: any) => (payment.currency || 'TRY') === 'TRY').reduce((sum: number, payment: any) => sum + (payment.amount || 0), 0);
       const totalPaymentsUSD = payments.filter((payment: any) => (payment.currency || 'TRY') === 'USD').reduce((sum: number, payment: any) => sum + (payment.amount || 0), 0);
       const totalPaymentsEUR = payments.filter((payment: any) => (payment.currency || 'TRY') === 'EUR').reduce((sum: number, payment: any) => sum + (payment.amount || 0), 0);
 
-      // Bakiye = Ödemeler - Alışverişler (negatif değer borç demek)
-      const balanceTRY = totalPaymentsTRY - totalPurchasesTRY;
-      const balanceUSD = totalPaymentsUSD - totalPurchasesUSD;
-      const balanceEUR = totalPaymentsEUR - totalPurchasesEUR;
+      // Müşteri için: Bakiye = Ödemeler - Satışlar (negatif değer borç demek)
+      // Tedarikçi için: Bakiye = Alımlar - Ödemeler (pozitif değer borç demek)
+      const balanceTRY = totalPaymentsTRY - totalSalesTRY + totalPurchasesTRY;
+      const balanceUSD = totalPaymentsUSD - totalSalesUSD + totalPurchasesUSD;
+      const balanceEUR = totalPaymentsEUR - totalSalesEUR + totalPurchasesEUR;
 
       return { balanceTRY, balanceUSD, balanceEUR };
     } catch (error) {
@@ -249,11 +259,15 @@ const CustomerManagement: React.FC = () => {
   };
 
   const handleDeleteCustomer = async () => {
-    if (!selectedCustomer) return;
-
+    if (!selectedCustomer) {
+      console.log('selectedCustomer null, işlem iptal edildi');
+      setDeleteDialogOpen(false);
+      return;
+    }
     setLoading(true);
     try {
       const response = await dbAPI.deleteCustomer(selectedCustomer.id!);
+      console.log('Silme yanıtı:', response);
       if (response.success) {
         setSnackbar({ open: true, message: 'Müşteri başarıyla silindi', severity: 'success' });
         setDeleteDialogOpen(false);
@@ -261,9 +275,13 @@ const CustomerManagement: React.FC = () => {
         await loadCustomers();
       } else {
         setSnackbar({ open: true, message: response.error || 'Müşteri silinemedi', severity: 'error' });
+        setDeleteDialogOpen(false); // Başarısız da olsa dialogu kapat
+        setSelectedCustomer(null);  // Seçimi sıfırla
       }
     } catch (error) {
       setSnackbar({ open: true, message: 'Müşteri silinirken hata oluştu', severity: 'error' });
+      setDeleteDialogOpen(false);
+      setSelectedCustomer(null);
     } finally {
       setLoading(false);
     }
@@ -770,7 +788,10 @@ const CustomerManagement: React.FC = () => {
       {/* Delete Confirmation Dialog */}
       <Dialog 
         open={deleteDialogOpen} 
-        onClose={() => setDeleteDialogOpen(false)}
+        onClose={() => {
+          setDeleteDialogOpen(false);
+          setSelectedCustomer(null);
+        }}
         disableEnforceFocus
       >
         <DialogTitle>Müşteri Sil</DialogTitle>
@@ -783,8 +804,14 @@ const CustomerManagement: React.FC = () => {
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteDialogOpen(false)}>İptal</Button>
-          <Button onClick={handleDeleteCustomer} variant="contained" color="error" disabled={loading}>
+          <Button onClick={() => {
+            setDeleteDialogOpen(false);
+            setSelectedCustomer(null);
+          }}>İptal</Button>
+          <Button onClick={() => {
+            console.log('Delete butonu tıklandı, işlem başlıyor');
+            handleDeleteCustomer();
+          }} variant="contained" color="error" disabled={loading}>
             {loading ? 'Siliniyor...' : 'Sil'}
           </Button>
         </DialogActions>

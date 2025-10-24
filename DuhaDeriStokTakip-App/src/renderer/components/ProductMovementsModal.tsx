@@ -46,6 +46,13 @@ const ProductMovementsModal: React.FC<ProductMovementsModalProps> = ({ open, onC
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // Güvenli toLocaleString fonksiyonu
+  const safeToLocaleString = (value: any): string => {
+    if (value === null || value === undefined || value === '') return '0';
+    const num = Number(value);
+    return !isNaN(num) ? num.toLocaleString('tr-TR') : '0';
+  };
+
   const loadMovements = async (productId: number) => {
     setLoading(true);
     try {
@@ -141,19 +148,19 @@ const ProductMovementsModal: React.FC<ProductMovementsModalProps> = ({ open, onC
                     </TableCell>
                     <TableCell align="right">
                       <Chip
-                        label={movement.movement_type === 'in' ? `+${movement.quantity.toLocaleString('tr-TR')}` : `-${movement.quantity.toLocaleString('tr-TR')}`}
+                        label={movement.movement_type === 'in' ? `+${safeToLocaleString(movement.quantity)}` : `-${safeToLocaleString(movement.quantity)}`}
                         color={movement.movement_type === 'in' ? 'success' : 'error'}
                         size="small"
                       />
                       <Typography variant="caption" display="block" color="text.secondary">
-                        {movement.previous_stock.toLocaleString('tr-TR')} → {movement.new_stock.toLocaleString('tr-TR')}
+                        {safeToLocaleString(movement.previous_stock)} → {safeToLocaleString(movement.new_stock)}
                       </Typography>
                     </TableCell>
                     <TableCell>
                       {movement.notes || 'Açıklama yok'}
                       {movement.total_amount && (
                         <Typography variant="caption" display="block" color="text.secondary">
-                          Tutar: ₺{movement.total_amount.toLocaleString('tr-TR')}
+                          Tutar: ₺{safeToLocaleString(movement.total_amount)}
                         </Typography>
                       )}
                     </TableCell>
