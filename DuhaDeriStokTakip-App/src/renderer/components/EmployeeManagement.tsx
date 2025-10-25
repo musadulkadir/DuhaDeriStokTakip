@@ -45,6 +45,7 @@ import {
   TrendingDown,
   People,
 } from '@mui/icons-material';
+import Pagination from './common/Pagination';
 import { dbAPI } from '../services/api';
 import CurrencyInput from './CurrencyInput';
 
@@ -80,6 +81,11 @@ const EmployeeManagement: React.FC = () => {
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
 
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(25);
+  const [totalItems, setTotalItems] = useState(0);
+
   const [newEmployee, setNewEmployee] = useState<NewEmployee>({
     name: '',
     email: '',
@@ -90,12 +96,13 @@ const EmployeeManagement: React.FC = () => {
   });
 
   // Çalışanları yükle
-  const loadEmployees = async () => {
+  const loadEmployees = async (page = currentPage, limit = itemsPerPage) => {
     setLoading(true);
     try {
-      const response = await dbAPI.getEmployees();
+      const response = await dbAPI.getEmployees(page, limit);
       if (response.success) {
         setEmployees(response.data);
+        setTotalItems(response.total || 0);
       } else {
         setSnackbar({ open: true, message: response.error || 'Çalışanlar yüklenemedi', severity: 'error' });
       }
@@ -108,7 +115,24 @@ const EmployeeManagement: React.FC = () => {
 
   useEffect(() => {
     loadEmployees();
-  }, []);
+  }, [currentPage, itemsPerPage]);
+
+  // Pagination handlers
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  const handleItemsPerPageChange = (newItemsPerPage: number) => {
+    setItemsPerPage(newItemsPerPage);
+    setCurrentPage(1);
+  };
+
+  // Search değiştiğinde sayfa 1'e dön
+  useEffect(() => {
+    if (currentPage !== 1) {
+      setCurrentPage(1);
+    }
+  }, [searchTerm]);
 
   // Filtrelenmiş çalışanlar
   const filteredEmployees = employees.filter(employee =>
@@ -618,6 +642,16 @@ const EmployeeManagement: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Pagination */}
+      <Pagination
+        currentPage={currentPage}
+        totalPages={Math.ceil(totalItems / itemsPerPage)}
+        totalItems={totalItems}
+        itemsPerPage={itemsPerPage}
+        onPageChange={handlePageChange}
+        onItemsPerPageChange={handleItemsPerPageChange}
+      />
 
       {/* Snackbar */}
       <Snackbar

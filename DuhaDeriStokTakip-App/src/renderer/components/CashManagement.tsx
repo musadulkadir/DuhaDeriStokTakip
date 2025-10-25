@@ -44,6 +44,7 @@ import {
   Cancel,
   Warning,
 } from '@mui/icons-material';
+import Pagination from './common/Pagination';
 import { dbAPI } from '../services/api';
 import CurrencyInput from './CurrencyInput';
 import CurrencySelect from './common/CurrencySelect';

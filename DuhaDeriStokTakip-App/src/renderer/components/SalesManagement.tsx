@@ -41,6 +41,7 @@ import {
   Clear,
   CheckCircle,
 } from '@mui/icons-material';
+import Pagination from './common/Pagination';
 import { dbAPI } from '../services/api';
 import { Product, Customer } from '../../main/database/models';
 import { useNavigate } from 'react-router-dom';
@@ -75,6 +76,11 @@ const SalesManagement: React.FC = () => {
   const [sales, setSales] = useState<Sale[]>([]);
   const [loading, setLoading] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
+
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(25);
+  const [totalItems, setTotalItems] = useState(0);
 
   // New sale state
   const [newSaleDialogOpen, setNewSaleDialogOpen] = useState(false);
@@ -144,7 +150,7 @@ const SalesManagement: React.FC = () => {
     }
   };
 
-  const loadSales = async () => {
+  const loadSales = async (page = currentPage, limit = itemsPerPage) => {
     try {
       const response = await dbAPI.getSales();
       if (response.success) {
@@ -177,7 +183,14 @@ const SalesManagement: React.FC = () => {
           }
         });
 
-        setSales(Array.from(salesMap.values()));
+        const allSales = Array.from(salesMap.values());
+        // Client-side pagination
+        const startIndex = (page - 1) * limit;
+        const endIndex = startIndex + limit;
+        const paginatedSales = allSales.slice(startIndex, endIndex);
+        
+        setSales(paginatedSales);
+        setTotalItems(allSales.length);
       }
     } catch (error) {
       console.error('Error loading sales:', error);
@@ -188,7 +201,17 @@ const SalesManagement: React.FC = () => {
     loadProducts();
     loadCustomers();
     loadSales();
-  }, []);
+  }, [currentPage, itemsPerPage]);
+
+  // Pagination handlers
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  const handleItemsPerPageChange = (newItemsPerPage: number) => {
+    setItemsPerPage(newItemsPerPage);
+    setCurrentPage(1);
+  };
 
   const addItemToSale = () => {
     const newErrors: string[] = [];
@@ -879,6 +902,16 @@ const SalesManagement: React.FC = () => {
           <Button onClick={() => setSaleDetailDialogOpen(false)}>Kapat</Button>
         </DialogActions>
       </Dialog>
+
+      {/* Pagination */}
+      <Pagination
+        currentPage={currentPage}
+        totalPages={Math.ceil(totalItems / itemsPerPage)}
+        totalItems={totalItems}
+        itemsPerPage={itemsPerPage}
+        onPageChange={handlePageChange}
+        onItemsPerPageChange={handleItemsPerPageChange}
+      />
 
       {/* Snackbar for notifications */}
       <Snackbar

@@ -1655,7 +1655,7 @@ ipcMain.handle('purchases:create', async (_, purchase) => {
               item.total_price
             ], function (itemErr) {
               itemsProcessed++;
-              
+
               if (itemErr && !hasError) {
                 hasError = true;
                 db.run('ROLLBACK');
@@ -1722,10 +1722,17 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    show: false, // Önce gizli başlat
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false
     }
+  });
+
+  // Pencere hazır olduğunda tam ekran yap ve göster
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.maximize();
+    mainWindow.show();
   });
 
   // Environment-aware URL loading

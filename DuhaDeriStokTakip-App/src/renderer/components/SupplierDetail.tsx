@@ -27,7 +27,6 @@ import {
   MenuItem,
   Snackbar,
   Alert,
-  Divider,
 } from '@mui/material';
 import {
   ArrowBack,
@@ -35,9 +34,6 @@ import {
   Add,
   Payment,
   ShoppingCart,
-  AccountBalance,
-  TrendingUp,
-  TrendingDown,
   Business,
 } from '@mui/icons-material';
 import { dbAPI } from '../services/api';
@@ -60,7 +56,7 @@ interface Payment {
   payment_date?: string;
   created_at?: string;
   amount: number;
-  currency: string;
+  currency?: string;
   payment_type: string;
   payment_method?: string;
   description?: string;
@@ -112,11 +108,11 @@ const SupplierDetail: React.FC = () => {
   // Tedarikçi bilgilerini yükle
   const loadSupplier = async () => {
     if (!id) return;
-    
+
     setLoading(true);
     try {
       const response = await dbAPI.getCustomerById(parseInt(id));
-      if (response.success) {
+      if (response.success && response.data) {
         setSupplier(response.data);
       } else {
         setSnackbar({ open: true, message: response.error || 'Tedarikçi bulunamadı', severity: 'error' });
@@ -131,7 +127,7 @@ const SupplierDetail: React.FC = () => {
   // Alım geçmişini yükle
   const loadPurchases = async () => {
     if (!id) return;
-    
+
     try {
       const response = await dbAPI.getPurchases();
       if (response.success) {
@@ -152,11 +148,15 @@ const SupplierDetail: React.FC = () => {
   // Ödeme geçmişini yükle
   const loadPayments = async () => {
     if (!id) return;
-    
+
     try {
       const response = await dbAPI.getCustomerPayments(parseInt(id));
       if (response.success) {
-        setPayments(response.data || []);
+        const payments = (response.data || []).map((payment: any) => ({
+          ...payment,
+          currency: payment.currency || 'TRY'
+        }));
+        setPayments(payments);
       }
     } catch (error) {
       console.error('Ödeme geçmişi yüklenirken hata:', error);
@@ -242,8 +242,9 @@ const SupplierDetail: React.FC = () => {
     }
   };
 
-  const formatCurrency = (amount: number, currency: string) => {
-    const symbol = currency === 'USD' ? '$' : currency === 'EUR' ? '€' : '₺';
+  const formatCurrency = (amount: number, currency?: string) => {
+    const curr = currency || 'TRY';
+    const symbol = curr === 'USD' ? '$' : curr === 'EUR' ? '€' : '₺';
     return `${symbol}${amount.toLocaleString('tr-TR')}`;
   };
 
@@ -332,7 +333,7 @@ const SupplierDetail: React.FC = () => {
           <Card>
             <CardContent>
               <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-                Bakiye Durumu
+                Borç Durumu
               </Typography>
               <Box sx={{ mb: 2 }}>
                 <Chip
@@ -413,10 +414,10 @@ const SupplierDetail: React.FC = () => {
                           </TableCell>
                           <TableCell>
                             <Chip
-                              label={purchase.status === 'completed' ? 'Tamamlandı' : 
-                                     purchase.status === 'pending' ? 'Beklemede' : 
-                                     purchase.status === 'cancelled' ? 'İptal Edildi' : 
-                                     purchase.status || 'Bilinmiyor'}
+                              label={purchase.status === 'completed' ? 'Tamamlandı' :
+                                purchase.status === 'pending' ? 'Beklemede' :
+                                  purchase.status === 'cancelled' ? 'İptal Edildi' :
+                                    purchase.status || 'Bilinmiyor'}
                               size="small"
                               color={purchase.status === 'completed' ? 'success' : 'warning'}
                             />
@@ -478,11 +479,11 @@ const SupplierDetail: React.FC = () => {
                           </TableCell>
                           <TableCell>
                             <Chip
-                              label={payment.payment_type === 'cash' ? 'Nakit' : 
-                                     payment.payment_type === 'card' ? 'Kart' : 
-                                     payment.payment_type === 'transfer' ? 'Banka Transferi' : 
-                                     payment.payment_type === 'check' ? 'Çek' : 
-                                     payment.payment_type || 'Belirtilmemiş'}
+                              label={payment.payment_type === 'cash' ? 'Nakit' :
+                                payment.payment_type === 'card' ? 'Kart' :
+                                  payment.payment_type === 'transfer' ? 'Banka Transferi' :
+                                    payment.payment_type === 'check' ? 'Çek' :
+                                      payment.payment_type || 'Belirtilmemiş'}
                               size="small"
                               color="primary"
                             />
@@ -499,10 +500,10 @@ const SupplierDetail: React.FC = () => {
       </Grid>
 
       {/* Add Payment Dialog */}
-      <Dialog 
-        open={paymentDialogOpen} 
-        onClose={() => setPaymentDialogOpen(false)} 
-        maxWidth="sm" 
+      <Dialog
+        open={paymentDialogOpen}
+        onClose={() => setPaymentDialogOpen(false)}
+        maxWidth="sm"
         fullWidth
         disableEnforceFocus
       >
@@ -572,10 +573,10 @@ const SupplierDetail: React.FC = () => {
       </Dialog>
 
       {/* Edit Supplier Dialog */}
-      <Dialog 
-        open={editDialogOpen} 
-        onClose={() => setEditDialogOpen(false)} 
-        maxWidth="sm" 
+      <Dialog
+        open={editDialogOpen}
+        onClose={() => setEditDialogOpen(false)}
+        maxWidth="sm"
         fullWidth
         disableEnforceFocus
       >

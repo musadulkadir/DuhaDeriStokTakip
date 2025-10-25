@@ -36,6 +36,7 @@ import {
   TrendingUp,
   TrendingDown,
 } from '@mui/icons-material';
+import Pagination from './common/Pagination';
 import { dbAPI } from '../services/api';
 import { Customer } from '../../main/database/models';
 
@@ -63,6 +64,11 @@ const CustomerManagement: React.FC = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
+
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(25);
+  const [totalItems, setTotalItems] = useState(0);
 
   const [newCustomer, setNewCustomer] = useState<NewCustomer>({
     name: '',
@@ -122,10 +128,10 @@ const CustomerManagement: React.FC = () => {
   };
 
   // Müşterileri yükle
-  const loadCustomers = async () => {
+  const loadCustomers = async (page = currentPage, limit = itemsPerPage) => {
     setLoading(true);
     try {
-      const response = await dbAPI.getCustomers();
+      const response = await dbAPI.getCustomers(page, limit);
       if (response.success) {
         // Her müşteri için bakiye hesapla
         const customersWithBalance = await Promise.all(
@@ -150,6 +156,7 @@ const CustomerManagement: React.FC = () => {
         });
         
         setCustomers(processedCustomers);
+        setTotalItems(response.total || 0);
       } else {
         setSnackbar({ open: true, message: response.error || 'Müşteriler yüklenemedi', severity: 'error' });
       }
@@ -162,7 +169,7 @@ const CustomerManagement: React.FC = () => {
 
   useEffect(() => {
     loadCustomers();
-  }, []);
+  }, [currentPage, itemsPerPage]);
 
   const handleAddCustomer = async () => {
     setLoading(true);
@@ -237,6 +244,23 @@ const CustomerManagement: React.FC = () => {
       setLoading(false);
     }
   };
+
+  // Pagination handlers
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  const handleItemsPerPageChange = (newItemsPerPage: number) => {
+    setItemsPerPage(newItemsPerPage);
+    setCurrentPage(1);
+  };
+
+  // Search değiştiğinde sayfa 1'e dön
+  useEffect(() => {
+    if (currentPage !== 1) {
+      setCurrentPage(1);
+    }
+  }, [searchTerm]);
 
   const handleEditCustomer = async () => {
     if (!selectedCustomer) return;
@@ -817,6 +841,16 @@ const CustomerManagement: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Pagination */}
+      <Pagination
+        currentPage={currentPage}
+        totalPages={Math.ceil(totalItems / itemsPerPage)}
+        totalItems={totalItems}
+        itemsPerPage={itemsPerPage}
+        onPageChange={handlePageChange}
+        onItemsPerPageChange={handleItemsPerPageChange}
+      />
 
       {/* Snackbar for notifications */}
       <Snackbar

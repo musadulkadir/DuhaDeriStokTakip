@@ -23,7 +23,6 @@ import {
   LocalShipping,
   Assessment,
   People,
-  AccountBalanceWallet,
 } from '@mui/icons-material';
 import { dbAPI } from '../services/api';
 import { Product, Customer } from '../../main/database/models';
@@ -237,15 +236,7 @@ const Dashboard: React.FC = () => {
       trend: '',
       trendUp: true,
     },
-    {
-      title: 'Kasa Bakiyesi',
-      value: `₺${safeToLocaleString(stats.totalBalanceTRY)} / $${safeToLocaleString(stats.totalBalanceUSD)}`,
-      subtitle: 'güncel bakiye',
-      icon: <AccountBalanceWallet />,
-      color: ((stats.totalBalanceTRY || 0) + (stats.totalBalanceUSD || 0)) >= 0 ? '#4CAF50' : '#F44336',
-      trend: '',
-      trendUp: ((stats.totalBalanceTRY || 0) + (stats.totalBalanceUSD || 0)) >= 0,
-    },
+
     {
       title: 'Müşteri Sayısı',
       value: stats.totalCustomers.toString(),

@@ -39,6 +39,7 @@ import {
   TrendingDown,
 } from '@mui/icons-material';
 import ProductMovementsModal from './ProductMovementsModal';
+import Pagination from './common/Pagination';
 import { dbAPI } from '../services/api';
 import { Product, Category, Color } from '../../main/database/models';
 
@@ -69,6 +70,11 @@ const ProductManagement: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
+
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(25);
+  const [totalItems, setTotalItems] = useState(0);
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [colors, setColors] = useState<Color[]>([]);
@@ -134,11 +140,11 @@ const ProductManagement: React.FC = () => {
   };
 
   // Ürünleri yükle
-  const loadProducts = async () => {
-    console.log('loadProducts çağrıldı');
+  const loadProducts = async (page = currentPage, limit = itemsPerPage) => {
+    console.log('loadProducts çağrıldı', { page, limit });
     setLoading(true);
     try {
-      const response = await dbAPI.getProducts();
+      const response = await dbAPI.getProducts(page, limit);
       console.log('API yanıtı:', response);
       if (response.success) {
         // Eğer type alanı yoksa, kategori bazında ayarla
@@ -153,6 +159,7 @@ const ProductManagement: React.FC = () => {
 
         console.log('İşlenmiş ürünler:', processedProducts);
         setProducts(processedProducts);
+        setTotalItems(response.total || 0);
       } else {
         setSnackbar({ open: true, message: response.error || 'Ürünler yüklenemedi', severity: 'error' });
       }
@@ -167,7 +174,7 @@ const ProductManagement: React.FC = () => {
     loadProducts();
     loadCategories();
     loadColors();
-  }, []);
+  }, [currentPage, itemsPerPage]);
 
   const handleOpenModal = (product: Product) => {
     setSelectedProduct(product);
@@ -178,6 +185,23 @@ const ProductManagement: React.FC = () => {
     setModalOpen(false);
     setSelectedProduct(null);
   };
+
+  // Pagination handlers
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  const handleItemsPerPageChange = (newItemsPerPage: number) => {
+    setItemsPerPage(newItemsPerPage);
+    setCurrentPage(1); // Reset to first page
+  };
+
+  // Search ve filter değiştiğinde sayfa 1'e dön
+  useEffect(() => {
+    if (currentPage !== 1) {
+      setCurrentPage(1);
+    }
+  }, [searchTerm, filterCategory, filterColor]);
 
   const handleAddProduct = async () => {
     console.log('Form data:', newProduct);
@@ -417,7 +441,7 @@ const ProductManagement: React.FC = () => {
     }
   };
 
-  // Deri ürünlerini filtrele
+  // Deri ürünlerini filtrele (sadece mevcut sayfadaki ürünler)
   const filteredProducts = (products || []).filter(product => {
     if (!product) return false; // Null/undefined ürünleri filtrele
     const productName = `${product.category || ''} - ${product.color || ''}`;
@@ -432,7 +456,7 @@ const ProductManagement: React.FC = () => {
     return matchesSearch && matchesCategory && matchesColor && isLeatherProduct;
   });
 
-  // Malzemeleri filtrele
+  // Malzemeleri filtrele (sadece mevcut sayfadaki ürünler)
   const filteredMaterials = (products || []).filter(product => {
     if (!product) return false; // Null/undefined ürünleri filtrele
     const matchesSearch = searchTerm === '' ||
@@ -1204,6 +1228,16 @@ const ProductManagement: React.FC = () => {
           product={selectedProduct}
         />
       )}
+
+      {/* Pagination for Products */}
+      <Pagination
+        currentPage={currentPage}
+        totalPages={Math.ceil(totalItems / itemsPerPage)}
+        totalItems={totalItems}
+        itemsPerPage={itemsPerPage}
+        onPageChange={handlePageChange}
+        onItemsPerPageChange={handleItemsPerPageChange}
+      />
 
       {/* Snackbar for notifications */}
       <Snackbar

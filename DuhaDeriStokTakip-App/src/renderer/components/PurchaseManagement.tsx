@@ -40,6 +40,7 @@ import {
   TrendingDown,
   AccountBalance,
 } from '@mui/icons-material';
+import Pagination from './common/Pagination';
 import { dbAPI } from '../services/api';
 import { Customer, Product } from '../../main/database/models';
 

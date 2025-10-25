@@ -27,6 +27,7 @@ import {
   Print,
   AttachMoney,
 } from '@mui/icons-material';
+import Pagination from './common/Pagination';
 import { dbAPI } from '../services/api';
 
 interface SaleReport {
