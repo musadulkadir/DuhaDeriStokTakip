@@ -95,19 +95,27 @@ const SupplierDetail: React.FC = () => {
   });
 
   // Tedarikçi bakiyesini hesapla
-  const calculateSupplierBalance = () => {
-    const totalPurchasesTRY = purchases.filter(p => (p.currency || 'TRY') === 'TRY').reduce((sum, p) => sum + (p.total_amount || 0), 0);
-    const totalPurchasesUSD = purchases.filter(p => (p.currency || 'TRY') === 'USD').reduce((sum, p) => sum + (p.total_amount || 0), 0);
-    const totalPurchasesEUR = purchases.filter(p => (p.currency || 'TRY') === 'EUR').reduce((sum, p) => sum + (p.total_amount || 0), 0);
+  // Veritabanından gelen bakiyeleri kullan
+  const getSupplierBalance = () => {
+    if (!supplier) {
+      return { balanceTRY: 0, balanceUSD: 0, balanceEUR: 0 };
+    }
 
-    const totalPaymentsTRY = payments.filter(p => (p.currency || 'TRY') === 'TRY').reduce((sum, p) => sum + (p.amount || 0), 0);
-    const totalPaymentsUSD = payments.filter(p => (p.currency || 'TRY') === 'USD').reduce((sum, p) => sum + (p.amount || 0), 0);
-    const totalPaymentsEUR = payments.filter(p => (p.currency || 'TRY') === 'EUR').reduce((sum, p) => sum + (p.amount || 0), 0);
+    const balanceTRY = parseFloat(supplier.balance as any) || 0;
+    const balanceUSD = parseFloat(supplier.balance_usd as any) || 0;
+    const balanceEUR = parseFloat(supplier.balance_eur as any) || 0;
 
-    // Bakiye = Alışlar - Ödemeler (pozitif değer borç demek)
-    const balanceTRY = totalPurchasesTRY - totalPaymentsTRY;
-    const balanceUSD = totalPurchasesUSD - totalPaymentsUSD;
-    const balanceEUR = totalPurchasesEUR - totalPaymentsEUR;
+    console.log('Veritabanından gelen bakiyeler:', {
+      supplier: supplier.name,
+      balanceTRY,
+      balanceUSD,
+      balanceEUR,
+      rawValues: {
+        balance: supplier.balance,
+        balance_usd: supplier.balance_usd,
+        balance_eur: supplier.balance_eur
+      }
+    });
 
     return { balanceTRY, balanceUSD, balanceEUR };
   };
@@ -252,7 +260,8 @@ const SupplierDetail: React.FC = () => {
   const formatCurrency = (amount: number, currency?: string) => {
     const curr = currency || 'TRY';
     const symbol = curr === 'USD' ? '$' : curr === 'EUR' ? '€' : '₺';
-    return `${symbol}${amount.toLocaleString('tr-TR')}`;
+    const safeAmount = Number(amount) || 0;
+    return `${symbol}${safeAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   const getBalanceColor = (balance: number) => {
@@ -274,7 +283,7 @@ const SupplierDetail: React.FC = () => {
     );
   }
 
-  const balance = calculateSupplierBalance();
+  const balance = getSupplierBalance();
 
   return (
     <Box>
@@ -302,7 +311,7 @@ const SupplierDetail: React.FC = () => {
 
       {/* Supplier Info Cards */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} md={8}>
+        <Grid xs={12} md={8}>
           <Card>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>

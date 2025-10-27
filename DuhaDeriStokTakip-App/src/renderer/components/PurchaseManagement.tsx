@@ -28,6 +28,7 @@ import {
   Alert,
   Snackbar,
   Divider,
+  Paper,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -39,10 +40,12 @@ import {
   TrendingUp,
   TrendingDown,
   AccountBalance,
+  History as HistoryIcon,
 } from '@mui/icons-material';
 import Pagination from './common/Pagination';
 import { dbAPI } from '../services/api';
 import { Customer, Product } from '../../main/database/models';
+import PurchaseDetailModal from './PurchaseDetailModal';
 
 interface PurchaseItem {
   product_id: number;
@@ -78,7 +81,15 @@ const PurchaseManagement: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [addDialogOpen, setAddDialogOpen] = useState(false);
-  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false);
+  const [selectedPurchaseId, setSelectedPurchaseId] = useState<number | null>(null);
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' | 'info' });
+
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
 
   const [newPurchase, setNewPurchase] = useState<NewPurchase>({
     supplier_id: '',
@@ -89,8 +100,12 @@ const PurchaseManagement: React.FC = () => {
 
   const [currentItem, setCurrentItem] = useState({
     product_id: '',
+    category: '',
     quantity: '',
     unit_price: '',
+    color_shade: '',
+    brand: '',
+    code: '',
   });
 
   // Tedarikçileri yükle
@@ -110,14 +125,9 @@ const PurchaseManagement: React.FC = () => {
   // Malzemeleri yükle
   const loadMaterials = async () => {
     try {
-      const response = await dbAPI.getProducts();
-      if (response.success) {
-        // Sadece malzemeleri filtrele (type: 'material' olanlar veya boya/cila/binder kategorisindekiler)
-        const materialList = response.data.filter((product: Product) => 
-          product.type === 'material' || 
-          ['boya', 'cila', 'binder'].includes(product.category?.toLowerCase() || '')
-        );
-        setMaterials(materialList);
+      const response = await dbAPI.getMaterials();
+      if (response.success && response.data) {
+        setMaterials(response.data);
       }
     } catch (error) {
       console.error('Malzemeler yüklenirken hata:', error);
@@ -125,34 +135,48 @@ const PurchaseManagement: React.FC = () => {
   };
 
   // Alımları yükle
-  const loadPurchases = async () => {
+  const loadPurchases = async (page = 1) => {
     try {
-      const response = await dbAPI.getPurchases();
+      setLoading(true);
+      const response = await dbAPI.getPurchases(page, itemsPerPage);
+      console.log('Alım verileri:', response.data);
       if (response.success) {
         const formattedPurchases = response.data.map((purchase: any) => ({
           id: purchase.id,
           supplier_id: purchase.supplier_id,
           supplier_name: purchase.supplier_name || 'Bilinmeyen Tedarikçi',
-          total_amount: purchase.total_amount,
+          total_amount: parseFloat(purchase.total_amount) || 0,
           currency: purchase.currency || 'TRY',
           purchase_date: purchase.purchase_date,
           notes: purchase.notes,
           status: purchase.status || 'completed',
         }));
+        console.log('Formatlanmış alımlar:', formattedPurchases);
         setPurchases(formattedPurchases);
+
+        // Toplam sayfa sayısını hesapla
+        const total = response.total || formattedPurchases.length;
+        setTotalItems(total);
+        setTotalPages(Math.ceil(total / itemsPerPage));
       }
     } catch (error) {
       console.error('Alımlar yüklenirken hata:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
   useEffect(() => {
     loadSuppliers();
     loadMaterials();
-    loadPurchases();
   }, []);
 
+  useEffect(() => {
+    loadPurchases(currentPage);
+  }, [currentPage, itemsPerPage]);
+
   // Sayı formatlama fonksiyonları
+  // Miktar için (tam sayı)
   const formatNumberWithCommas = (value: string): string => {
     const numericValue = value.replace(/[^\d]/g, '');
     if (!numericValue) return '';
@@ -163,39 +187,126 @@ const PurchaseManagement: React.FC = () => {
     return parseInt(value.replace(/,/g, '')) || 0;
   };
 
+  // Birim fiyat için (ondalıklı sayı)
+  const formatDecimalNumber = (value: string): string => {
+    // Sadece rakam ve nokta karakterlerini al
+    const numericValue = value.replace(/[^\d.]/g, '');
+
+    // Birden fazla nokta varsa sadece ilkini tut
+    const parts = numericValue.split('.');
+    if (parts.length > 2) {
+      return parts[0] + '.' + parts.slice(1).join('');
+    }
+
+    return numericValue;
+  };
+
+  const parseDecimalNumber = (value: string): number => {
+    return parseFloat(value.replace(/,/g, '')) || 0;
+  };
+
   // Ürün ekleme
-  const handleAddItem = () => {
-    if (!currentItem.product_id || !currentItem.quantity || !currentItem.unit_price) {
-      setSnackbar({ open: true, message: 'Lütfen tüm alanları doldurun', severity: 'error' });
+  const handleAddItem = async () => {
+    const quantity = parseFormattedNumber(currentItem.quantity);
+    const unitPrice = parseDecimalNumber(currentItem.unit_price);
+
+    if (!currentItem.category || quantity <= 0 || unitPrice <= 0) {
+      setSnackbar({ open: true, message: 'Lütfen kategori, miktar ve fiyat alanlarını doldurun', severity: 'error' });
       return;
     }
 
-    const quantity = parseFormattedNumber(currentItem.quantity);
-    const unitPrice = parseFormattedNumber(currentItem.unit_price);
-    const totalPrice = quantity * unitPrice;
+    // Kategori bazında zorunlu alan kontrolü
+    if (currentItem.category === 'Boya' && !currentItem.color_shade) {
+      setSnackbar({ open: true, message: 'Boya için renk tonu gerekli', severity: 'error' });
+      return;
+    }
+    if (currentItem.category === 'Cila' && !currentItem.brand) {
+      setSnackbar({ open: true, message: 'Cila için firma gerekli', severity: 'error' });
+      return;
+    }
+    if (currentItem.category === 'Binder' && (!currentItem.code || !currentItem.brand)) {
+      setSnackbar({ open: true, message: 'Binder için kod ve firma gerekli', severity: 'error' });
+      return;
+    }
 
-    // Seçilen malzemeyi bul
-    const selectedMaterial = materials.find(m => m.id === parseInt(currentItem.product_id));
-    
-    const newItem: PurchaseItem = {
-      product_id: parseInt(currentItem.product_id),
-      product_name: selectedMaterial?.name || selectedMaterial?.category || 'Bilinmeyen Malzeme',
-      quantity,
-      unit_price: unitPrice,
-      total_price: totalPrice,
-      material_type: selectedMaterial?.category,
-    };
+    try {
+      setLoading(true);
 
-    setNewPurchase(prev => ({
-      ...prev,
-      items: [...prev.items, newItem],
-    }));
+      // Malzeme adını oluştur
+      const materialName = `${currentItem.category}${currentItem.color_shade ? ` - ${currentItem.color_shade}` : ''}${currentItem.code ? ` - ${currentItem.code}` : ''}`;
 
-    setCurrentItem({
-      product_id: '',
-      quantity: '',
-      unit_price: '',
-    });
+      // Önce aynı malzeme var mı kontrol et
+      let existingMaterial = materials.find(m => {
+        if (currentItem.category === 'Boya') {
+          return m.category === currentItem.category && m.color_shade === currentItem.color_shade;
+        } else if (currentItem.category === 'Cila') {
+          return m.category === currentItem.category && m.brand === currentItem.brand;
+        } else if (currentItem.category === 'Binder') {
+          return m.category === currentItem.category && m.code === currentItem.code && m.brand === currentItem.brand;
+        }
+        return false;
+      });
+
+      let materialId: number;
+
+      if (existingMaterial) {
+        // Mevcut malzemeyi kullan
+        materialId = existingMaterial.id!;
+        setSnackbar({ open: true, message: 'Mevcut malzeme kullanıldı', severity: 'info' });
+      } else {
+        // Yeni malzeme oluştur
+        const materialData = {
+          name: materialName,
+          category: currentItem.category,
+          color_shade: currentItem.color_shade || undefined,
+          brand: currentItem.brand || undefined,
+          code: currentItem.code || undefined,
+          stock_quantity: 0,
+          unit: 'kg',
+          description: `${currentItem.category} malzemesi`
+        };
+
+        const materialResponse = await dbAPI.createMaterial(materialData);
+        if (!materialResponse.success || !materialResponse.data) {
+          throw new Error('Malzeme oluşturulamadı');
+        }
+
+        materialId = materialResponse.data.id || 0;
+        setSnackbar({ open: true, message: 'Yeni malzeme oluşturuldu', severity: 'success' });
+
+        // Malzeme listesini yenile
+        await loadMaterials();
+      }
+
+      const newItem: PurchaseItem = {
+        product_id: materialId,
+        product_name: materialName,
+        quantity,
+        unit_price: unitPrice,
+        total_price: quantity * unitPrice,
+      };
+
+      setNewPurchase(prev => ({
+        ...prev,
+        items: [...prev.items, newItem]
+      }));
+
+      // Formu temizle
+      setCurrentItem({
+        product_id: '',
+        category: '',
+        quantity: '',
+        unit_price: '',
+        color_shade: '',
+        brand: '',
+        code: '',
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Bilinmeyen hata';
+      setSnackbar({ open: true, message: 'Malzeme eklenirken hata oluştu: ' + errorMessage, severity: 'error' });
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Ürün silme
@@ -220,11 +331,17 @@ const PurchaseManagement: React.FC = () => {
 
     setLoading(true);
     try {
+      // Önce tedarikçi kontrolü yap
+      const supplierId = parseInt(newPurchase.supplier_id);
+      if (isNaN(supplierId) || !supplierId) {
+        throw new Error('Lütfen geçerli bir tedarikçi seçiniz');
+      }
+
       const totalAmount = calculateTotal();
-      
+
       // Alım kaydı oluştur
       const purchaseData = {
-        supplier_id: parseInt(newPurchase.supplier_id),
+        supplier_id: supplierId,
         total_amount: totalAmount,
         currency: newPurchase.currency,
         notes: newPurchase.notes,
@@ -236,37 +353,10 @@ const PurchaseManagement: React.FC = () => {
         throw new Error(purchaseResponse.error || 'Alım kaydedilemedi');
       }
 
-      // Her ürün için stok artırma ve stok hareketi oluşturma
-      for (const item of newPurchase.items) {
-        const productId = item.product_id;
-        
-        // Mevcut stok miktarını al
-        const product = materials.find(m => m.id === productId);
-        const currentStock = product?.stock_quantity || 0;
-        const newStock = currentStock + item.quantity;
+      // Tedarikçi adını bul
+      const supplierName = suppliers.find(s => s.id === supplierId)?.name || 'Bilinmeyen Tedarikçi';
 
-        // Ürün stokunu güncelle
-        await dbAPI.updateProduct(productId, {
-          ...product,
-          stock_quantity: newStock,
-        });
-
-        // Stok hareketi oluştur
-        const movementData = {
-          product_id: productId,
-          movement_type: 'in' as const,
-          quantity: item.quantity,
-          previous_stock: currentStock,
-          new_stock: newStock,
-          reference_type: 'purchase',
-          unit_price: item.unit_price,
-          total_amount: item.total_price,
-          notes: `Tedarikçi alımı - ${suppliers.find(s => s.id === parseInt(newPurchase.supplier_id))?.name}`,
-          user: 'Sistem Kullanıcısı',
-        };
-
-        await dbAPI.createStockMovement(movementData);
-      }
+      // Stok güncelleme ve stok hareketi backend'de yapılıyor (purchases:create handler'ında)
 
       // Kasadan ödeme düşme
       const cashTransactionData = {
@@ -274,24 +364,43 @@ const PurchaseManagement: React.FC = () => {
         amount: totalAmount,
         currency: newPurchase.currency,
         category: 'purchase',
-        description: `Malzeme alımı - ${suppliers.find(s => s.id === parseInt(newPurchase.supplier_id))?.name}`,
+        description: `Malzeme alımı - ${supplierName}`,
         reference_type: 'purchase',
-        customer_id: parseInt(newPurchase.supplier_id),
+        customer_id: supplierId,
         user: 'Sistem Kullanıcısı',
       };
 
       await dbAPI.createCashTransaction(cashTransactionData);
 
       // Tedarikçi hesabına borç ekleme (alım tutarı kadar borç)
-      const supplier = suppliers.find(s => s.id === parseInt(newPurchase.supplier_id));
+      const supplier = suppliers.find(s => s.id === supplierId);
       if (supplier) {
-        // Tedarikçi bakiyesini güncelle (borç = pozitif değer)
-        const currentBalance = supplier.balance || 0;
-        const newBalance = currentBalance + totalAmount;
-        
-        await dbAPI.updateCustomer(parseInt(newPurchase.supplier_id), {
-          balance: newBalance
+        // Tedarikçi bakiyesini güncelle (borç = pozitif değer) - Para birimine göre
+        const currency = newPurchase.currency || 'TRY';
+        const updateData: any = {};
+
+        // Mevcut bakiyeleri al
+        const currentBalanceTRY = Number(supplier.balance) || 0;
+        const currentBalanceUSD = Number(supplier.balance_usd) || 0;
+        const currentBalanceEUR = Number(supplier.balance_eur) || 0;
+
+        if (currency === 'USD') {
+          updateData.balance_usd = currentBalanceUSD + totalAmount;
+        } else if (currency === 'EUR') {
+          updateData.balance_eur = currentBalanceEUR + totalAmount;
+        } else {
+          updateData.balance = currentBalanceTRY + totalAmount;
+        }
+
+        console.log('Tedarikçi bakiyesi güncelleniyor:', {
+          supplierId,
+          currency,
+          totalAmount,
+          currentBalance: currency === 'USD' ? currentBalanceUSD : currency === 'EUR' ? currentBalanceEUR : currentBalanceTRY,
+          newBalance: updateData.balance || updateData.balance_usd || updateData.balance_eur
         });
+
+        await dbAPI.updateCustomer(supplierId, updateData);
       }
 
       setSnackbar({ open: true, message: 'Alım başarıyla kaydedildi', severity: 'success' });
@@ -302,10 +411,11 @@ const PurchaseManagement: React.FC = () => {
         notes: '',
         items: [],
       });
-      
+
       // Malzemeleri yeniden yükle
       await loadMaterials();
-      await loadPurchases();
+      await loadPurchases(1); // İlk sayfaya dön
+      setCurrentPage(1); // Sayfa numarasını sıfırla
     } catch (error) {
       setSnackbar({ open: true, message: 'Alım kaydedilirken hata oluştu', severity: 'error' });
       console.error('Alım kaydetme hatası:', error);
@@ -545,20 +655,20 @@ const PurchaseManagement: React.FC = () => {
                       </TableCell>
                       <TableCell>{purchase.notes || '-'}</TableCell>
                       <TableCell align="center">
-                        <IconButton 
-                          size="small" 
-                          color="primary" 
-                          title="Düzenle"
+                        <IconButton
+                          size="small"
+                          color="info"
+                          title="Detaylar"
                           onClick={() => {
-                            console.log('Düzenle butonu tıklandı:', purchase);
-                            setSnackbar({ open: true, message: 'Düzenleme özelliği yakında eklenecek', severity: 'info' });
+                            setSelectedPurchaseId(purchase.id);
+                            setDetailDialogOpen(true);
                           }}
                         >
-                          <EditIcon />
+                          <HistoryIcon />
                         </IconButton>
-                        <IconButton 
-                          size="small" 
-                          color="error" 
+                        <IconButton
+                          size="small"
+                          color="error"
                           title="Sil"
                           onClick={async () => {
                             console.log('Sil butonu tıklandı:', purchase);
@@ -568,7 +678,7 @@ const PurchaseManagement: React.FC = () => {
                                 const response = await dbAPI.deletePurchase(purchase.id);
                                 if (response.success) {
                                   setSnackbar({ open: true, message: 'Alım kaydı başarıyla silindi', severity: 'success' });
-                                  await loadPurchases();
+                                  await loadPurchases(currentPage);
                                 } else {
                                   setSnackbar({ open: true, message: response.error || 'Alım kaydı silinemedi', severity: 'error' });
                                 }
@@ -589,14 +699,29 @@ const PurchaseManagement: React.FC = () => {
               </TableBody>
             </Table>
           </TableContainer>
+
+          {/* Pagination */}
+          <Box sx={{ px: 3, pb: 2 }}>
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={totalItems}
+              itemsPerPage={itemsPerPage}
+              onPageChange={(page) => setCurrentPage(page)}
+              onItemsPerPageChange={(newItemsPerPage) => {
+                setItemsPerPage(newItemsPerPage);
+                setCurrentPage(1);
+              }}
+            />
+          </Box>
         </CardContent>
       </Card>
 
       {/* Add Purchase Dialog */}
-      <Dialog 
-        open={addDialogOpen} 
-        onClose={() => setAddDialogOpen(false)} 
-        maxWidth="lg" 
+      <Dialog
+        open={addDialogOpen}
+        onClose={() => setAddDialogOpen(false)}
+        maxWidth="lg"
         fullWidth
         disableEnforceFocus
       >
@@ -605,15 +730,25 @@ const PurchaseManagement: React.FC = () => {
           <Grid container spacing={3} sx={{ mt: 1 }}>
             {/* Tedarikçi ve Para Birimi */}
             <Grid item xs={12} md={6}>
-              <FormControl fullWidth>
-                <InputLabel>Tedarikçi</InputLabel>
+              <FormControl fullWidth size="medium">
+                <InputLabel sx={{ fontSize: '1.1rem' }}>Tedarikçi</InputLabel>
                 <Select
                   value={newPurchase.supplier_id}
                   label="Tedarikçi"
                   onChange={(e) => setNewPurchase({ ...newPurchase, supplier_id: e.target.value })}
+                  sx={{
+                    '& .MuiSelect-select': {
+                      fontSize: '1.1rem',
+                      py: 2
+                    }
+                  }}
                 >
                   {suppliers.map(supplier => (
-                    <MenuItem key={supplier.id} value={supplier.id?.toString()}>
+                    <MenuItem
+                      key={supplier.id}
+                      value={supplier.id?.toString()}
+                      sx={{ fontSize: '1.1rem', py: 1.5 }}
+                    >
                       {supplier.name}
                     </MenuItem>
                   ))}
@@ -621,59 +756,131 @@ const PurchaseManagement: React.FC = () => {
               </FormControl>
             </Grid>
             <Grid item xs={12} md={6}>
-              <FormControl fullWidth>
-                <InputLabel>Para Birimi</InputLabel>
+              <FormControl fullWidth size="medium">
+                <InputLabel sx={{ fontSize: '1.1rem' }}>Para Birimi</InputLabel>
                 <Select
                   value={newPurchase.currency}
                   label="Para Birimi"
                   onChange={(e) => setNewPurchase({ ...newPurchase, currency: e.target.value })}
+                  sx={{
+                    '& .MuiSelect-select': {
+                      fontSize: '1.1rem',
+                      py: 2
+                    }
+                  }}
                 >
-                  <MenuItem value="TRY">TRY (₺)</MenuItem>
-                  <MenuItem value="USD">USD ($)</MenuItem>
-                  <MenuItem value="EUR">EUR (€)</MenuItem>
+                  <MenuItem value="TRY" sx={{ fontSize: '1.1rem', py: 1.5 }}>TRY (₺)</MenuItem>
+                  <MenuItem value="USD" sx={{ fontSize: '1.1rem', py: 1.5 }}>USD ($)</MenuItem>
+                  <MenuItem value="EUR" sx={{ fontSize: '1.1rem', py: 1.5 }}>EUR (€)</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
 
-            {/* Ürün Ekleme */}
+            {/* Malzeme Ekleme */}
             <Grid item xs={12}>
               <Divider sx={{ my: 2 }}>
                 <Typography variant="h6">Malzeme Ekle</Typography>
               </Divider>
             </Grid>
-            <Grid item xs={12} md={4}>
-              <FormControl fullWidth>
-                <InputLabel>Malzeme Türü</InputLabel>
+
+            {/* Kategori Seçimi */}
+            <Grid item xs={12} md={3}>
+              <FormControl fullWidth size="medium">
+                <InputLabel sx={{ fontSize: '1.1rem' }}>Kategori</InputLabel>
                 <Select
-                  value={currentItem.product_id}
-                  label="Malzeme Türü"
-                  onChange={(e) => setCurrentItem({ ...currentItem, product_id: e.target.value })}
+                  value={currentItem.category}
+                  label="Kategori"
+                  onChange={(e) => setCurrentItem({
+                    ...currentItem,
+                    category: e.target.value,
+                    color_shade: '',
+                    brand: '',
+                    code: ''
+                  })}
+                  sx={{
+                    '& .MuiSelect-select': {
+                      fontSize: '1.1rem',
+                      py: 2
+                    }
+                  }}
                 >
-                  <MenuItem value="boya">Boya</MenuItem>
-                  <MenuItem value="cila">Cila</MenuItem>
-                  <MenuItem value="binder">Binder</MenuItem>
+                  <MenuItem value="Boya" sx={{ fontSize: '1.1rem', py: 1.5 }}>Boya</MenuItem>
+                  <MenuItem value="Cila" sx={{ fontSize: '1.1rem', py: 1.5 }}>Cila</MenuItem>
+                  <MenuItem value="Binder" sx={{ fontSize: '1.1rem', py: 1.5 }}>Binder</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
-            <Grid item xs={12} md={3}>
+
+            {/* Boya için Renk Tonu */}
+            {currentItem.category === 'Boya' && (
+              <Grid item xs={12} md={3}>
+                <TextField
+                  fullWidth
+                  label="Renk Tonu"
+                  value={currentItem.color_shade}
+                  onChange={(e) => setCurrentItem({ ...currentItem, color_shade: e.target.value })}
+                  placeholder="Örn: Açık Kahverengi"
+                />
+              </Grid>
+            )}
+
+            {/* Cila için Firma */}
+            {currentItem.category === 'Cila' && (
+              <Grid item xs={12} md={3}>
+                <TextField
+                  fullWidth
+                  label="Firma"
+                  value={currentItem.brand}
+                  onChange={(e) => setCurrentItem({ ...currentItem, brand: e.target.value })}
+                  placeholder="Örn: Sayerlack"
+                />
+              </Grid>
+            )}
+
+            {/* Binder için Kod ve Firma */}
+            {currentItem.category === 'Binder' && (
+              <>
+                <Grid item xs={12} md={2}>
+                  <TextField
+                    fullWidth
+                    label="Kod"
+                    value={currentItem.code}
+                    onChange={(e) => setCurrentItem({ ...currentItem, code: e.target.value })}
+                    placeholder="Örn: B-100"
+                  />
+                </Grid>
+                <Grid item xs={12} md={2}>
+                  <TextField
+                    fullWidth
+                    label="Firma"
+                    value={currentItem.brand}
+                    onChange={(e) => setCurrentItem({ ...currentItem, brand: e.target.value })}
+                    placeholder="Örn: BASF"
+                  />
+                </Grid>
+              </>
+            )}
+
+            {/* Miktar ve Fiyat */}
+            <Grid item xs={12} md={currentItem.category === 'Binder' ? 2 : 3}>
               <TextField
                 fullWidth
-                label="Adet"
+                label="Miktar (kg)"
                 value={currentItem.quantity}
                 onChange={(e) => setCurrentItem({ ...currentItem, quantity: formatNumberWithCommas(e.target.value) })}
-                helperText="Alınan miktar"
               />
             </Grid>
-            <Grid item xs={12} md={3}>
+            <Grid item xs={12} md={currentItem.category === 'Binder' ? 2 : 3}>
               <TextField
                 fullWidth
-                label="Adet Başına Fiyat"
+                label="Birim Fiyat"
                 value={currentItem.unit_price}
-                onChange={(e) => setCurrentItem({ ...currentItem, unit_price: formatNumberWithCommas(e.target.value) })}
-                helperText="Birim fiyat"
+                onChange={(e) => setCurrentItem({ ...currentItem, unit_price: formatDecimalNumber(e.target.value) })}
+                placeholder="Örn: 2.5"
+                helperText="Küsuratlı sayı girebilirsiniz (Örn: 2.5)"
               />
             </Grid>
-            <Grid item xs={12} md={2}>
+            <Grid item xs={12} md={currentItem.category === 'Binder' ? 1 : 2}>
               <Button
                 fullWidth
                 variant="outlined"
@@ -754,15 +961,25 @@ const PurchaseManagement: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setAddDialogOpen(false)}>İptal</Button>
-          <Button 
-            onClick={handleSavePurchase} 
-            variant="contained" 
+          <Button
+            onClick={handleSavePurchase}
+            variant="contained"
             disabled={loading || newPurchase.items.length === 0}
           >
             {loading ? 'Kaydediliyor...' : `Alımı Kaydet (${formatCurrency(calculateTotal(), newPurchase.currency)})`}
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Purchase Detail Modal */}
+      <PurchaseDetailModal
+        open={detailDialogOpen}
+        onClose={() => {
+          setDetailDialogOpen(false);
+          setSelectedPurchaseId(null);
+        }}
+        purchaseId={selectedPurchaseId}
+      />
 
       {/* Snackbar for notifications */}
       <Snackbar

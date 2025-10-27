@@ -114,7 +114,7 @@ const StockMovements: React.FC = () => {
           
           return {
             ...movement,
-            productName: product ? `${product.category} - ${product.color}` : 'Bilinmeyen Ürün',
+            productName: product?.name || (product ? `${product.category} - ${product.color}` : 'Bilinmeyen Ürün'),
             productCategory: product?.category,
             productColor: product?.color,
             customerName: customer?.name,
@@ -134,10 +134,21 @@ const StockMovements: React.FC = () => {
 
   const loadProducts = async () => {
     try {
-      const response = await dbAPI.getProducts();
-      if (response.success) {
-        setProducts(response.data);
+      // Hem products hem materials'ı yükle
+      const [productsResponse, materialsResponse] = await Promise.all([
+        dbAPI.getProducts(),
+        dbAPI.getMaterials()
+      ]);
+      
+      const allProducts = [];
+      if (productsResponse.success) {
+        allProducts.push(...productsResponse.data);
       }
+      if (materialsResponse.success && materialsResponse.data) {
+        allProducts.push(...materialsResponse.data);
+      }
+      
+      setProducts(allProducts);
     } catch (error) {
       console.error('Error loading products:', error);
     }
@@ -543,35 +554,17 @@ const StockMovements: React.FC = () => {
             <Table>
               <TableHead>
                 <TableRow>
-                  <TableCell>Hareket</TableCell>
                   <TableCell>Ürün</TableCell>
                   <TableCell align="center">Miktar</TableCell>
                   <TableCell>Tip</TableCell>
                   <TableCell>Tarih & Saat</TableCell>
                   <TableCell>Kullanıcı</TableCell>
                   <TableCell>Açıklama</TableCell>
-                  <TableCell>Referans</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {paginatedMovements.map((movement) => (
                   <TableRow key={movement.id} hover>
-                    <TableCell>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                        <Avatar
-                          sx={{
-                            width: 32,
-                            height: 32,
-                            bgcolor: getMovementColor(movement.movement_type || ''),
-                          }}
-                        >
-                          {getMovementIcon(movement.movement_type || '')}
-                        </Avatar>
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                          #{movement.id}
-                        </Typography>
-                      </Box>
-                    </TableCell>
                     <TableCell>
                       <Typography variant="body2" sx={{ fontWeight: 500 }}>
                         {movement.productName}
@@ -618,15 +611,6 @@ const StockMovements: React.FC = () => {
                       <Typography variant="body2" sx={{ maxWidth: 200 }}>
                         {movement.notes || '-'}
                       </Typography>
-                    </TableCell>
-                    <TableCell>
-                      {movement.reference_type && (
-                        <Chip
-                          label={movement.reference_type}
-                          size="small"
-                          variant="outlined"
-                        />
-                      )}
                     </TableCell>
                   </TableRow>
                 ))}

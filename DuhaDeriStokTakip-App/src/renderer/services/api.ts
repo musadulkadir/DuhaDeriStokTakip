@@ -82,6 +82,23 @@ class DatabaseAPI {
     return window.require("electron").ipcRenderer.invoke('products:update-stock', id, newStock);
   }
 
+  // Materials operations
+  async getMaterials(): Promise<ApiResponse<Product[]>> {
+    return window.require("electron").ipcRenderer.invoke('materials:get-all');
+  }
+
+  async createMaterial(material: Omit<Product, 'id' | 'created_at' | 'updated_at'>): Promise<ApiResponse<Product>> {
+    return window.require("electron").ipcRenderer.invoke('materials:create', material);
+  }
+
+  async updateMaterial(id: number, material: Partial<Product>): Promise<ApiResponse<Product>> {
+    return window.require("electron").ipcRenderer.invoke('materials:update', id, material);
+  }
+
+  async deleteMaterial(id: number): Promise<ApiResponse<boolean>> {
+    return window.require("electron").ipcRenderer.invoke('materials:delete', id);
+  }
+
   // Payment operations
   async getCustomerPayments(customerId: number): Promise<ApiResponse<CustomerPayment[]>> {
     return window.require("electron").ipcRenderer.invoke('customer-payments:get-by-customer', customerId);
@@ -115,6 +132,10 @@ class DatabaseAPI {
 
   async createSale(sale: Omit<Sale, 'id' | 'created_at' | 'updated_at'>): Promise<ApiResponse<Sale>> {
     return window.require("electron").ipcRenderer.invoke('sales:create', sale);
+  }
+
+  async deleteSale(saleId: number): Promise<ApiResponse<void>> {
+    return window.require("electron").ipcRenderer.invoke('sales:delete', saleId);
   }
 
   // Cash operations
@@ -200,7 +221,7 @@ class DatabaseAPI {
   }
 
   async getPurchaseById(id: number): Promise<ApiResponse<any>> {
-    return window.require("electron").ipcRenderer.invoke('purchases:get-by-id', id);
+    return window.require("electron").ipcRenderer.invoke('purchases:getById', id);
   }
 
   async createPurchase(purchase: any): Promise<ApiResponse<any>> {
