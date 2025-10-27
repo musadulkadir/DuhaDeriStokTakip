@@ -12,7 +12,8 @@ import {
   CashTransaction,
   Return,
   ApiResponse,
-  PaginatedResponse
+  PaginatedResponse,
+  EmployeePaginatedResponse
 } from '../../main/database/models';
 
 // IPC API wrapper
@@ -25,7 +26,7 @@ class DatabaseAPI {
   async createTables(): Promise<ApiResponse<boolean>> {
     return window.require("electron").ipcRenderer.invoke('db:create-tables');
   }
-  
+
   // YENİ EKLENECEK FONKSİYON:
   async getSaleById(saleId: number): Promise<ApiResponse<Sale>> { // 'Sale' tipi SalesManagement.tsx'ten gelen tip olmalı
     return window.require("electron").ipcRenderer.invoke('sales:getById', saleId);
@@ -135,6 +136,14 @@ class DatabaseAPI {
   }
 
   // Employee operations
+  async getEmployeesCount(): Promise<ApiResponse<{
+    countEmployees: number;
+    countActiveEmployees: number;
+    countInactiveEmployees: number;
+  }>> {
+    return window.require("electron").ipcRenderer.invoke('employees:getCounts');
+  }
+
   async getEmployees(page = 1, limit = 50): Promise<PaginatedResponse<Employee>> {
     return window.require("electron").ipcRenderer.invoke('employees:get-all', page, limit);
   }
@@ -169,6 +178,14 @@ class DatabaseAPI {
 
   async deleteEmployeePayment(id: number): Promise<ApiResponse<boolean>> {
     return window.require("electron").ipcRenderer.invoke('employee-payments:delete', id);
+  }
+
+  async updateEmployeeStatus(id: number, status: 'active' | 'inactive'): Promise<ApiResponse<Employee>> {
+    return window.require("electron").ipcRenderer.invoke('employees:update-status', id, status);
+  }
+
+  async getEmployeesByStatus(status: 'active' | 'inactive', page = 1, limit = 50): Promise<EmployeePaginatedResponse> {
+    return window.require("electron").ipcRenderer.invoke('employees:get-by-status', status, page, limit);
   }
 
   // Categories operations

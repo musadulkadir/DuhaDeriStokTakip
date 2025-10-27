@@ -365,7 +365,7 @@ const EmployeeDetail: React.FC = () => {
         {/* Stats Cards */}
         <Grid item xs={12} md={8}>
           <Grid container spacing={2}>
-            <Grid item xs={6} sm={3}>
+            <Grid size={{ xs: 6, md: 3, }}>
               <Card>
                 <CardContent sx={{ textAlign: 'center', p: 2 }}>
                   <Avatar sx={{ bgcolor: 'info.main', mx: 'auto', mb: 1 }}>
@@ -380,7 +380,7 @@ const EmployeeDetail: React.FC = () => {
                 </CardContent>
               </Card>
             </Grid>
-            <Grid item xs={6} sm={3}>
+            <Grid size={{ xs: 6, md: 3, }}>
               <Card>
                 <CardContent sx={{ textAlign: 'center', p: 2 }}>
                   <Avatar sx={{ bgcolor: 'success.main', mx: 'auto', mb: 1 }}>
@@ -395,7 +395,7 @@ const EmployeeDetail: React.FC = () => {
                 </CardContent>
               </Card>
             </Grid>
-            <Grid item xs={6} sm={3}>
+            <Grid size={{ xs: 6, md: 3, }}>
               <Card>
                 <CardContent sx={{ textAlign: 'center', p: 2 }}>
                   <Avatar sx={{ bgcolor: 'warning.main', mx: 'auto', mb: 1 }}>
@@ -410,7 +410,7 @@ const EmployeeDetail: React.FC = () => {
                 </CardContent>
               </Card>
             </Grid>
-            <Grid item xs={6} sm={3}>
+            <Grid size={{ xs: 6, md: 3, }}>
               <Card>
                 <CardContent sx={{ textAlign: 'center', p: 2 }}>
                   <Avatar sx={{ 

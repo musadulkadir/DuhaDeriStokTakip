@@ -44,22 +44,13 @@ import {
   TrendingUp,
   TrendingDown,
   People,
+  PersonOff,
+  PersonAdd,
 } from '@mui/icons-material';
 import Pagination from './common/Pagination';
 import { dbAPI } from '../services/api';
 import CurrencyInput from './CurrencyInput';
-
-interface Employee {
-  id?: number;
-  name: string;
-  email?: string;
-  phone?: string;
-  position: string;
-  salary?: number;
-  balance?: number;
-  hire_date?: string;
-  status: 'active' | 'inactive';
-}
+import { Employee } from '@/main/database/models';
 
 interface NewEmployee {
   name: string;
@@ -84,7 +75,13 @@ const EmployeeManagement: React.FC = () => {
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(25);
-  const [totalItems, setTotalItems] = useState(0);
+  const [totalItems, setTotalItems] = useState<number>(0);
+
+  // Employee status states
+  const [showInactiveEmployees, setShowInactiveEmployees] = useState(false);
+  const [activeEmployeesCount, setActiveEmployeesCount] = useState<number>(0);
+  const [inactiveEmployeesCount, setInactiveEmployeesCount] = useState<number>(0);
+  const [totalSalary, setTotalSalary] = useState<number>(0);
 
   const [newEmployee, setNewEmployee] = useState<NewEmployee>({
     name: '',
@@ -95,14 +92,32 @@ const EmployeeManagement: React.FC = () => {
     salaryCurrency: 'TRY',
   });
 
+  const loadEmployeesCount = async () => {
+    setLoading(true);
+    try {
+      const response = await dbAPI.getEmployeesCount();
+      if (response.success) {
+        setTotalItems(response.data?.countEmployees || 0);
+        setActiveEmployeesCount(response.data?.countActiveEmployees || 0);
+        setInactiveEmployeesCount(response.data?.countInactiveEmployees || 0);
+      }
+    } catch (error) {
+      setSnackbar({ open: true, message: 'Çalışan sayıları yüklenirken hata oluştu', severity: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  }
+
   // Çalışanları yükle
   const loadEmployees = async (page = currentPage, limit = itemsPerPage) => {
     setLoading(true);
     try {
-      const response = await dbAPI.getEmployees(page, limit);
+      const status = showInactiveEmployees ? 'inactive' : 'active';
+      const response = await dbAPI.getEmployeesByStatus(status, page, limit);
       if (response.success) {
         setEmployees(response.data);
         setTotalItems(response.total || 0);
+        setTotalSalary(response.totalSalary || 0);
       } else {
         setSnackbar({ open: true, message: response.error || 'Çalışanlar yüklenemedi', severity: 'error' });
       }
@@ -114,8 +129,9 @@ const EmployeeManagement: React.FC = () => {
   };
 
   useEffect(() => {
+    loadEmployeesCount();
     loadEmployees();
-  }, [currentPage, itemsPerPage]);
+  }, [currentPage, itemsPerPage, showInactiveEmployees]);
 
   // Pagination handlers
   const handlePageChange = (page: number) => {
@@ -146,7 +162,7 @@ const EmployeeManagement: React.FC = () => {
   const handleAddEmployee = async () => {
     console.log('handleAddEmployee called');
     console.log('newEmployee:', newEmployee);
-    
+
     if (!newEmployee.name.trim()) {
       setSnackbar({ open: true, message: 'Ad alanı zorunludur', severity: 'error' });
       return;
@@ -156,10 +172,10 @@ const EmployeeManagement: React.FC = () => {
     try {
       const employeeData = {
         name: newEmployee.name.trim(),
-        email: newEmployee.email.trim() || null,
-        phone: newEmployee.phone.trim() || null,
-        position: newEmployee.position.trim() || null,
-        salary: parseFloat(newEmployee.salary) || 0,
+        email: newEmployee.email.trim() || undefined,
+        phone: newEmployee.phone.trim() || undefined,
+        position: newEmployee.position.trim() || undefined,
+        salary: parseFloat(newEmployee.salary) || undefined,
         salary_currency: newEmployee.salaryCurrency,
         balance: 0,
         status: 'active' as const,
@@ -168,9 +184,10 @@ const EmployeeManagement: React.FC = () => {
       console.log('employeeData to send:', employeeData);
       const response = await dbAPI.createEmployee(employeeData);
       console.log('createEmployee response:', response);
-      
+
       if (response.success) {
         await loadEmployees();
+        await loadEmployeesCount();
         setSnackbar({ open: true, message: 'Çalışan başarıyla eklendi', severity: 'success' });
         setAddDialogOpen(false);
         setNewEmployee({ name: '', email: '', phone: '', position: '', salary: '', salaryCurrency: 'TRY' });
@@ -195,6 +212,7 @@ const EmployeeManagement: React.FC = () => {
       const response = await dbAPI.updateEmployee(selectedEmployee.id!, selectedEmployee);
       if (response.success) {
         await loadEmployees();
+        await loadEmployeesCount();
         setSnackbar({ open: true, message: 'Çalışan başarıyla güncellendi', severity: 'success' });
         setEditDialogOpen(false);
         setSelectedEmployee(null);
@@ -221,6 +239,7 @@ const EmployeeManagement: React.FC = () => {
       console.log('Silme yanıtı:', response);
       if (response.success) {
         await loadEmployees();
+        await loadEmployeesCount();
         setSnackbar({ open: true, message: 'Çalışan başarıyla silindi', severity: 'success' });
         setDeleteDialogOpen(false);
         setSelectedEmployee(null);
@@ -238,7 +257,56 @@ const EmployeeManagement: React.FC = () => {
     }
   };
 
-  const getStatusColor = (status: string) => {
+  // Çalışanı pasif et
+  const handleDeactivateEmployee = async () => {
+    if (!selectedEmployee) {
+      console.log('selectedEmployee null, işlem iptal edildi');
+      setDeleteDialogOpen(false);
+      return;
+    }
+    setLoading(true);
+    try {
+      const response = await dbAPI.updateEmployeeStatus(selectedEmployee.id!, 'inactive');
+      if (response.success) {
+        await loadEmployees();
+        await loadEmployeesCount();
+        setSnackbar({ open: true, message: `${selectedEmployee.name} başarıyla pasif edildi`, severity: 'success' });
+        setDeleteDialogOpen(false);
+        setSelectedEmployee(null);
+      } else {
+        setSnackbar({ open: true, message: response.error || 'Çalışan pasif edilemedi', severity: 'error' });
+        setDeleteDialogOpen(false);
+        setSelectedEmployee(null);
+      }
+    } catch (error) {
+      setSnackbar({ open: true, message: 'Çalışan pasif edilirken hata oluştu', severity: 'error' });
+      setDeleteDialogOpen(false);
+      setSelectedEmployee(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Çalışanı aktif et
+  const handleActivateEmployee = async (employee: Employee) => {
+    setLoading(true);
+    try {
+      const response = await dbAPI.updateEmployeeStatus(employee.id!, 'active');
+      if (response.success) {
+        await loadEmployees();
+        await loadEmployeesCount();
+        setSnackbar({ open: true, message: `${employee.name} başarıyla aktif edildi`, severity: 'success' });
+      } else {
+        setSnackbar({ open: true, message: response.error || 'Çalışan aktif edilemedi', severity: 'error' });
+      }
+    } catch (error) {
+      setSnackbar({ open: true, message: 'Çalışan aktif edilirken hata oluştu', severity: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getStatusColor = (status: any) => {
     return status === 'active' ? 'success' : 'error';
   };
 
@@ -262,7 +330,7 @@ const EmployeeManagement: React.FC = () => {
 
       {/* Quick Stats */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Card>
             <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
               <Avatar sx={{ bgcolor: 'primary.main', mr: 2 }}>
@@ -270,7 +338,7 @@ const EmployeeManagement: React.FC = () => {
               </Avatar>
               <Box>
                 <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                  {employees.length}
+                  {Number(activeEmployeesCount) + Number(inactiveEmployeesCount)}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   Toplam Çalışan
@@ -279,7 +347,7 @@ const EmployeeManagement: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Card>
             <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
               <Avatar sx={{ bgcolor: 'success.main', mr: 2 }}>
@@ -287,7 +355,7 @@ const EmployeeManagement: React.FC = () => {
               </Avatar>
               <Box>
                 <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                  {employees.filter(e => e.status === 'active').length}
+                  {activeEmployeesCount}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   Aktif Çalışan
@@ -296,7 +364,7 @@ const EmployeeManagement: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Card>
             <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
               <Avatar sx={{ bgcolor: 'error.main', mr: 2 }}>
@@ -304,7 +372,7 @@ const EmployeeManagement: React.FC = () => {
               </Avatar>
               <Box>
                 <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                  {employees.filter(e => e.status === 'inactive').length}
+                  {inactiveEmployeesCount}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   Pasif Çalışan
@@ -313,7 +381,7 @@ const EmployeeManagement: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Card>
             <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
               <Avatar sx={{ bgcolor: 'warning.main', mr: 2 }}>
@@ -321,10 +389,10 @@ const EmployeeManagement: React.FC = () => {
               </Avatar>
               <Box>
                 <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                  ₺{employees.reduce((sum, e) => sum + (e.salary || 0), 0).toLocaleString('tr-TR')}
+                  ₺{totalSalary.toLocaleString('tr-TR')}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Toplam Maaş (TL)
+                  {showInactiveEmployees ? 'Pasif Çalışan Maaşı (TL)' : 'Aktif Çalışan Maaşı (TL)'}
                 </Typography>
               </Box>
             </CardContent>
@@ -336,10 +404,10 @@ const EmployeeManagement: React.FC = () => {
       <Card sx={{ mb: 3 }}>
         <CardContent>
           <Grid container spacing={3} alignItems="center">
-            <Grid item xs={12} md={6}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <TextField
                 fullWidth
-                size="large"
+                size='medium'
                 placeholder="Çalışan adı, telefon, email veya pozisyon ara..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -352,7 +420,7 @@ const EmployeeManagement: React.FC = () => {
                 }}
               />
             </Grid>
-            <Grid item xs={12} md={6}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
                 <Button
                   variant="contained"
@@ -371,10 +439,26 @@ const EmployeeManagement: React.FC = () => {
       {/* Employees Table */}
       <Card>
         <CardContent sx={{ p: 0 }}>
-          <Box sx={{ p: 3, pb: 0 }}>
+          <Box sx={{ p: 3, pb: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Typography variant="h6" sx={{ fontWeight: 600 }}>
-              Çalışan Listesi ({filteredEmployees.length} çalışan)
+              {showInactiveEmployees ? 'Pasif' : 'Aktif'} Çalışanlar ({filteredEmployees.length} çalışan)
             </Typography>
+            <Button
+              variant="outlined"
+              onClick={() => {
+                setShowInactiveEmployees(!showInactiveEmployees);
+                setCurrentPage(1); // Reset to first page when switching
+              }}
+              sx={{
+                borderRadius: 2,
+                textTransform: 'none',
+                fontWeight: 600,
+                px: 2,
+                py: 1
+              }}
+            >
+              {showInactiveEmployees ? 'Aktif Çalışanları Göster' : 'Pasif Çalışanları Göster'}
+            </Button>
           </Box>
           <TableContainer>
             <Table>
@@ -436,17 +520,29 @@ const EmployeeManagement: React.FC = () => {
                       >
                         <Edit />
                       </IconButton>
-                      <IconButton
-                        size="small"
-                        color="error"
-                        title="Sil"
-                        onClick={() => {
-                          setSelectedEmployee(employee);
-                          setDeleteDialogOpen(true);
-                        }}
-                      >
-                        <Delete />
-                      </IconButton>
+                      {showInactiveEmployees ? (
+                        <IconButton
+                          size="small"
+                          color="success"
+                          title="Aktif Et"
+                          onClick={() => handleActivateEmployee(employee)}
+                          disabled={loading}
+                        >
+                          <PersonAdd />
+                        </IconButton>
+                      ) : (
+                        <IconButton
+                          size="small"
+                          color="error"
+                          title="Sil"
+                          onClick={() => {
+                            setSelectedEmployee(employee);
+                            setDeleteDialogOpen(true);
+                          }}
+                        >
+                          <Delete />
+                        </IconButton>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -463,64 +559,54 @@ const EmployeeManagement: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* Floating Action Button */}
-      <Fab
-        color="primary"
-        sx={{
-          position: 'fixed',
-          bottom: 24,
-          right: 24,
-        }}
-        onClick={() => setAddDialogOpen(true)}
-      >
-        <Add />
-      </Fab>
+
+
 
       {/* Add Employee Dialog */}
       <Dialog open={addDialogOpen} onClose={() => setAddDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Yeni Çalışan Ekle</DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12}>
+            <Grid size={{ xs: 12 }}>
               <TextField
                 fullWidth
                 label="Çalışan Adı *"
                 value={newEmployee.name}
-                onChange={(e) => setNewEmployee({...newEmployee, name: e.target.value})}
+                onChange={(e) => setNewEmployee({ ...newEmployee, name: e.target.value })}
               />
             </Grid>
-            <Grid item xs={12}>
+            <Grid size={{ xs: 12 }}>
               <TextField
                 fullWidth
                 label="Pozisyon"
                 value={newEmployee.position}
-                onChange={(e) => setNewEmployee({...newEmployee, position: e.target.value})}
+                onChange={(e) => setNewEmployee({ ...newEmployee, position: e.target.value })}
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <TextField
                 fullWidth
                 label="Telefon"
                 value={newEmployee.phone}
-                onChange={(e) => setNewEmployee({...newEmployee, phone: e.target.value})}
+                onChange={(e) => setNewEmployee({ ...newEmployee, phone: e.target.value })}
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <CurrencyInput
                 label="Maaş"
                 value={newEmployee.salary}
                 currency={newEmployee.salaryCurrency}
-                onValueChange={(value) => setNewEmployee({...newEmployee, salary: value})}
-                onCurrencyChange={(currency) => setNewEmployee({...newEmployee, salaryCurrency: currency})}
+                onValueChange={(value) => setNewEmployee({ ...newEmployee, salary: value })}
+                onCurrencyChange={(currency) => setNewEmployee({ ...newEmployee, salaryCurrency: currency })}
               />
             </Grid>
-            <Grid item xs={12}>
+            <Grid size={{ xs: 12 }}>
               <TextField
                 fullWidth
                 label="Email"
                 type="email"
                 value={newEmployee.email}
-                onChange={(e) => setNewEmployee({...newEmployee, email: e.target.value})}
+                onChange={(e) => setNewEmployee({ ...newEmployee, email: e.target.value })}
               />
             </Grid>
           </Grid>
@@ -539,58 +625,58 @@ const EmployeeManagement: React.FC = () => {
         <DialogContent>
           {selectedEmployee && (
             <Grid container spacing={2} sx={{ mt: 1 }}>
-              <Grid item xs={12}>
+              <Grid size={{ xs: 12 }}>
                 <TextField
                   fullWidth
                   label="Çalışan Adı"
                   value={selectedEmployee.name}
-                  onChange={(e) => setSelectedEmployee({...selectedEmployee, name: e.target.value})}
+                  onChange={(e) => setSelectedEmployee({ ...selectedEmployee, name: e.target.value })}
                 />
               </Grid>
-              <Grid item xs={12}>
+              <Grid size={{ xs: 12 }}>
                 <TextField
                   fullWidth
                   label="Pozisyon"
                   value={selectedEmployee.position}
-                  onChange={(e) => setSelectedEmployee({...selectedEmployee, position: e.target.value})}
+                  onChange={(e) => setSelectedEmployee({ ...selectedEmployee, position: e.target.value })}
                 />
               </Grid>
-              <Grid item xs={12} sm={6}>
+              <Grid size={{ xs: 12, md: 6 }}>
                 <TextField
                   fullWidth
                   label="Telefon"
                   value={selectedEmployee.phone || ''}
-                  onChange={(e) => setSelectedEmployee({...selectedEmployee, phone: e.target.value})}
+                  onChange={(e) => setSelectedEmployee({ ...selectedEmployee, phone: e.target.value })}
                 />
               </Grid>
-              <Grid item xs={12} sm={6}>
+              <Grid size={{ xs: 12, md: 6 }}>
                 <TextField
                   fullWidth
                   label="Maaş"
                   type="number"
                   value={selectedEmployee.salary || 0}
-                  onChange={(e) => setSelectedEmployee({...selectedEmployee, salary: parseFloat(e.target.value) || 0})}
+                  onChange={(e) => setSelectedEmployee({ ...selectedEmployee, salary: parseFloat(e.target.value) || 0 })}
                   InputProps={{
                     startAdornment: <InputAdornment position="start">₺</InputAdornment>,
                   }}
                 />
               </Grid>
-              <Grid item xs={12} sm={6}>
+              <Grid size={{ xs: 12, md: 6 }}>
                 <TextField
                   fullWidth
                   label="Email"
                   type="email"
                   value={selectedEmployee.email || ''}
-                  onChange={(e) => setSelectedEmployee({...selectedEmployee, email: e.target.value})}
+                  onChange={(e) => setSelectedEmployee({ ...selectedEmployee, email: e.target.value })}
                 />
               </Grid>
-              <Grid item xs={12} sm={6}>
+              <Grid size={{ xs: 12, md: 6 }}>
                 <FormControl fullWidth>
                   <InputLabel>Durum</InputLabel>
                   <Select
                     value={selectedEmployee.status}
                     label="Durum"
-                    onChange={(e) => setSelectedEmployee({...selectedEmployee, status: e.target.value as 'active' | 'inactive'})}
+                    onChange={(e) => setSelectedEmployee({ ...selectedEmployee, status: e.target.value as 'active' | 'inactive' })}
                   >
                     <MenuItem value="active">Aktif</MenuItem>
                     <MenuItem value="inactive">Pasif</MenuItem>
@@ -610,9 +696,9 @@ const EmployeeManagement: React.FC = () => {
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={deleteDialogOpen} onClose={() => {
-          setDeleteDialogOpen(false);
-          setSelectedEmployee(null);
-        }}>
+        setDeleteDialogOpen(false);
+        setSelectedEmployee(null);
+      }}>
         <DialogTitle>Çalışanı Sil</DialogTitle>
         <DialogContent>
           <Typography>
@@ -634,6 +720,15 @@ const EmployeeManagement: React.FC = () => {
             setDeleteDialogOpen(false);
             setSelectedEmployee(null);
           }}>İptal</Button>
+
+          <Button
+            color='secondary'
+            variant='outlined'
+            disabled={loading}
+            onClick={() => handleDeactivateEmployee()}>
+            Pasif Yap
+          </Button>
+
           <Button onClick={() => {
             console.log('Delete butonu tıklandı, işlem başlıyor');
             handleDeleteEmployee();
