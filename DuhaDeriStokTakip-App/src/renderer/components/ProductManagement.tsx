@@ -71,10 +71,13 @@ const ProductManagement: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
 
-  // Pagination states
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(25);
-  const [totalItems, setTotalItems] = useState(0);
+  // Pagination states for Products (Deri Ürünleri)
+  const [productsCurrentPage, setProductsCurrentPage] = useState(1);
+  const [productsItemsPerPage, setProductsItemsPerPage] = useState(10);
+  
+  // Pagination states for Materials (Malzemeler)
+  const [materialsCurrentPage, setMaterialsCurrentPage] = useState(1);
+  const [materialsItemsPerPage, setMaterialsItemsPerPage] = useState(10);
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [colors, setColors] = useState<Color[]>([]);
@@ -140,7 +143,7 @@ const ProductManagement: React.FC = () => {
   };
 
   // Ürünleri yükle
-  const loadProducts = async (page = currentPage, limit = itemsPerPage) => {
+  const loadProducts = async (page = productsCurrentPage, limit = productsItemsPerPage) => {
     console.log('loadProducts çağrıldı', { page, limit });
     setLoading(true);
     try {
@@ -159,7 +162,6 @@ const ProductManagement: React.FC = () => {
 
         console.log('İşlenmiş ürünler:', processedProducts);
         setProducts(processedProducts);
-        setTotalItems(response.total || 0);
       } else {
         setSnackbar({ open: true, message: response.error || 'Ürünler yüklenemedi', severity: 'error' });
       }
@@ -174,7 +176,7 @@ const ProductManagement: React.FC = () => {
     loadProducts();
     loadCategories();
     loadColors();
-  }, [currentPage, itemsPerPage]);
+  }, []);
 
   const handleOpenModal = (product: Product) => {
     setSelectedProduct(product);
@@ -186,21 +188,30 @@ const ProductManagement: React.FC = () => {
     setSelectedProduct(null);
   };
 
-  // Pagination handlers
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page);
+  // Pagination handlers for Products
+  const handleProductsPageChange = (page: number) => {
+    setProductsCurrentPage(page);
   };
 
-  const handleItemsPerPageChange = (newItemsPerPage: number) => {
-    setItemsPerPage(newItemsPerPage);
-    setCurrentPage(1); // Reset to first page
+  const handleProductsItemsPerPageChange = (newItemsPerPage: number) => {
+    setProductsItemsPerPage(newItemsPerPage);
+    setProductsCurrentPage(1);
+  };
+
+  // Pagination handlers for Materials
+  const handleMaterialsPageChange = (page: number) => {
+    setMaterialsCurrentPage(page);
+  };
+
+  const handleMaterialsItemsPerPageChange = (newItemsPerPage: number) => {
+    setMaterialsItemsPerPage(newItemsPerPage);
+    setMaterialsCurrentPage(1);
   };
 
   // Search ve filter değiştiğinde sayfa 1'e dön
   useEffect(() => {
-    if (currentPage !== 1) {
-      setCurrentPage(1);
-    }
+    setProductsCurrentPage(1);
+    setMaterialsCurrentPage(1);
   }, [searchTerm, filterCategory, filterColor]);
 
   const handleAddProduct = async () => {
@@ -441,9 +452,9 @@ const ProductManagement: React.FC = () => {
     }
   };
 
-  // Deri ürünlerini filtrele (sadece mevcut sayfadaki ürünler)
-  const filteredProducts = (products || []).filter(product => {
-    if (!product) return false; // Null/undefined ürünleri filtrele
+  // Deri ürünlerini filtrele ve paginate et
+  const allFilteredProducts = (products || []).filter(product => {
+    if (!product) return false;
     const productName = `${product.category || ''} - ${product.color || ''}`;
     const matchesSearch = searchTerm === '' ||
       productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -451,21 +462,29 @@ const ProductManagement: React.FC = () => {
       (product.color || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = filterCategory === '' || product.category === filterCategory;
     const matchesColor = filterColor === '' || product.color === filterColor;
-    const isLeatherProduct = !product.type || product.type === 'product'; // Deri ürünleri
+    const isLeatherProduct = !product.type || product.type === 'product';
 
     return matchesSearch && matchesCategory && matchesColor && isLeatherProduct;
   });
 
-  // Malzemeleri filtrele (sadece mevcut sayfadaki ürünler)
-  const filteredMaterials = (products || []).filter(product => {
-    if (!product) return false; // Null/undefined ürünleri filtrele
+  const productsStartIndex = (productsCurrentPage - 1) * productsItemsPerPage;
+  const productsEndIndex = productsStartIndex + productsItemsPerPage;
+  const filteredProducts = allFilteredProducts.slice(productsStartIndex, productsEndIndex);
+
+  // Malzemeleri filtrele ve paginate et
+  const allFilteredMaterials = (products || []).filter(product => {
+    if (!product) return false;
     const matchesSearch = searchTerm === '' ||
       (product.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (product.category || '').toLowerCase().includes(searchTerm.toLowerCase());
-    const isMaterial = product.type === 'material'; // Malzemeler
+    const isMaterial = product.type === 'material';
 
     return matchesSearch && isMaterial;
   });
+
+  const materialsStartIndex = (materialsCurrentPage - 1) * materialsItemsPerPage;
+  const materialsEndIndex = materialsStartIndex + materialsItemsPerPage;
+  const filteredMaterials = allFilteredMaterials.slice(materialsStartIndex, materialsEndIndex);
 
   console.log('Tüm ürünler:', products?.length || 0);
   console.log('Deri ürünleri:', filteredProducts?.length || 0);
@@ -735,7 +754,7 @@ const ProductManagement: React.FC = () => {
         <CardContent sx={{ p: 0 }}>
           <Box sx={{ p: 3, pb: 0 }}>
             <Typography variant="h6" sx={{ fontWeight: 600 }}>
-              Deri Stok Listesi ({filteredProducts.length} ürün)
+              Deri Stok Listesi ({allFilteredProducts.length} ürün)
             </Typography>
           </Box>
           <TableContainer>
@@ -817,6 +836,16 @@ const ProductManagement: React.FC = () => {
               </TableBody>
             </Table>
           </TableContainer>
+          
+          {/* Pagination for Products */}
+          <Pagination
+            currentPage={productsCurrentPage}
+            totalPages={Math.ceil(allFilteredProducts.length / productsItemsPerPage)}
+            totalItems={allFilteredProducts.length}
+            itemsPerPage={productsItemsPerPage}
+            onPageChange={handleProductsPageChange}
+            onItemsPerPageChange={handleProductsItemsPerPageChange}
+          />
         </CardContent>
       </Card>
 
@@ -825,7 +854,7 @@ const ProductManagement: React.FC = () => {
         <CardContent sx={{ p: 0 }}>
           <Box sx={{ p: 3, pb: 0 }}>
             <Typography variant="h6" sx={{ fontWeight: 600 }}>
-              Malzeme Listesi ({filteredMaterials.length} malzeme)
+              Malzeme Listesi ({allFilteredMaterials.length} malzeme)
             </Typography>
           </Box>
           <TableContainer>
@@ -915,6 +944,16 @@ const ProductManagement: React.FC = () => {
               </TableBody>
             </Table>
           </TableContainer>
+          
+          {/* Pagination for Materials */}
+          <Pagination
+            currentPage={materialsCurrentPage}
+            totalPages={Math.ceil(allFilteredMaterials.length / materialsItemsPerPage)}
+            totalItems={allFilteredMaterials.length}
+            itemsPerPage={materialsItemsPerPage}
+            onPageChange={handleMaterialsPageChange}
+            onItemsPerPageChange={handleMaterialsItemsPerPageChange}
+          />
         </CardContent>
       </Card>
 
@@ -977,14 +1016,14 @@ const ProductManagement: React.FC = () => {
                 <TextField
                   fullWidth
                   label="Başlangıç Stok (Adet)"
-                  type="number"
+                  type="text"
                   value={newProduct.stock_quantity}
                   onChange={(e) => {
                     const formatted = formatNumberWithCommas(e.target.value);
                     setNewProduct({ ...newProduct, stock_quantity: formatted });
                   }}
-                  helperText="Stoğa eklenecek deri miktarını adet cinsinden giriniz"
-                  slotProps={{ htmlInput: { min: 0, step: 1 } }}
+                  helperText="Stoğa eklenecek deri miktarını adet cinsinden giriniz (Örn: 1,000)"
+                  placeholder="Örn: 1,000"
                 />
               </Box>
               <Box sx={{ flex: '1 1 200px', minWidth: '200px' }}>
@@ -1072,7 +1111,7 @@ const ProductManagement: React.FC = () => {
             <TextField
               fullWidth
               label="Stok Miktarı (Adet)"
-              type="number"
+              type="text"
               value={selectedProduct?.stock_quantity != null ? formatNumberWithCommas(selectedProduct.stock_quantity.toString()) : ''}
               onChange={(e) => {
                 const formatted = formatNumberWithCommas(e.target.value);
@@ -1186,12 +1225,14 @@ const ProductManagement: React.FC = () => {
             <TextField
               fullWidth
               label="Başlangıç Stok (Adet)"
+              type="text"
               value={newMaterial.stock_quantity}
               onChange={(e) => {
                 const formatted = formatNumberWithCommas(e.target.value);
                 setNewMaterial({ ...newMaterial, stock_quantity: formatted });
               }}
-              helperText="Stoğa eklenecek malzeme miktarını adet cinsinden giriniz"
+              helperText="Stoğa eklenecek malzeme miktarını adet cinsinden giriniz (Örn: 1,000)"
+              placeholder="Örn: 1,000"
             />
             <TextField
               fullWidth
@@ -1231,12 +1272,12 @@ const ProductManagement: React.FC = () => {
 
       {/* Pagination for Products */}
       <Pagination
-        currentPage={currentPage}
-        totalPages={Math.ceil(totalItems / itemsPerPage)}
-        totalItems={totalItems}
-        itemsPerPage={itemsPerPage}
-        onPageChange={handlePageChange}
-        onItemsPerPageChange={handleItemsPerPageChange}
+        currentPage={productsCurrentPage}
+        totalPages={Math.ceil(allFilteredProducts.length / productsItemsPerPage)}
+        totalItems={allFilteredProducts.length}
+        itemsPerPage={productsItemsPerPage}
+        onPageChange={handleProductsPageChange}
+        onItemsPerPageChange={handleProductsItemsPerPageChange}
       />
 
       {/* Snackbar for notifications */}
@@ -1244,6 +1285,7 @@ const ProductManagement: React.FC = () => {
         open={snackbar.open}
         autoHideDuration={6000}
         onClose={() => setSnackbar({ ...snackbar, open: false })}
+        sx={{ zIndex: 9999 }}
       >
         <Alert
           onClose={() => setSnackbar({ ...snackbar, open: false })}

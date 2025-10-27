@@ -1,8 +1,8 @@
 // src/renderer/services/api.ts
-import { 
-  Customer, 
-  Product, 
-  CustomerPayment, 
+import {
+  Customer,
+  Product,
+  CustomerPayment,
   Employee,
   EmployeePayment,
   Category,
@@ -11,8 +11,8 @@ import {
   Sale,
   CashTransaction,
   Return,
-  ApiResponse, 
-  PaginatedResponse 
+  ApiResponse,
+  PaginatedResponse
 } from '../../main/database/models';
 
 // IPC API wrapper
@@ -25,6 +25,12 @@ class DatabaseAPI {
   async createTables(): Promise<ApiResponse<boolean>> {
     return window.require("electron").ipcRenderer.invoke('db:create-tables');
   }
+  
+  // YENİ EKLENECEK FONKSİYON:
+  async getSaleById(saleId: number): Promise<ApiResponse<Sale>> { // 'Sale' tipi SalesManagement.tsx'ten gelen tip olmalı
+    return window.require("electron").ipcRenderer.invoke('sales:getById', saleId);
+  }
+
 
   // Customer operations
   async getCustomers(page = 1, limit = 50): Promise<PaginatedResponse<Customer>> {

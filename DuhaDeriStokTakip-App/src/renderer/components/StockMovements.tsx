@@ -767,6 +767,7 @@ const StockMovements: React.FC = () => {
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}
+        sx={{ zIndex: 9999 }}
         onClose={() => setSnackbar({ ...snackbar, open: false })}
       >
         <Alert

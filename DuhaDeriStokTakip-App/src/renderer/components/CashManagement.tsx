@@ -664,7 +664,7 @@ const CashManagement: React.FC = () => {
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                 <Warning sx={{ color: 'warning.main', mr: 1 }} />
-                <Typography variant="h6">Toplam Borç</Typography>
+                <Typography variant="h6">Alacaklar Toplamı</Typography>
               </Box>
               <Typography variant="h6" sx={{ mb: 0.5, color: 'warning.main' }}>
                 ₺{summary.totalDebtTRY.toLocaleString('tr-TR')}
@@ -1039,6 +1039,7 @@ const CashManagement: React.FC = () => {
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}
+        sx={{ zIndex: 9999 }}
         onClose={() => setSnackbar({ ...snackbar, open: false })}
       >
         <Alert

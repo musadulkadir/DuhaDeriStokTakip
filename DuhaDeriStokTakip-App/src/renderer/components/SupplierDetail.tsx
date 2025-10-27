@@ -39,6 +39,10 @@ import {
 import { dbAPI } from '../services/api';
 import { Customer } from '../../main/database/models';
 
+// YENİ: Alım detay modalını import et
+// (Bu dosyanın 'SaleDetailModal'a benzer şekilde oluşturulması gerekir)
+import PurchaseDetailModal from './PurchaseDetailModal';
+
 interface Purchase {
   id: number;
   date?: string;
@@ -79,6 +83,9 @@ const SupplierDetail: React.FC = () => {
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
+
+  // YENİ: Hangi alım detayının gösterileceğini tutan state
+  const [viewingPurchaseId, setViewingPurchaseId] = useState<number | null>(null);
 
   const [newPayment, setNewPayment] = useState<NewPayment>({
     amount: '',
@@ -129,7 +136,7 @@ const SupplierDetail: React.FC = () => {
     if (!id) return;
 
     try {
-      const response = await dbAPI.getPurchases();
+      const response = await dbAPI.getPurchases(); // Bu muhtemelen tüm alımları getiriyor
       if (response.success) {
         // Sadece bu tedarikçiye ait alımları filtrele
         const supplierPurchases = response.data.filter((purchase: any) => purchase.supplier_id === parseInt(id));
@@ -190,7 +197,7 @@ const SupplierDetail: React.FC = () => {
           type: 'out' as const,
           amount: paymentData.amount,
           currency: paymentData.currency,
-          category: 'supplier_payment',
+          category: 'Tedarikçi Ödemesi',
           description: `${supplier.name} tedarikçisine ödeme - ${paymentData.description || 'Tedarikçi ödemesi'}`,
           reference_type: 'supplier_payment',
           reference_id: response.data?.id,
@@ -252,6 +259,11 @@ const SupplierDetail: React.FC = () => {
     if (balance > 0) return 'error'; // Borç (kırmızı)
     if (balance < 0) return 'success'; // Alacak (yeşil)
     return 'default';
+  };
+
+  // YENİ: Alım satırına tıklandığında modalı açan fonksiyon
+  const handlePurchaseRowClick = (purchase: Purchase) => {
+    setViewingPurchaseId(purchase.id);
   };
 
   if (!supplier) {
@@ -395,7 +407,13 @@ const SupplierDetail: React.FC = () => {
                       </TableRow>
                     ) : (
                       purchases.map((purchase) => (
-                        <TableRow key={purchase.id}>
+                        // GÜNCELLENDİ: Satır artık tıklanabilir
+                        <TableRow
+                          key={purchase.id}
+                          hover
+                          sx={{ cursor: 'pointer' }}
+                          onClick={() => handlePurchaseRowClick(purchase)}
+                        >
                           <TableCell>
                             {(() => {
                               try {
@@ -628,10 +646,21 @@ const SupplierDetail: React.FC = () => {
         </DialogActions>
       </Dialog>
 
+      {/* YENİ: Alım Detay Modalı
+        'SaleDetailModal'dan kopyalayıp 'PurchaseDetailModal' olarak yeniden oluşturduğunuzu
+        ve 'purchaseId' prop'u aldığını varsayıyoruz.
+      */}
+      <PurchaseDetailModal
+        open={viewingPurchaseId !== null}
+        onClose={() => setViewingPurchaseId(null)}
+        purchaseId={viewingPurchaseId}
+      />
+
       {/* Snackbar for notifications */}
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}
+        sx={{ zIndex: 9999 }}
         onClose={() => setSnackbar({ ...snackbar, open: false })}
       >
         <Alert

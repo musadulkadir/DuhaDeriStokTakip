@@ -65,10 +65,13 @@ const CustomerManagement: React.FC = () => {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
 
-  // Pagination states
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(25);
-  const [totalItems, setTotalItems] = useState(0);
+  // Pagination states for Customers
+  const [customersCurrentPage, setCustomersCurrentPage] = useState(1);
+  const [customersItemsPerPage, setCustomersItemsPerPage] = useState(10);
+  
+  // Pagination states for Suppliers
+  const [suppliersCurrentPage, setSuppliersCurrentPage] = useState(1);
+  const [suppliersItemsPerPage, setSuppliersItemsPerPage] = useState(10);
 
   const [newCustomer, setNewCustomer] = useState<NewCustomer>({
     name: '',
@@ -128,10 +131,10 @@ const CustomerManagement: React.FC = () => {
   };
 
   // Müşterileri yükle
-  const loadCustomers = async (page = currentPage, limit = itemsPerPage) => {
+  const loadCustomers = async () => {
     setLoading(true);
     try {
-      const response = await dbAPI.getCustomers(page, limit);
+      const response = await dbAPI.getCustomers();
       if (response.success) {
         // Her müşteri için bakiye hesapla
         const customersWithBalance = await Promise.all(
@@ -156,7 +159,6 @@ const CustomerManagement: React.FC = () => {
         });
         
         setCustomers(processedCustomers);
-        setTotalItems(response.total || 0);
       } else {
         setSnackbar({ open: true, message: response.error || 'Müşteriler yüklenemedi', severity: 'error' });
       }
@@ -169,7 +171,33 @@ const CustomerManagement: React.FC = () => {
 
   useEffect(() => {
     loadCustomers();
-  }, [currentPage, itemsPerPage]);
+  }, []);
+
+  // Pagination handlers for Customers
+  const handleCustomersPageChange = (page: number) => {
+    setCustomersCurrentPage(page);
+  };
+
+  const handleCustomersItemsPerPageChange = (newItemsPerPage: number) => {
+    setCustomersItemsPerPage(newItemsPerPage);
+    setCustomersCurrentPage(1);
+  };
+
+  // Pagination handlers for Suppliers
+  const handleSuppliersPageChange = (page: number) => {
+    setSuppliersCurrentPage(page);
+  };
+
+  const handleSuppliersItemsPerPageChange = (newItemsPerPage: number) => {
+    setSuppliersItemsPerPage(newItemsPerPage);
+    setSuppliersCurrentPage(1);
+  };
+
+  // Search değiştiğinde sayfa 1'e dön
+  useEffect(() => {
+    setCustomersCurrentPage(1);
+    setSuppliersCurrentPage(1);
+  }, [searchTerm]);
 
   const handleAddCustomer = async () => {
     setLoading(true);
@@ -245,22 +273,7 @@ const CustomerManagement: React.FC = () => {
     }
   };
 
-  // Pagination handlers
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page);
-  };
 
-  const handleItemsPerPageChange = (newItemsPerPage: number) => {
-    setItemsPerPage(newItemsPerPage);
-    setCurrentPage(1);
-  };
-
-  // Search değiştiğinde sayfa 1'e dön
-  useEffect(() => {
-    if (currentPage !== 1) {
-      setCurrentPage(1);
-    }
-  }, [searchTerm]);
 
   const handleEditCustomer = async () => {
     if (!selectedCustomer) return;
@@ -315,19 +328,29 @@ const CustomerManagement: React.FC = () => {
   // Debug: Müşteri tiplerini kontrol et
   console.log('Tüm müşteriler ve tipleri:', customers.map(c => ({ name: c.name, type: c.type })));
 
-  const filteredCustomers = customers.filter(customer =>
+  // Müşterileri filtrele ve paginate et
+  const allFilteredCustomers = customers.filter(customer =>
     (!customer.type || customer.type !== 'supplier') && // Tedarikçileri hariç tut (type yoksa müşteri kabul et)
     (customer.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     customer.phone?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     customer.email?.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  const filteredSuppliers = customers.filter(customer =>
+  const customersStartIndex = (customersCurrentPage - 1) * customersItemsPerPage;
+  const customersEndIndex = customersStartIndex + customersItemsPerPage;
+  const filteredCustomers = allFilteredCustomers.slice(customersStartIndex, customersEndIndex);
+
+  // Tedarikçileri filtrele ve paginate et
+  const allFilteredSuppliers = customers.filter(customer =>
     (customer.type === 'supplier') && // Sadece tedarikçileri al
     (customer.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     customer.phone?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     customer.email?.toLowerCase().includes(searchTerm.toLowerCase()))
   );
+
+  const suppliersStartIndex = (suppliersCurrentPage - 1) * suppliersItemsPerPage;
+  const suppliersEndIndex = suppliersStartIndex + suppliersItemsPerPage;
+  const filteredSuppliers = allFilteredSuppliers.slice(suppliersStartIndex, suppliersEndIndex);
 
 
 
@@ -489,7 +512,7 @@ const CustomerManagement: React.FC = () => {
         <CardContent sx={{ p: 0 }}>
           <Box sx={{ p: 3, pb: 0 }}>
             <Typography variant="h6" sx={{ fontWeight: 600 }}>
-              Müşteri Listesi ({filteredCustomers.length} müşteri)
+              Müşteri Listesi ({allFilteredCustomers.length} müşteri)
             </Typography>
           </Box>
           <TableContainer>
@@ -560,6 +583,16 @@ const CustomerManagement: React.FC = () => {
               </TableBody>
             </Table>
           </TableContainer>
+          
+          {/* Pagination for Customers */}
+          <Pagination
+            currentPage={customersCurrentPage}
+            totalPages={Math.ceil(allFilteredCustomers.length / customersItemsPerPage)}
+            totalItems={allFilteredCustomers.length}
+            itemsPerPage={customersItemsPerPage}
+            onPageChange={handleCustomersPageChange}
+            onItemsPerPageChange={handleCustomersItemsPerPageChange}
+          />
         </CardContent>
       </Card>
 
@@ -568,7 +601,7 @@ const CustomerManagement: React.FC = () => {
         <CardContent sx={{ p: 0 }}>
           <Box sx={{ p: 3, pb: 0 }}>
             <Typography variant="h6" sx={{ fontWeight: 600 }}>
-              Tedarikçi Listesi ({filteredSuppliers.length} tedarikçi)
+              Tedarikçi Listesi ({allFilteredSuppliers.length} tedarikçi)
             </Typography>
           </Box>
           <TableContainer>
@@ -639,6 +672,16 @@ const CustomerManagement: React.FC = () => {
               </TableBody>
             </Table>
           </TableContainer>
+          
+          {/* Pagination for Suppliers */}
+          <Pagination
+            currentPage={suppliersCurrentPage}
+            totalPages={Math.ceil(allFilteredSuppliers.length / suppliersItemsPerPage)}
+            totalItems={allFilteredSuppliers.length}
+            itemsPerPage={suppliersItemsPerPage}
+            onPageChange={handleSuppliersPageChange}
+            onItemsPerPageChange={handleSuppliersItemsPerPageChange}
+          />
         </CardContent>
       </Card>
 
@@ -842,20 +885,13 @@ const CustomerManagement: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Pagination */}
-      <Pagination
-        currentPage={currentPage}
-        totalPages={Math.ceil(totalItems / itemsPerPage)}
-        totalItems={totalItems}
-        itemsPerPage={itemsPerPage}
-        onPageChange={handlePageChange}
-        onItemsPerPageChange={handleItemsPerPageChange}
-      />
+
 
       {/* Snackbar for notifications */}
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}
+        sx={{ zIndex: 9999 }}
         onClose={() => setSnackbar({ ...snackbar, open: false })}
       >
         <Alert

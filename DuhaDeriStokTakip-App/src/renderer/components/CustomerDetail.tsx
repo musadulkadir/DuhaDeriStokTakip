@@ -43,9 +43,12 @@ import {
   ShoppingCart,
   AttachMoney,
   Delete,
+  PictureAsPdf,
 } from '@mui/icons-material';
 import { dbAPI } from '../services/api';
 import { Customer } from '../../main/database/models';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface CustomerSale {
   id: number;
@@ -116,6 +119,24 @@ const CustomerDetail: React.FC = () => {
   const [paymentCurrency, setPaymentCurrency] = useState('TRY');
   const [paymentNotes, setPaymentNotes] = useState('');
 
+  // Tarih filtresi state'leri - Default olarak son 1 ay
+  const getDefaultStartDate = () => {
+    const date = new Date();
+    date.setMonth(date.getMonth() - 1);
+    return date.toISOString().split('T')[0];
+  };
+
+  const getDefaultEndDate = () => {
+    const date = new Date();
+    return date.toISOString().split('T')[0];
+  };
+
+  const [startDate, setStartDate] = useState(getDefaultStartDate());
+  const [endDate, setEndDate] = useState(getDefaultEndDate());
+  const [filteredSales, setFilteredSales] = useState<CustomerSale[]>([]);
+  const [filteredPayments, setFilteredPayments] = useState<CustomerPayment[]>([]);
+  const [previousBalance, setPreviousBalance] = useState({ TRY: 0, USD: 0, EUR: 0 });
+
   // Tutar formatlama fonksiyonları
   const formatNumberWithCommas = (value: string): string => {
     // Sadece rakam ve nokta karakterlerini al
@@ -170,23 +191,42 @@ const CustomerDetail: React.FC = () => {
       // Satış verilerini yükle (bu müşteriye ait)
       const salesResponse = await dbAPI.getSales();
       if (salesResponse.success && salesResponse.data) {
-        // Bu müşteriye ait satışları filtrele
-        const customerSales = salesResponse.data
+        // Bu müşteriye ait satışları filtrele ve detaylarını çek
+        const customerSalesPromises = salesResponse.data
           .filter((sale: any) => sale.customer_id === customerId)
-          .map((sale: any) => ({
-            id: sale.id,
-            date: sale.sale_date,
-            totalAmount: sale.total_amount,
-            currency: sale.currency || 'TRY',
-            status: sale.payment_status,
-            items: [] // Satış detayları için ayrı sorgu gerekebilir
-          }));
+          .map(async (sale: any) => {
+            // Her satış için detayları çek
+            const saleDetailResponse = await dbAPI.getSaleById(sale.id);
+
+            let items = [];
+            if (saleDetailResponse.success && saleDetailResponse.data) {
+              items = (saleDetailResponse.data.items || []).map((item: any) => ({
+                productName: item.productName,
+                quantity: item.quantityDesi, // Desi olarak göster
+                unitPrice: item.unitPricePerDesi,
+                total: item.total
+              }));
+            }
+
+            return {
+              id: sale.id,
+              date: sale.sale_date,
+              totalAmount: sale.total_amount,
+              currency: sale.currency || 'TRY',
+              status: sale.payment_status,
+              items: items
+            };
+          });
+
+        const customerSales = await Promise.all(customerSalesPromises);
         setSales(customerSales);
       }
 
       // İstatistikleri hesapla
-      if (customerResponse.data) {
-        calculateStats(customerResponse.data, paymentsResponse.data || [], salesResponse.data || []);
+      if (customerResponse.data && salesResponse.data) {
+        const formattedPaymentsForStats = paymentsResponse.data || [];
+        const allSalesForStats = salesResponse.data || [];
+        calculateStats(customerResponse.data, formattedPaymentsForStats, allSalesForStats);
       }
 
     } catch (error) {
@@ -198,29 +238,49 @@ const CustomerDetail: React.FC = () => {
   };
 
   // İstatistikleri hesapla
-  const calculateStats = (_customer: Customer, payments: any[], allSales: any[]) => {
+  const calculateStats = (customer: Customer, payments: any[], allSales: any[]) => {
+    console.log('🔍 calculateStats çağrıldı:', {
+      customerId,
+      customer,
+      paymentsCount: payments.length,
+      allSalesCount: allSales.length
+    });
+
     const customerSales = allSales.filter((sale: any) => sale.customer_id === customerId);
+    console.log('🔍 Müşteriye ait satışlar:', customerSales.length);
 
     const totalSales = customerSales.length;
 
-    // Para birimi bazında hesaplama
-    const totalPurchasesTRY = customerSales.filter((sale: any) => (sale.currency || 'TRY') === 'TRY').reduce((sum: number, sale: any) => sum + (sale.total_amount || 0), 0);
-    const totalPurchasesUSD = customerSales.filter((sale: any) => (sale.currency || 'TRY') === 'USD').reduce((sum: number, sale: any) => sum + (sale.total_amount || 0), 0);
-    const totalPurchasesEUR = customerSales.filter((sale: any) => (sale.currency || 'TRY') === 'EUR').reduce((sum: number, sale: any) => sum + (sale.total_amount || 0), 0);
+    // Para birimi bazında hesaplama - String'leri number'a çevir
+    const totalPurchasesTRY = customerSales
+      .filter((sale: any) => (sale.currency || 'TRY') === 'TRY')
+      .reduce((sum: number, sale: any) => sum + parseFloat(sale.total_amount || 0), 0);
+    const totalPurchasesUSD = customerSales
+      .filter((sale: any) => (sale.currency || 'TRY') === 'USD')
+      .reduce((sum: number, sale: any) => sum + parseFloat(sale.total_amount || 0), 0);
+    const totalPurchasesEUR = customerSales
+      .filter((sale: any) => (sale.currency || 'TRY') === 'EUR')
+      .reduce((sum: number, sale: any) => sum + parseFloat(sale.total_amount || 0), 0);
 
-    const totalPaymentsTRY = payments.filter((payment: any) => (payment.currency || 'TRY') === 'TRY').reduce((sum: number, payment: any) => sum + (payment.amount || 0), 0);
-    const totalPaymentsUSD = payments.filter((payment: any) => (payment.currency || 'TRY') === 'USD').reduce((sum: number, payment: any) => sum + (payment.amount || 0), 0);
-    const totalPaymentsEUR = payments.filter((payment: any) => (payment.currency || 'TRY') === 'EUR').reduce((sum: number, payment: any) => sum + (payment.amount || 0), 0);
+    const totalPaymentsTRY = payments
+      .filter((payment: any) => (payment.currency || 'TRY') === 'TRY')
+      .reduce((sum: number, payment: any) => sum + parseFloat(payment.amount || 0), 0);
+    const totalPaymentsUSD = payments
+      .filter((payment: any) => (payment.currency || 'TRY') === 'USD')
+      .reduce((sum: number, payment: any) => sum + parseFloat(payment.amount || 0), 0);
+    const totalPaymentsEUR = payments
+      .filter((payment: any) => (payment.currency || 'TRY') === 'EUR')
+      .reduce((sum: number, payment: any) => sum + parseFloat(payment.amount || 0), 0);
 
-    // Güncel bakiye = Toplam ödemeler - Toplam alışveriş (negatif değer borç demek)
-    const balanceTRY = totalPaymentsTRY - totalPurchasesTRY;
-    const balanceUSD = totalPaymentsUSD - totalPurchasesUSD;
-    const balanceEUR = totalPaymentsEUR - totalPurchasesEUR;
+    // Veritabanından gelen bakiyeleri kullan
+    const balanceTRY = parseFloat(customer.balance as any) || 0;
+    const balanceUSD = parseFloat((customer as any).balance_usd) || 0;
+    const balanceEUR = parseFloat((customer as any).balance_eur) || 0;
 
     const lastSale = customerSales.sort((a: any, b: any) => new Date(b.sale_date).getTime() - new Date(a.sale_date).getTime())[0];
     const lastPayment = payments.sort((a: any, b: any) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime())[0];
 
-    setStats({
+    const statsData = {
       totalSales,
       totalPurchasesTRY,
       totalPurchasesUSD,
@@ -228,14 +288,120 @@ const CustomerDetail: React.FC = () => {
       totalPaymentsTRY,
       totalPaymentsUSD,
       totalPaymentsEUR,
-      currentBalance: balanceTRY + balanceUSD + balanceEUR, // Toplam için birleştir (basit toplama)
-      balanceTRY, // TL bakiyesi
-      balanceUSD, // USD bakiyesi
-      balanceEUR, // EUR bakiyesi
+      currentBalance: balanceTRY + balanceUSD + balanceEUR,
+      balanceTRY,
+      balanceUSD,
+      balanceEUR,
       lastSaleDate: lastSale?.sale_date,
       lastPaymentDate: lastPayment?.payment_date,
+    };
+
+    console.log('📊 Stats Sonuç:', statsData);
+    console.log('📊 Stats Tipleri:', {
+      balanceTRY: typeof balanceTRY,
+      balanceUSD: typeof balanceUSD,
+      balanceEUR: typeof balanceEUR,
+      totalPaymentsTRY: typeof totalPaymentsTRY,
+      totalPaymentsUSD: typeof totalPaymentsUSD,
+      totalPaymentsEUR: typeof totalPaymentsEUR
     });
+
+    setStats(statsData);
   };
+
+  // Tarih filtreleme ve geçmiş bakiye hesaplama
+  useEffect(() => {
+    if (!startDate && !endDate) {
+      setFilteredSales(sales);
+      setPreviousBalance({ TRY: 0, USD: 0, EUR: 0 });
+      return;
+    }
+
+    const start = startDate ? new Date(startDate) : null;
+    let end = endDate ? new Date(endDate) : null;
+
+    // Bitiş tarihine bir gün ekle (o günü de dahil etmek için)
+    if (end) {
+      end = new Date(end);
+      end.setDate(end.getDate() + 1);
+    }
+
+    // Filtrelenmiş satışlar
+    const filtered = sales.filter(sale => {
+      const saleDate = new Date(sale.date);
+
+      if (start && end) {
+        return saleDate >= start && saleDate < end;
+      } else if (start) {
+        return saleDate >= start;
+      } else if (end) {
+        return saleDate < end;
+      }
+      return true;
+    });
+
+    // Başlangıç tarihinden önceki satışları hesapla (geçmiş bakiye)
+    if (start) {
+      const previousSales = sales.filter(sale => {
+        const saleDate = new Date(sale.date);
+        return saleDate < start;
+      });
+
+      const previousPayments = payments.filter(payment => {
+        const paymentDate = new Date(payment.paymentDate);
+        return paymentDate < start;
+      });
+
+      // Geçmiş bakiye hesapla (Satışlar - Ödemeler)
+      const prevPurchasesTRY = previousSales.filter(s => (s.currency || 'TRY') === 'TRY').reduce((sum, s) => sum + s.totalAmount, 0);
+      const prevPurchasesUSD = previousSales.filter(s => (s.currency || 'TRY') === 'USD').reduce((sum, s) => sum + s.totalAmount, 0);
+      const prevPurchasesEUR = previousSales.filter(s => (s.currency || 'TRY') === 'EUR').reduce((sum, s) => sum + s.totalAmount, 0);
+
+      const prevPaymentsTRY = previousPayments.filter(p => (p.currency || 'TRY') === 'TRY').reduce((sum, p) => sum + p.amount, 0);
+      const prevPaymentsUSD = previousPayments.filter(p => (p.currency || 'TRY') === 'USD').reduce((sum, p) => sum + p.amount, 0);
+      const prevPaymentsEUR = previousPayments.filter(p => (p.currency || 'TRY') === 'EUR').reduce((sum, p) => sum + p.amount, 0);
+
+      const prevBalance = {
+        TRY: prevPurchasesTRY - prevPaymentsTRY,
+        USD: prevPurchasesUSD - prevPaymentsUSD,
+        EUR: prevPurchasesEUR - prevPaymentsEUR
+      };
+      
+      console.log('📅 Önceki Bakiye Hesaplandı:', {
+        startDate,
+        previousSalesCount: previousSales.length,
+        previousPaymentsCount: previousPayments.length,
+        prevPurchasesTRY,
+        prevPurchasesUSD,
+        prevPurchasesEUR,
+        prevPaymentsTRY,
+        prevPaymentsUSD,
+        prevPaymentsEUR,
+        prevBalance
+      });
+      
+      setPreviousBalance(prevBalance);
+    } else {
+      setPreviousBalance({ TRY: 0, USD: 0, EUR: 0 });
+    }
+
+    // Filtrelenmiş ödemeler
+    const filteredPaymentsData = payments.filter(payment => {
+      const paymentDate = new Date(payment.paymentDate);
+
+      if (start && end) {
+        return paymentDate >= start && paymentDate < end;
+      } else if (start) {
+        return paymentDate >= start;
+      } else if (end) {
+        return paymentDate < end;
+      }
+      return true;
+    });
+
+    setFilteredSales(filtered);
+    setFilteredPayments(filteredPaymentsData);
+  }, [sales, payments, startDate, endDate]);
 
   // Ödeme ekle
   const handleAddPayment = async () => {
@@ -299,6 +465,224 @@ const CustomerDetail: React.FC = () => {
         severity: 'error'
       });
     }
+  };
+
+  // PDF İndir
+  const handleDownloadPDF = () => {
+    if (!customer) return;
+
+    // Sayı formatla (NaN kontrolü ile)
+    const formatNumber = (num: any) => {
+      const n = Number(num);
+      return isNaN(n) ? 0 : n.toLocaleString('tr-TR');
+    };
+
+    // Türkçe karakterleri ASCII'ye çevir (jsPDF Türkçe desteklemiyor)
+    const toAscii = (text: string) => {
+      if (!text) return '';
+      return text
+        .replace(/ğ/g, 'g').replace(/Ğ/g, 'G')
+        .replace(/ü/g, 'u').replace(/Ü/g, 'U')
+        .replace(/ş/g, 's').replace(/Ş/g, 'S')
+        .replace(/ı/g, 'i').replace(/İ/g, 'I')
+        .replace(/ö/g, 'o').replace(/Ö/g, 'O')
+        .replace(/ç/g, 'c').replace(/Ç/g, 'C');
+    };
+
+    const doc = new jsPDF('p', 'mm', 'a4');
+    let yPos = 20;
+    
+    // Başlık - Arka plan ile
+    doc.setFillColor(41, 128, 185);
+    doc.rect(0, 0, 210, 35, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(20);
+    doc.setFont('helvetica', 'bold');
+    doc.text('MUSTERI HESAP OZETI', 105, 15, { align: 'center' });
+    
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Tarih: ${new Date().toLocaleDateString('tr-TR')}`, 105, 25, { align: 'center' });
+    
+    // Müşteri Bilgileri Kutusu
+    yPos = 45;
+    doc.setTextColor(0, 0, 0);
+    doc.setFillColor(240, 240, 240);
+    doc.roundedRect(14, yPos - 5, 182, 40, 2, 2, 'F');
+    
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Musteri Bilgileri', 20, yPos);
+    
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Ad Soyad: ${toAscii(customer.name)}`, 20, yPos + 8);
+    doc.text(`Telefon: ${customer.phone || '-'}`, 20, yPos + 15);
+    doc.text(`E-posta: ${toAscii(customer.email || '-')}`, 110, yPos + 8);
+    doc.text(`Adres: ${toAscii(customer.address || '-')}`, 110, yPos + 15);
+    
+    // Tarih Aralığı - Müşteri bilgilerinin içinde
+    if (startDate || endDate) {
+      doc.setFontSize(9);
+      doc.setTextColor(100, 100, 100);
+      doc.text(`Tarih Araligi: ${startDate ? new Date(startDate).toLocaleDateString('tr-TR') : 'Baslangic'} - ${endDate ? new Date(endDate).toLocaleDateString('tr-TR') : 'Bitis'}`, 20, yPos + 25);
+    }
+    
+    // Önceki Dönem Bakiyesi (tarih filtresi varsa göster)
+    yPos += 45;
+    if (startDate) {
+      doc.setTextColor(0, 0, 0);
+      doc.setFillColor(230, 240, 255);
+      doc.roundedRect(14, yPos - 5, 182, 20, 2, 2, 'F');
+      
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Onceki Donem Bakiyesi', 20, yPos);
+      
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      const prevTL = `TL: ${previousBalance.TRY > 0 ? '+' : ''}${formatNumber(previousBalance.TRY)} TL`;
+      const prevUSD = `USD: ${previousBalance.USD > 0 ? '+' : ''}${formatNumber(previousBalance.USD)} USD`;
+      const prevEUR = `EUR: ${previousBalance.EUR > 0 ? '+' : ''}${formatNumber(previousBalance.EUR)} EUR`;
+      doc.text(prevTL, 20, yPos + 10);
+      doc.text(prevUSD, 80, yPos + 10);
+      doc.text(prevEUR, 140, yPos + 10);
+      yPos += 25;
+    }
+    
+    // Bakiye Bilgileri Kutusu
+    doc.setTextColor(0, 0, 0);
+    doc.setFillColor(255, 248, 220);
+    doc.roundedRect(14, yPos - 5, 182, 25, 2, 2, 'F');
+    
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Guncel Bakiye Durumu', 20, yPos);
+    
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    const tlBalance = `TL: ${(stats.balanceTRY || 0) > 0 ? '+' : ''}${formatNumber(stats.balanceTRY || 0)} TL`;
+    const usdBalance = `USD: ${(stats.balanceUSD || 0) > 0 ? '+' : ''}${formatNumber(stats.balanceUSD || 0)} USD`;
+    const eurBalance = `EUR: ${(stats.balanceEUR || 0) > 0 ? '+' : ''}${formatNumber(stats.balanceEUR || 0)} EUR`;
+    
+    doc.text(tlBalance, 20, yPos + 10);
+    doc.text(usdBalance, 80, yPos + 10);
+    doc.text(eurBalance, 140, yPos + 10);
+    
+    yPos += 30;
+    
+    // Satış Geçmişi Tablosu
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Satis Gecmisi', 20, yPos);
+    
+    const salesTableData = filteredSales.slice(0, 15).map(sale => {
+      const itemsText = sale.items.map(item => {
+        const currencySymbol = sale.currency === 'TRY' ? 'TL' : sale.currency === 'USD' ? 'USD' : 'EUR';
+        return `${toAscii(item.productName)} (${formatNumber(item.quantity)} desi x ${formatNumber(item.unitPrice)} ${currencySymbol}/desi)`;
+      }).join(', ');
+      
+      const currencySymbol = sale.currency === 'TRY' ? 'TL' : sale.currency === 'USD' ? 'USD' : 'EUR';
+      return [
+        new Date(sale.date).toLocaleDateString('tr-TR'),
+        itemsText || 'Detay yok',
+        `${formatNumber(sale.totalAmount)} ${currencySymbol}`
+      ];
+    });
+    
+    autoTable(doc, {
+      startY: yPos + 3,
+      head: [['Tarih', 'Urunler', 'Tutar']],
+      body: salesTableData.length > 0 ? salesTableData : [['Kayit bulunamadi', '', '']],
+      theme: 'striped',
+      headStyles: { 
+        fillColor: [52, 73, 94],
+        textColor: [255, 255, 255],
+        fontSize: 10,
+        fontStyle: 'bold',
+        halign: 'center'
+      },
+      styles: { 
+        fontSize: 9,
+        cellPadding: 3,
+        overflow: 'linebreak',
+        font: 'helvetica'
+      },
+      columnStyles: {
+        0: { cellWidth: 25, halign: 'center' },
+        1: { cellWidth: 125 },
+        2: { cellWidth: 32, halign: 'right', fontStyle: 'bold' }
+      },
+      alternateRowStyles: {
+        fillColor: [245, 245, 245]
+      }
+    });
+    
+    // Ödeme Geçmişi Tablosu
+    const finalY = (doc as any).lastAutoTable.finalY || yPos + 20;
+    
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Odeme Gecmisi', 20, finalY + 10);
+    
+    const paymentsTableData = filteredPayments.slice(0, 10).map(payment => {
+      const paymentTypeText = payment.paymentType === 'cash' ? 'Nakit' : 
+                              payment.paymentType === 'bank_transfer' ? 'Havale' : 
+                              payment.paymentType === 'check' ? 'Cek' : 'Diger';
+      const currencySymbol = payment.currency === 'TRY' ? 'TL' : payment.currency === 'USD' ? 'USD' : 'EUR';
+      
+      return [
+        new Date(payment.paymentDate).toLocaleDateString('tr-TR'),
+        paymentTypeText,
+        `${formatNumber(payment.amount)} ${currencySymbol}`,
+        toAscii(payment.notes || '-')
+      ];
+    });
+    
+    autoTable(doc, {
+      startY: finalY + 13,
+      head: [['Tarih', 'Odeme Tipi', 'Tutar', 'Notlar']],
+      body: paymentsTableData.length > 0 ? paymentsTableData : [['Kayit bulunamadi', '', '', '']],
+      theme: 'striped',
+      headStyles: { 
+        fillColor: [39, 174, 96],
+        textColor: [255, 255, 255],
+        fontSize: 10,
+        fontStyle: 'bold',
+        halign: 'center'
+      },
+      styles: { 
+        fontSize: 9,
+        cellPadding: 3,
+        font: 'helvetica'
+      },
+      columnStyles: {
+        0: { cellWidth: 25, halign: 'center' },
+        1: { cellWidth: 30, halign: 'center' },
+        2: { cellWidth: 32, halign: 'right', fontStyle: 'bold' },
+        3: { cellWidth: 95 }
+      },
+      alternateRowStyles: {
+        fillColor: [245, 245, 245]
+      }
+    });
+    
+    // Alt bilgi
+    const pageCount = (doc as any).internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setTextColor(150, 150, 150);
+      doc.text(`Sayfa ${i} / ${pageCount}`, 105, 287, { align: 'center' });
+      doc.text(`Olusturulma: ${new Date().toLocaleString('tr-TR')}`, 20, 287);
+    }
+    
+    // PDF'i indir
+    const fileName = `${customer.name.replace(/\s+/g, '_')}_Hesap_Ozeti_${new Date().toLocaleDateString('tr-TR').replace(/\./g, '_')}.pdf`;
+    doc.save(fileName);
+    
+    setSnackbar({ open: true, message: 'PDF basariyla indirildi', severity: 'success' });
   };
 
   // Ödeme sil
@@ -386,6 +770,15 @@ const CustomerDetail: React.FC = () => {
           </Typography>
         </Box>
         <Button
+          variant="outlined"
+          startIcon={<PictureAsPdf />}
+          onClick={handleDownloadPDF}
+          size="large"
+          color="error"
+        >
+          PDF İndir
+        </Button>
+        <Button
           variant="contained"
           startIcon={<Payment />}
           onClick={() => setPaymentDialogOpen(true)}
@@ -463,17 +856,17 @@ const CustomerDetail: React.FC = () => {
                 <Avatar sx={{ bgcolor: 'success.main', mx: 'auto', mb: 1 }}>
                   <TrendingUp />
                 </Avatar>
-                <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>
-                  ₺{stats.totalPurchasesTRY.toLocaleString('tr-TR')}
-                </Typography>
-                <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>
-                  ${stats.totalPurchasesUSD.toLocaleString('tr-TR')}
-                </Typography>
-                <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                  €{stats.totalPurchasesEUR.toLocaleString('tr-TR')}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                   Toplam Alışveriş
+                </Typography>
+                <Typography variant="body1" sx={{ fontWeight: 600, display: 'block' }}>
+                  ₺{(stats.totalPurchasesTRY || 0).toLocaleString('tr-TR')}
+                </Typography>
+                <Typography variant="body1" sx={{ fontWeight: 600, display: 'block' }}>
+                  ${(stats.totalPurchasesUSD || 0).toLocaleString('tr-TR')}
+                </Typography>
+                <Typography variant="body1" sx={{ fontWeight: 600, display: 'block' }}>
+                  €{(stats.totalPurchasesEUR || 0).toLocaleString('tr-TR')}
                 </Typography>
               </CardContent>
             </Card>
@@ -482,39 +875,60 @@ const CustomerDetail: React.FC = () => {
                 <Avatar sx={{ bgcolor: 'warning.main', mx: 'auto', mb: 1 }}>
                   <AttachMoney />
                 </Avatar>
-                <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>
-                  ₺{stats.totalPaymentsTRY.toLocaleString('tr-TR')}
-                </Typography>
-                <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>
-                  ${stats.totalPaymentsUSD.toLocaleString('tr-TR')}
-                </Typography>
-                <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                  €{stats.totalPaymentsEUR.toLocaleString('tr-TR')}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                   Toplam Ödeme
+                </Typography>
+                <Typography variant="body1" sx={{ fontWeight: 600, display: 'block' }}>
+                  ₺{(stats.totalPaymentsTRY || 0).toLocaleString('tr-TR')}
+                </Typography>
+                <Typography variant="body1" sx={{ fontWeight: 600, display: 'block' }}>
+                  ${(stats.totalPaymentsUSD || 0).toLocaleString('tr-TR')}
+                </Typography>
+                <Typography variant="body1" sx={{ fontWeight: 600, display: 'block' }}>
+                  €{(stats.totalPaymentsEUR || 0).toLocaleString('tr-TR')}
                 </Typography>
               </CardContent>
             </Card>
             <Card>
               <CardContent sx={{ textAlign: 'center', p: 2 }}>
                 <Avatar sx={{
-                  bgcolor: stats.currentBalance >= 0 ? 'success.main' : 'error.main',
+                  bgcolor: stats.currentBalance > 0 ? 'error.main' : 'success.main',
                   mx: 'auto', mb: 1
                 }}>
                   <AccountBalance />
                 </Avatar>
-                <Typography
-                  variant="h5"
-                  sx={{
-                    fontWeight: 700,
-                    color: stats.currentBalance >= 0 ? 'success.main' : 'error.main'
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                  Güncel Bakiye
+                </Typography>
+                <Typography 
+                  variant="body1" 
+                  sx={{ 
+                    fontWeight: 600,
+                    display: 'block',
+                    color: (stats.balanceTRY || 0) > 0 ? 'error.main' : (stats.balanceTRY || 0) < 0 ? 'success.main' : 'text.primary'
                   }}
                 >
-                  ₺{(stats.balanceTRY || 0)} / ${(stats.balanceUSD || 0)} / €{(stats.balanceEUR || 0)}
+                  {(stats.balanceTRY || 0) > 0 ? '+' : ''}₺{(stats.balanceTRY || 0).toLocaleString('tr-TR')}
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Güncel Bakiye (TL / USD / EUR)
+                <Typography 
+                  variant="body1" 
+                  sx={{ 
+                    fontWeight: 600,
+                    display: 'block',
+                    color: (stats.balanceUSD || 0) > 0 ? 'error.main' : (stats.balanceUSD || 0) < 0 ? 'success.main' : 'text.primary'
+                  }}
+                >
+                  {(stats.balanceUSD || 0) > 0 ? '+' : ''}${(stats.balanceUSD || 0).toLocaleString('tr-TR')}
+                </Typography>
+                <Typography 
+                  variant="body1" 
+                  sx={{ 
+                    fontWeight: 600,
+                    display: 'block',
+                    color: (stats.balanceEUR || 0) > 0 ? 'error.main' : (stats.balanceEUR || 0) < 0 ? 'success.main' : 'text.primary'
+                  }}
+                >
+                  {(stats.balanceEUR || 0) > 0 ? '+' : ''}€{(stats.balanceEUR || 0).toLocaleString('tr-TR')}
                 </Typography>
               </CardContent>
             </Card>
@@ -525,51 +939,136 @@ const CustomerDetail: React.FC = () => {
       {/* Tables */}
       <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
         {/* Sales History */}
-        <Box sx={{ flex: '1 1 400px', minWidth: '400px' }}>
+        <Box sx={{ flex: '1 1 600px', minWidth: '600px' }}>
           <Card>
             <CardContent>
               <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
-                Satış Geçmişi ({sales.length} satış)
+                Satış Geçmişi ({filteredSales.length} satış)
               </Typography>
-              <TableContainer>
-                <Table size="small">
+
+              {/* Tarih Filtreleme */}
+              <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
+                <TextField
+                  label="Başlangıç Tarihi"
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  size="small"
+                  sx={{ flex: 1 }}
+                />
+                <TextField
+                  label="Bitiş Tarihi"
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  size="small"
+                  sx={{ flex: 1 }}
+                />
+                <Button
+                  variant="outlined"
+                  onClick={() => {
+                    setStartDate('');
+                    setEndDate('');
+                  }}
+                  size="small"
+                >
+                  Temizle
+                </Button>
+              </Box>
+
+              <TableContainer sx={{ maxHeight: 500 }}>
+                <Table size="small" stickyHeader>
                   <TableHead>
                     <TableRow>
                       <TableCell>Tarih</TableCell>
+                      <TableCell>Ürünler</TableCell>
                       <TableCell align="right">Tutar</TableCell>
-                      <TableCell align="center">İşlem</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {sales.slice(0, 10).map((sale) => (
-                      <TableRow key={sale.id}>
-                        <TableCell>
+                    {filteredSales.map((sale) => (
+                      <TableRow key={sale.id} hover>
+                        <TableCell sx={{ verticalAlign: 'top', minWidth: 100 }}>
                           {new Date(sale.date).toLocaleDateString('tr-TR')}
                         </TableCell>
-                        <TableCell align="right">
-                          {sale.currency === 'TRY' ? '₺' : sale.currency === 'EUR' ? '€' : '$'}{sale.totalAmount || 0}
+                        <TableCell sx={{ verticalAlign: 'top' }}>
+                          {sale.items && sale.items.length > 0 ? (
+                            <Box>
+                              {sale.items.map((item, idx) => (
+                                <Box key={idx} sx={{ mb: 0.5 }}>
+                                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                    {item.productName}
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    {item.quantity} desi × {sale.currency === 'TRY' ? '₺' : sale.currency === 'EUR' ? '€' : '$'}{item.unitPrice.toLocaleString('tr-TR')}/desi = {sale.currency === 'TRY' ? '₺' : sale.currency === 'EUR' ? '€' : '$'}{item.total.toLocaleString('tr-TR')}
+                                  </Typography>
+                                </Box>
+                              ))}
+                            </Box>
+                          ) : (
+                            <Typography variant="body2" color="text.secondary">
+                              Detay bilgisi yok
+                            </Typography>
+                          )}
                         </TableCell>
-
-                        <TableCell align="center">
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            onClick={() => {
-                              // Satış durumu güncelleme dialog'u açılacak
-                              console.log('Update sale status:', sale.id);
-                            }}
-                          >
-                            Güncelle
-                          </Button>
+                        <TableCell align="right" sx={{ verticalAlign: 'top', fontWeight: 600 }}>
+                          {sale.currency === 'TRY' ? '₺' : sale.currency === 'EUR' ? '€' : '$'}{(sale.totalAmount || 0).toLocaleString('tr-TR')}
                         </TableCell>
                       </TableRow>
                     ))}
-                    {sales.length === 0 && (
+                    {filteredSales.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={4} align="center">
-                          Henüz satış kaydı bulunmuyor
+                        <TableCell colSpan={3} align="center">
+                          {startDate || endDate ? 'Bu tarih aralığında satış kaydı bulunmuyor' : 'Henüz satış kaydı bulunmuyor'}
                         </TableCell>
                       </TableRow>
+                    )}
+
+                    {/* Geçmiş Aylardan Kalan Bakiye */}
+                    {startDate && (
+                      <>
+                        <TableRow>
+                          <TableCell colSpan={3} sx={{ py: 1 }} />
+                        </TableRow>
+                        <TableRow sx={{ bgcolor: 'action.hover' }}>
+                          <TableCell colSpan={2} sx={{ fontWeight: 600 }}>
+                          Önceki Bakiye
+                          </TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 700 }}>
+                            <Box>
+                              <Typography
+                                variant="body2"
+                                sx={{
+                                  color: previousBalance.TRY > 0 ? 'error.main' : previousBalance.TRY < 0 ? 'success.main' : 'text.secondary',
+                                  fontWeight: 600
+                                }}
+                              >
+                                {previousBalance.TRY > 0 ? '+' : ''}₺{previousBalance.TRY.toLocaleString('tr-TR')}
+                              </Typography>
+                              <Typography
+                                variant="body2"
+                                sx={{
+                                  color: previousBalance.USD > 0 ? 'error.main' : previousBalance.USD < 0 ? 'success.main' : 'text.secondary',
+                                  fontWeight: 600
+                                }}
+                              >
+                                {previousBalance.USD > 0 ? '+' : ''}${previousBalance.USD.toLocaleString('tr-TR')}
+                              </Typography>
+                              <Typography
+                                variant="body2"
+                                sx={{
+                                  color: previousBalance.EUR > 0 ? 'error.main' : previousBalance.EUR < 0 ? 'success.main' : 'text.secondary',
+                                  fontWeight: 600
+                                }}
+                              >
+                                {previousBalance.EUR > 0 ? '+' : ''}€{previousBalance.EUR.toLocaleString('tr-TR')}
+                              </Typography>
+                            </Box>
+                          </TableCell>
+                        </TableRow>
+                      </>
                     )}
                   </TableBody>
                 </Table>
@@ -757,6 +1256,7 @@ const CustomerDetail: React.FC = () => {
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}
+        sx={{ zIndex: 9999 }}
         onClose={() => setSnackbar({ ...snackbar, open: false })}
       >
         <Alert

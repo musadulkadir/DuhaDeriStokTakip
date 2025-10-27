@@ -47,6 +47,8 @@ import { Product, Customer } from '../../main/database/models';
 import { useNavigate } from 'react-router-dom';
 import CurrencySelect from './common/CurrencySelect';
 import { DEFAULT_CURRENCIES } from '../constants/currencies';
+// YENİ:
+import SaleDetailModal from './SaleDetailModal'; // veya 'SaleDetailModal.tsx' dosyanızın yolu
 
 interface SaleItem {
   productId: number;
@@ -84,9 +86,8 @@ const SalesManagement: React.FC = () => {
 
   // New sale state
   const [newSaleDialogOpen, setNewSaleDialogOpen] = useState(false);
-  const [saleDetailDialogOpen, setSaleDetailDialogOpen] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-  const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
+  const [viewingSaleId, setViewingSaleId] = useState<number | null>(null);
   const [saleItems, setSaleItems] = useState<SaleItem[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [quantityPieces, setQuantityPieces] = useState<string>('');
@@ -488,18 +489,18 @@ const SalesManagement: React.FC = () => {
                     <TableCell>
                       {new Date(sale.date).toLocaleDateString('tr-TR')}
                     </TableCell>
-                    <TableCell align="center">
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        onClick={() => {
-                          setSelectedSale(sale);
-                          setSaleDetailDialogOpen(true);
-                        }}
-                      >
-                        Detay
-                      </Button>
-                    </TableCell>
+              <TableCell align="center">
+                    <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => {
+                    // DEĞİŞTİ:
+                    setViewingSaleId(sale.id);
+                  }}
+                >
+                  Detay
+                  </Button>
+              </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -832,77 +833,12 @@ const SalesManagement: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Sale Detail Dialog */}
-      <Dialog open={saleDetailDialogOpen} onClose={() => setSaleDetailDialogOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>
-          Satış Detayı - #{selectedSale?.id}
-        </DialogTitle>
-        <DialogContent>
-          {selectedSale && (
-            <Grid container spacing={3}>
-              <Grid item xs={12} md={6}>
-                <Card>
-                  <CardContent>
-                    <Typography variant="h6" sx={{ mb: 2 }}>
-                      Satış Bilgileri
-                    </Typography>
-                    <List dense>
-                      <ListItem>
-                        <ListItemText
-                          primary="Satış No"
-                          secondary={`#${selectedSale.id}`}
-                        />
-                      </ListItem>
-                      <ListItem>
-                        <ListItemText
-                          primary="Müşteri"
-                          secondary={selectedSale.customerName}
-                        />
-                      </ListItem>
-                      <ListItem>
-                        <ListItemText
-                          primary="Tarih"
-                          secondary={new Date(selectedSale.date).toLocaleDateString('tr-TR')}
-                        />
-                      </ListItem>
-
-                      <ListItem>
-                        <ListItemText
-                          primary="Toplam Tutar"
-                          secondary={`${selectedSale.currency === 'USD' ? '$' : selectedSale.currency === 'TRY' ? '₺' : '€'}${selectedSale.total.toLocaleString('tr-TR')}`}
-                        />
-                      </ListItem>
-                    </List>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <Card>
-                  <CardContent>
-                    <Typography variant="h6" sx={{ mb: 2 }}>
-                      Satış Kalemleri
-                    </Typography>
-                    <List dense>
-                      {selectedSale.items.map((item, index) => (
-                        <ListItem key={index}>
-                          <ListItemText
-                            primary={item.productName}
-                            secondary={`${(item.quantityPieces || 0).toLocaleString('tr-TR')} adet (${(item.quantityDesi || 0).toLocaleString('tr-TR')} desi) × ${selectedSale.currency === 'USD' ? '$' : selectedSale.currency === 'TRY' ? '₺' : '€'}${(item.unitPricePerDesi || 0).toLocaleString('tr-TR')}/desi = ${selectedSale.currency === 'USD' ? '$' : selectedSale.currency === 'TRY' ? '₺' : '€'}${(item.total || 0).toLocaleString('tr-TR')}`}
-                          />
-                        </ListItem>
-                      ))}
-                    </List>
-                  </CardContent>
-                </Card>
-              </Grid>
-            </Grid>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setSaleDetailDialogOpen(false)}>Kapat</Button>
-        </DialogActions>
-      </Dialog>
-
+{/* YENİ: Ayırdığımız modalı buraya ekleyin */}
+      <SaleDetailModal
+        open={viewingSaleId !== null}
+        onClose={() => setViewingSaleId(null)}
+        saleId={viewingSaleId}
+      />
       {/* Pagination */}
       <Pagination
         currentPage={currentPage}
@@ -917,6 +853,7 @@ const SalesManagement: React.FC = () => {
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}
+        sx={{ zIndex: 9999 }}
         onClose={() => setSnackbar({ ...snackbar, open: false })}
       >
         <Alert
