@@ -100,18 +100,18 @@ const SalesManagement: React.FC = () => {
   const formatNumberWithCommas = (value: string): string => {
     // Sadece rakam ve nokta karakterlerini al
     const numericValue = value.replace(/[^\d.]/g, '');
-    
+
     // Eğer boşsa boş döndür
     if (!numericValue) return '';
-    
+
     // Sayıyı parçalara ayır (tam kısım ve ondalık kısım)
     const parts = numericValue.split('.');
     const integerPart = parts[0];
     const decimalPart = parts[1];
-    
+
     // Tam kısmı üç haneli ayraçlarla formatla
     const formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-    
+
     // Ondalık kısım varsa ekle
     return decimalPart !== undefined ? `${formattedInteger}.${decimalPart}` : formattedInteger;
   };
@@ -160,13 +160,21 @@ const SalesManagement: React.FC = () => {
 
         response.data.forEach((row: any) => {
           if (!salesMap.has(row.id)) {
+            // Tarih formatını düzelt - Date objesi veya string olabilir
+            let dateStr = row.sale_date;
+            if (typeof dateStr === 'object' && dateStr !== null) {
+              dateStr = new Date(dateStr).toISOString().split('T')[0];
+            } else if (typeof dateStr === 'string' && dateStr.includes('T')) {
+              dateStr = dateStr.split('T')[0];
+            }
+
             salesMap.set(row.id, {
               id: row.id,
               customerId: row.customer_id,
               customerName: row.customer_name || row.name || 'Bilinmeyen Müşteri',
               currency: row.currency || 'TRY',
               total: row.total_amount,
-              date: row.sale_date.split('T')[0],
+              date: dateStr,
               status: row.payment_status === 'paid' ? 'Tamamlandı' : 'Beklemede',
               items: []
             });
@@ -189,7 +197,7 @@ const SalesManagement: React.FC = () => {
         const startIndex = (page - 1) * limit;
         const endIndex = startIndex + limit;
         const paginatedSales = allSales.slice(startIndex, endIndex);
-        
+
         setSales(paginatedSales);
         setTotalItems(allSales.length);
       }
@@ -351,6 +359,34 @@ const SalesManagement: React.FC = () => {
     setErrors([]);
   };
 
+  const handleDeleteSale = async (saleId: number) => {
+    if (!window.confirm('Bu satışı silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.')) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await dbAPI.deleteSale(saleId);
+      if (!response.success) {
+        throw new Error(response.error || 'Satış silinemedi');
+      }
+
+      setSnackbar({ open: true, message: 'Satış başarıyla silindi', severity: 'success' });
+      await loadSales();
+      await loadProducts(); // Stok güncellemesi için
+      await loadCustomers(); // Bakiye güncellemesi için
+    } catch (error) {
+      console.error('Delete sale error:', error);
+      setSnackbar({
+        open: true,
+        message: error instanceof Error ? error.message : 'Satış silinirken hata oluştu',
+        severity: 'error'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <Box>
       {/* Header */}
@@ -489,18 +525,27 @@ const SalesManagement: React.FC = () => {
                     <TableCell>
                       {new Date(sale.date).toLocaleDateString('tr-TR')}
                     </TableCell>
-              <TableCell align="center">
-                    <Button
-                  size="small"
-                  variant="outlined"
-                  onClick={() => {
-                    // DEĞİŞTİ:
-                    setViewingSaleId(sale.id);
-                  }}
-                >
-                  Detay
-                  </Button>
-              </TableCell>
+                    <TableCell align="center">
+                      <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={() => {
+                            setViewingSaleId(sale.id);
+                          }}
+                        >
+                          Detay
+                        </Button>
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() => handleDeleteSale(sale.id)}
+                          title="Satışı Sil"
+                        >
+                          <Delete />
+                        </IconButton>
+                      </Box>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -644,9 +689,11 @@ const SalesManagement: React.FC = () => {
                     <Grid item xs={12} md={2}>
                       <TextField
                         label="Adet"
-                        type="number"
                         value={quantityPieces}
-                        onChange={(e) => setQuantityPieces(e.target.value)}
+                        onChange={(e) => {
+                          const formatted = formatNumberWithCommas(e.target.value);
+                          setQuantityPieces(formatted);
+                        }}
                         fullWidth
                         size="medium"
                         helperText="Stoktan düşecek"
@@ -708,7 +755,7 @@ const SalesManagement: React.FC = () => {
                     <Grid item xs={12} md={2}>
                       <TextField
                         label={`Toplam (${saleCurrency === 'USD' ? '$' : saleCurrency === 'TRY' ? '₺' : '€'})`}
-                        value={quantityDesi && unitPricePerDesi ? 
+                        value={quantityDesi && unitPricePerDesi ?
                           formatNumberWithCommas((parseFormattedNumber(quantityDesi) * parseFormattedNumber(unitPricePerDesi)).toFixed(2)) : '0'}
                         disabled
                         fullWidth
@@ -774,10 +821,10 @@ const SalesManagement: React.FC = () => {
                             {saleItems.map((item, index) => (
                               <TableRow key={index}>
                                 <TableCell>{item.productName}</TableCell>
-                                <TableCell align="right">{item.quantityPieces.toLocaleString('tr-TR')} adet</TableCell>
-                                <TableCell align="right">{item.quantityDesi.toLocaleString('tr-TR')} desi</TableCell>
-                                <TableCell align="right">{saleCurrency === 'USD' ? '$' : saleCurrency === 'TRY' ? '₺' : '€'}{item.unitPricePerDesi.toLocaleString('tr-TR')}/desi</TableCell>
-                                <TableCell align="right">{saleCurrency === 'USD' ? '$' : saleCurrency === 'TRY' ? '₺' : '€'}{item.total.toLocaleString('tr-TR')}</TableCell>
+                                <TableCell align="right">{Number(item.quantityPieces).toLocaleString('tr-TR')} adet</TableCell>
+                                <TableCell align="right">{Number(item.quantityDesi).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} desi</TableCell>
+                                <TableCell align="right">{saleCurrency === 'USD' ? '$' : saleCurrency === 'TRY' ? '₺' : '€'}{Number(item.unitPricePerDesi).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/desi</TableCell>
+                                <TableCell align="right">{saleCurrency === 'USD' ? '$' : saleCurrency === 'TRY' ? '₺' : '€'}{Number(item.total).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
                                 <TableCell align="center">
                                   <IconButton
                                     size="small"
@@ -795,7 +842,7 @@ const SalesManagement: React.FC = () => {
                       <Divider sx={{ my: 2 }} />
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <Typography variant="h6">
-                          Genel Toplam: {saleCurrency === 'USD' ? '$' : saleCurrency === 'TRY' ? '₺' : '€'}{calculateTotal().toLocaleString('tr-TR')}
+                          Genel Toplam: {saleCurrency === 'USD' ? '$' : saleCurrency === 'TRY' ? '₺' : '€'}{calculateTotal().toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </Typography>
                         <Box sx={{ display: 'flex', gap: 1 }}>
                           <Button
@@ -833,7 +880,7 @@ const SalesManagement: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-{/* YENİ: Ayırdığımız modalı buraya ekleyin */}
+      {/* YENİ: Ayırdığımız modalı buraya ekleyin */}
       <SaleDetailModal
         open={viewingSaleId !== null}
         onClose={() => setViewingSaleId(null)}

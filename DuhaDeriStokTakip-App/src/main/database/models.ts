@@ -12,6 +12,9 @@ export interface Product extends BaseEntity {
   name: string;
   category: string;
   color?: string;
+  color_shade?: string;
+  brand?: string;
+  code?: string;
   stock_quantity?: number;
   unit?: string;
   description?: string;
@@ -25,6 +28,8 @@ export interface Customer extends BaseEntity {
   phone?: string;
   address?: string;
   balance?: number;
+  balance_usd?: number;
+  balance_eur?: number;
   type?: 'customer' | 'supplier';
 }
 

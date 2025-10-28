@@ -87,68 +87,38 @@ const CustomerManagement: React.FC = () => {
     address: '',
   });
 
-  // Müşteri bakiyesini hesapla
-  const calculateCustomerBalance = async (customerId: number) => {
-    try {
-      // Müşteri ödemelerini al
-      const paymentsResponse = await dbAPI.getCustomerPayments(customerId);
-      const payments = paymentsResponse.success ? paymentsResponse.data || [] : [];
-
-      // Müşteri satışlarını al
-      const salesResponse = await dbAPI.getSales();
-      const allSales = salesResponse.success ? salesResponse.data || [] : [];
-      const customerSales = allSales.filter((sale: any) => sale.customer_id === customerId);
-
-      // Tedarikçi alımlarını al (sadece tedarikçiler için)
-      const purchasesResponse = await dbAPI.getPurchases();
-      const allPurchases = purchasesResponse.success ? purchasesResponse.data || [] : [];
-      const supplierPurchases = allPurchases.filter((purchase: any) => purchase.supplier_id === customerId);
-
-      // Para birimi bazında hesaplama
-      const totalSalesTRY = customerSales.filter((sale: any) => (sale.currency || 'TRY') === 'TRY').reduce((sum: number, sale: any) => sum + (sale.total_amount || 0), 0);
-      const totalSalesUSD = customerSales.filter((sale: any) => (sale.currency || 'TRY') === 'USD').reduce((sum: number, sale: any) => sum + (sale.total_amount || 0), 0);
-      const totalSalesEUR = customerSales.filter((sale: any) => (sale.currency || 'TRY') === 'EUR').reduce((sum: number, sale: any) => sum + (sale.total_amount || 0), 0);
-
-      const totalPurchasesTRY = supplierPurchases.filter((purchase: any) => (purchase.currency || 'TRY') === 'TRY').reduce((sum: number, purchase: any) => sum + (purchase.total_amount || 0), 0);
-      const totalPurchasesUSD = supplierPurchases.filter((purchase: any) => (purchase.currency || 'TRY') === 'USD').reduce((sum: number, purchase: any) => sum + (purchase.total_amount || 0), 0);
-      const totalPurchasesEUR = supplierPurchases.filter((purchase: any) => (purchase.currency || 'TRY') === 'EUR').reduce((sum: number, purchase: any) => sum + (purchase.total_amount || 0), 0);
-
-      const totalPaymentsTRY = payments.filter((payment: any) => (payment.currency || 'TRY') === 'TRY').reduce((sum: number, payment: any) => sum + (payment.amount || 0), 0);
-      const totalPaymentsUSD = payments.filter((payment: any) => (payment.currency || 'TRY') === 'USD').reduce((sum: number, payment: any) => sum + (payment.amount || 0), 0);
-      const totalPaymentsEUR = payments.filter((payment: any) => (payment.currency || 'TRY') === 'EUR').reduce((sum: number, payment: any) => sum + (payment.amount || 0), 0);
-
-      // Müşteri için: Bakiye = Ödemeler - Satışlar (negatif değer borç demek)
-      // Tedarikçi için: Bakiye = Alımlar - Ödemeler (pozitif değer borç demek)
-      const balanceTRY = totalPurchasesTRY - totalPaymentsTRY;
-      const balanceUSD = totalPurchasesUSD - totalPaymentsUSD;
-      const balanceEUR = totalPurchasesEUR - totalPaymentsEUR;
-
-      return { balanceTRY, balanceUSD, balanceEUR };
-    } catch (error) {
-      console.error('Error calculating customer balance:', error);
-      return { balanceTRY: 0, balanceUSD: 0, balanceEUR: 0 };
-    }
-  };
-
   // Müşterileri yükle
   const loadCustomers = async () => {
     setLoading(true);
     try {
       const response = await dbAPI.getCustomers();
       if (response.success) {
-        // Her müşteri için bakiye hesapla
-        const customersWithBalance = await Promise.all(
-          response.data.map(async (customer: Customer) => {
-            const balance = await calculateCustomerBalance(customer.id!);
-            console.log(`Müşteri ${customer.name} (${customer.type}) bakiye:`, balance);
-            return {
-              ...customer,
-              balanceTRY: balance.balanceTRY,
-              balanceUSD: balance.balanceUSD,
-              balanceEUR: balance.balanceEUR,
-            };
-          })
-        );
+        // Veritabanından gelen bakiyeleri kullan (manuel hesaplama yok!)
+        const customersWithBalance = response.data.map((customer: any) => {
+          // Veritabanından gelen bakiyeleri parse et
+          const balanceTRY = parseFloat(customer.balance) || 0;
+          const balanceUSD = parseFloat(customer.balance_usd) || 0;
+          const balanceEUR = parseFloat(customer.balance_eur) || 0;
+          
+          console.log(`Müşteri ${customer.name} (${customer.type}) bakiye:`, {
+            balanceTRY,
+            balanceUSD,
+            balanceEUR,
+            dbValues: {
+              balance: customer.balance,
+              balance_usd: customer.balance_usd,
+              balance_eur: customer.balance_eur
+            }
+          });
+          
+          return {
+            ...customer,
+            balanceTRY,
+            balanceUSD,
+            balanceEUR,
+          };
+        });
+        
         // Type alanını veritabanından gelen değere göre ayarla
         const processedCustomers = customersWithBalance.map(customer => {
           // Veritabanından gelen type değerini kullan, yoksa customer yap
@@ -354,10 +324,19 @@ const CustomerManagement: React.FC = () => {
 
 
 
+  // Tedarikçiler için: Borç (artı) = kırmızı, Alacak (eksi) = yeşil
   const getBalanceColor = (balanceTRY: number, balanceUSD: number, balanceEUR: number) => {
     const totalBalance = balanceTRY + balanceUSD + balanceEUR;
-    if (totalBalance > 0) return 'success';
-    if (totalBalance < 0) return 'error';
+    if (totalBalance > 0) return 'error'; // Borç (kırmızı)
+    if (totalBalance < 0) return 'success'; // Alacak (yeşil)
+    return 'default';
+  };
+
+  // Müşteriler için: Alacak (artı) = yeşil, Borç (eksi) = kırmızı
+  const getCustomerBalanceColor = (balanceTRY: number, balanceUSD: number, balanceEUR: number) => {
+    const totalBalance = balanceTRY + balanceUSD + balanceEUR;
+    if (totalBalance > 0) return 'success'; // Alacak (yeşil)
+    if (totalBalance < 0) return 'error'; // Borç (kırmızı)
     return 'default';
   };
 
@@ -535,7 +514,7 @@ const CustomerManagement: React.FC = () => {
                     <TableCell align="right">
                       <Chip
                         label={`₺${(customer.balanceTRY || 0).toLocaleString('tr-TR')} / $${(customer.balanceUSD || 0).toLocaleString('tr-TR')} / €${(customer.balanceEUR || 0).toLocaleString('tr-TR')}`}
-                        color={getBalanceColor(customer.balanceTRY || 0, customer.balanceUSD || 0, customer.balanceEUR || 0) as any}
+                        color={getCustomerBalanceColor(customer.balanceTRY || 0, customer.balanceUSD || 0, customer.balanceEUR || 0) as any}
                         size="small"
                       />
                     </TableCell>
@@ -867,9 +846,26 @@ const CustomerManagement: React.FC = () => {
           <Typography>
             "{selectedCustomer?.name}" müşterisini silmek istediğinizden emin misiniz?
           </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            Bu işlem geri alınamaz.
+          <Typography variant="body2" color="error" sx={{ mt: 2, fontWeight: 600 }}>
+            ⚠️ Uyarı: Bu işlem geri alınamaz!
           </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            Müşteri silindiğinde aşağıdakiler de silinecek:
+          </Typography>
+          <Box component="ul" sx={{ mt: 1, pl: 2 }}>
+            <Typography component="li" variant="body2" color="text.secondary">
+              Tüm satış kayıtları
+            </Typography>
+            <Typography component="li" variant="body2" color="text.secondary">
+              Tüm ödeme kayıtları
+            </Typography>
+            <Typography component="li" variant="body2" color="text.secondary">
+              Tüm kasa işlemleri
+            </Typography>
+            <Typography component="li" variant="body2" color="text.secondary">
+              Tüm stok hareketleri
+            </Typography>
+          </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => {

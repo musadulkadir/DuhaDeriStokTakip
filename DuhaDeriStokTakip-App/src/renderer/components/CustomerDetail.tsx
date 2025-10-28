@@ -277,6 +277,15 @@ const CustomerDetail: React.FC = () => {
     const balanceUSD = parseFloat((customer as any).balance_usd) || 0;
     const balanceEUR = parseFloat((customer as any).balance_eur) || 0;
 
+    console.log('💰 Veritabanından Gelen Bakiyeler:', {
+      balance: customer.balance,
+      balance_usd: (customer as any).balance_usd,
+      balance_eur: (customer as any).balance_eur,
+      balanceTRY,
+      balanceUSD,
+      balanceEUR
+    });
+
     const lastSale = customerSales.sort((a: any, b: any) => new Date(b.sale_date).getTime() - new Date(a.sale_date).getTime())[0];
     const lastPayment = payments.sort((a: any, b: any) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime())[0];
 
@@ -366,7 +375,7 @@ const CustomerDetail: React.FC = () => {
         USD: prevPurchasesUSD - prevPaymentsUSD,
         EUR: prevPurchasesEUR - prevPaymentsEUR
       };
-      
+
       console.log('📅 Önceki Bakiye Hesaplandı:', {
         startDate,
         previousSalesCount: previousSales.length,
@@ -379,7 +388,7 @@ const CustomerDetail: React.FC = () => {
         prevPaymentsEUR,
         prevBalance
       });
-      
+
       setPreviousBalance(prevBalance);
     } else {
       setPreviousBalance({ TRY: 0, USD: 0, EUR: 0 });
@@ -491,7 +500,7 @@ const CustomerDetail: React.FC = () => {
 
     const doc = new jsPDF('p', 'mm', 'a4');
     let yPos = 20;
-    
+
     // Başlık - Arka plan ile
     doc.setFillColor(41, 128, 185);
     doc.rect(0, 0, 210, 35, 'F');
@@ -499,90 +508,83 @@ const CustomerDetail: React.FC = () => {
     doc.setFontSize(20);
     doc.setFont('helvetica', 'bold');
     doc.text('MUSTERI HESAP OZETI', 105, 15, { align: 'center' });
-    
+
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
     doc.text(`Tarih: ${new Date().toLocaleDateString('tr-TR')}`, 105, 25, { align: 'center' });
-    
-    // Müşteri Bilgileri Kutusu
+
+    // Müşteri ve Tarih Bilgileri (kompakt)
     yPos = 45;
-    doc.setTextColor(0, 0, 0);
-    doc.setFillColor(240, 240, 240);
-    doc.roundedRect(14, yPos - 5, 182, 40, 2, 2, 'F');
-    
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Musteri Bilgileri', 20, yPos);
-    
+    doc.setFillColor(240, 245, 255);
+    doc.roundedRect(14, yPos - 3, 182, 12, 2, 2, 'F');
+
+    // Müşteri adı (sol)
     doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Ad Soyad: ${toAscii(customer.name)}`, 20, yPos + 8);
-    doc.text(`Telefon: ${customer.phone || '-'}`, 20, yPos + 15);
-    doc.text(`E-posta: ${toAscii(customer.email || '-')}`, 110, yPos + 8);
-    doc.text(`Adres: ${toAscii(customer.address || '-')}`, 110, yPos + 15);
-    
-    // Tarih Aralığı - Müşteri bilgilerinin içinde
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(41, 128, 185);
+    doc.text(toAscii(customer.name), 18, yPos + 4);
+
+    // Tarih aralığı (sağ)
     if (startDate || endDate) {
-      doc.setFontSize(9);
-      doc.setTextColor(100, 100, 100);
-      doc.text(`Tarih Araligi: ${startDate ? new Date(startDate).toLocaleDateString('tr-TR') : 'Baslangic'} - ${endDate ? new Date(endDate).toLocaleDateString('tr-TR') : 'Bitis'}`, 20, yPos + 25);
-    }
-    
-    // Önceki Dönem Bakiyesi (tarih filtresi varsa göster)
-    yPos += 45;
-    if (startDate) {
-      doc.setTextColor(0, 0, 0);
-      doc.setFillColor(230, 240, 255);
-      doc.roundedRect(14, yPos - 5, 182, 20, 2, 2, 'F');
-      
-      doc.setFontSize(11);
-      doc.setFont('helvetica', 'bold');
-      doc.text('Onceki Donem Bakiyesi', 20, yPos);
-      
-      doc.setFontSize(10);
+      doc.setFontSize(8);
       doc.setFont('helvetica', 'normal');
-      const prevTL = `TL: ${previousBalance.TRY > 0 ? '+' : ''}${formatNumber(previousBalance.TRY)} TL`;
-      const prevUSD = `USD: ${previousBalance.USD > 0 ? '+' : ''}${formatNumber(previousBalance.USD)} USD`;
-      const prevEUR = `EUR: ${previousBalance.EUR > 0 ? '+' : ''}${formatNumber(previousBalance.EUR)} EUR`;
-      doc.text(prevTL, 20, yPos + 10);
-      doc.text(prevUSD, 80, yPos + 10);
-      doc.text(prevEUR, 140, yPos + 10);
-      yPos += 25;
+      doc.setTextColor(100, 100, 100);
+      const dateRange = `${startDate ? new Date(startDate).toLocaleDateString('tr-TR') : 'Baslangic'} - ${endDate ? new Date(endDate).toLocaleDateString('tr-TR') : 'Bitis'}`;
+      doc.text(dateRange, 192, yPos + 4, { align: 'right' });
     }
-    
-    // Bakiye Bilgileri Kutusu
-    doc.setTextColor(0, 0, 0);
-    doc.setFillColor(255, 248, 220);
-    doc.roundedRect(14, yPos - 5, 182, 25, 2, 2, 'F');
-    
-    doc.setFontSize(12);
+
+    yPos += 12;
+
+    // Bakiye Bilgileri Container (yan yana) - hemen altına
+    yPos += 5;
+    doc.setFillColor(245, 247, 250);
+    doc.roundedRect(14, yPos - 3, 182, 14, 2, 2, 'F');
+
+    // Sol taraf: Önceki Bakiye (eğer tarih filtresi varsa)
+    if (startDate) {
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(70, 130, 180);
+      doc.text('Önceki Dönem Bakiyesi:', 18, yPos + 3);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(100, 100, 100);
+      doc.setFontSize(7);
+      const prevText = `TL ${formatNumber(previousBalance.TRY)} | USD ${formatNumber(previousBalance.USD)} | EUR ${formatNumber(previousBalance.EUR)}`;
+      doc.text(prevText, 18, yPos + 8);
+
+      // Ayırıcı çizgi
+      doc.setDrawColor(200, 200, 200);
+      doc.line(105, yPos, 105, yPos + 11);
+    }
+
+    // Sağ taraf: Güncel Bakiye
+    const xStart = startDate ? 110 : 18;
+    doc.setFontSize(8);
     doc.setFont('helvetica', 'bold');
-    doc.text('Guncel Bakiye Durumu', 20, yPos);
-    
-    doc.setFontSize(10);
+    doc.setTextColor(255, 140, 0);
+    doc.text('Güncel Bakiye:', xStart, yPos + 3);
+
     doc.setFont('helvetica', 'normal');
-    const tlBalance = `TL: ${(stats.balanceTRY || 0) > 0 ? '+' : ''}${formatNumber(stats.balanceTRY || 0)} TL`;
-    const usdBalance = `USD: ${(stats.balanceUSD || 0) > 0 ? '+' : ''}${formatNumber(stats.balanceUSD || 0)} USD`;
-    const eurBalance = `EUR: ${(stats.balanceEUR || 0) > 0 ? '+' : ''}${formatNumber(stats.balanceEUR || 0)} EUR`;
-    
-    doc.text(tlBalance, 20, yPos + 10);
-    doc.text(usdBalance, 80, yPos + 10);
-    doc.text(eurBalance, 140, yPos + 10);
-    
-    yPos += 30;
-    
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(7);
+    const balanceText = `TL ${formatNumber(stats.balanceTRY || 0)} | USD ${formatNumber(stats.balanceUSD || 0)} | EUR ${formatNumber(stats.balanceEUR || 0)}`;
+    doc.text(balanceText, xStart, yPos + 8);
+
+    yPos += 18;
+
     // Satış Geçmişi Tablosu
     doc.setTextColor(0, 0, 0);
     doc.setFontSize(12);
     doc.setFont('helvetica', 'bold');
     doc.text('Satis Gecmisi', 20, yPos);
-    
+
     const salesTableData = filteredSales.slice(0, 15).map(sale => {
       const itemsText = sale.items.map(item => {
         const currencySymbol = sale.currency === 'TRY' ? 'TL' : sale.currency === 'USD' ? 'USD' : 'EUR';
         return `${toAscii(item.productName)} (${formatNumber(item.quantity)} desi x ${formatNumber(item.unitPrice)} ${currencySymbol}/desi)`;
       }).join(', ');
-      
+
       const currencySymbol = sale.currency === 'TRY' ? 'TL' : sale.currency === 'USD' ? 'USD' : 'EUR';
       return [
         new Date(sale.date).toLocaleDateString('tr-TR'),
@@ -590,20 +592,20 @@ const CustomerDetail: React.FC = () => {
         `${formatNumber(sale.totalAmount)} ${currencySymbol}`
       ];
     });
-    
+
     autoTable(doc, {
       startY: yPos + 3,
       head: [['Tarih', 'Urunler', 'Tutar']],
       body: salesTableData.length > 0 ? salesTableData : [['Kayit bulunamadi', '', '']],
       theme: 'striped',
-      headStyles: { 
+      headStyles: {
         fillColor: [52, 73, 94],
         textColor: [255, 255, 255],
         fontSize: 10,
         fontStyle: 'bold',
         halign: 'center'
       },
-      styles: { 
+      styles: {
         fontSize: 9,
         cellPadding: 3,
         overflow: 'linebreak',
@@ -618,20 +620,20 @@ const CustomerDetail: React.FC = () => {
         fillColor: [245, 245, 245]
       }
     });
-    
+
     // Ödeme Geçmişi Tablosu
     const finalY = (doc as any).lastAutoTable.finalY || yPos + 20;
-    
+
     doc.setFontSize(12);
     doc.setFont('helvetica', 'bold');
     doc.text('Odeme Gecmisi', 20, finalY + 10);
-    
+
     const paymentsTableData = filteredPayments.slice(0, 10).map(payment => {
-      const paymentTypeText = payment.paymentType === 'cash' ? 'Nakit' : 
-                              payment.paymentType === 'bank_transfer' ? 'Havale' : 
-                              payment.paymentType === 'check' ? 'Cek' : 'Diger';
+      const paymentTypeText = payment.paymentType === 'cash' ? 'Nakit' :
+        payment.paymentType === 'bank_transfer' ? 'Havale' :
+          payment.paymentType === 'check' ? 'Cek' : 'Diger';
       const currencySymbol = payment.currency === 'TRY' ? 'TL' : payment.currency === 'USD' ? 'USD' : 'EUR';
-      
+
       return [
         new Date(payment.paymentDate).toLocaleDateString('tr-TR'),
         paymentTypeText,
@@ -639,20 +641,20 @@ const CustomerDetail: React.FC = () => {
         toAscii(payment.notes || '-')
       ];
     });
-    
+
     autoTable(doc, {
       startY: finalY + 13,
       head: [['Tarih', 'Odeme Tipi', 'Tutar', 'Notlar']],
       body: paymentsTableData.length > 0 ? paymentsTableData : [['Kayit bulunamadi', '', '', '']],
       theme: 'striped',
-      headStyles: { 
+      headStyles: {
         fillColor: [39, 174, 96],
         textColor: [255, 255, 255],
         fontSize: 10,
         fontStyle: 'bold',
         halign: 'center'
       },
-      styles: { 
+      styles: {
         fontSize: 9,
         cellPadding: 3,
         font: 'helvetica'
@@ -667,7 +669,7 @@ const CustomerDetail: React.FC = () => {
         fillColor: [245, 245, 245]
       }
     });
-    
+
     // Alt bilgi
     const pageCount = (doc as any).internal.getNumberOfPages();
     for (let i = 1; i <= pageCount; i++) {
@@ -677,11 +679,11 @@ const CustomerDetail: React.FC = () => {
       doc.text(`Sayfa ${i} / ${pageCount}`, 105, 287, { align: 'center' });
       doc.text(`Olusturulma: ${new Date().toLocaleString('tr-TR')}`, 20, 287);
     }
-    
+
     // PDF'i indir
     const fileName = `${customer.name.replace(/\s+/g, '_')}_Hesap_Ozeti_${new Date().toLocaleDateString('tr-TR').replace(/\./g, '_')}.pdf`;
     doc.save(fileName);
-    
+
     setSnackbar({ open: true, message: 'PDF basariyla indirildi', severity: 'success' });
   };
 
@@ -900,9 +902,9 @@ const CustomerDetail: React.FC = () => {
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                   Güncel Bakiye
                 </Typography>
-                <Typography 
-                  variant="body1" 
-                  sx={{ 
+                <Typography
+                  variant="body1"
+                  sx={{
                     fontWeight: 600,
                     display: 'block',
                     color: (stats.balanceTRY || 0) > 0 ? 'error.main' : (stats.balanceTRY || 0) < 0 ? 'success.main' : 'text.primary'
@@ -910,9 +912,9 @@ const CustomerDetail: React.FC = () => {
                 >
                   {(stats.balanceTRY || 0) > 0 ? '+' : ''}₺{(stats.balanceTRY || 0).toLocaleString('tr-TR')}
                 </Typography>
-                <Typography 
-                  variant="body1" 
-                  sx={{ 
+                <Typography
+                  variant="body1"
+                  sx={{
                     fontWeight: 600,
                     display: 'block',
                     color: (stats.balanceUSD || 0) > 0 ? 'error.main' : (stats.balanceUSD || 0) < 0 ? 'success.main' : 'text.primary'
@@ -920,9 +922,9 @@ const CustomerDetail: React.FC = () => {
                 >
                   {(stats.balanceUSD || 0) > 0 ? '+' : ''}${(stats.balanceUSD || 0).toLocaleString('tr-TR')}
                 </Typography>
-                <Typography 
-                  variant="body1" 
-                  sx={{ 
+                <Typography
+                  variant="body1"
+                  sx={{
                     fontWeight: 600,
                     display: 'block',
                     color: (stats.balanceEUR || 0) > 0 ? 'error.main' : (stats.balanceEUR || 0) < 0 ? 'success.main' : 'text.primary'
@@ -1034,7 +1036,7 @@ const CustomerDetail: React.FC = () => {
                         </TableRow>
                         <TableRow sx={{ bgcolor: 'action.hover' }}>
                           <TableCell colSpan={2} sx={{ fontWeight: 600 }}>
-                          Önceki Bakiye
+                            Önceki Bakiye
                           </TableCell>
                           <TableCell align="right" sx={{ fontWeight: 700 }}>
                             <Box>

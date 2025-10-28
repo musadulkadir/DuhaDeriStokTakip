@@ -39,7 +39,7 @@ async function createTables() {
       // Kolonlar zaten varsa hata vermez
     }
 
-    // Products table
+    // Products table (sadece satış için ürünler)
     await query(`
       CREATE TABLE IF NOT EXISTS products (
         id SERIAL PRIMARY KEY,
@@ -49,7 +49,24 @@ async function createTables() {
         stock_quantity INTEGER DEFAULT 0,
         unit VARCHAR(20) DEFAULT 'adet',
         description TEXT,
-        type VARCHAR(20) DEFAULT 'product' CHECK (type IN ('product', 'material')),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Materials table (sadece alım için malzemeler)
+    await query(`
+      CREATE TABLE IF NOT EXISTS materials (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        category VARCHAR(100) NOT NULL,
+        color VARCHAR(50),
+        color_shade VARCHAR(100),
+        brand VARCHAR(100),
+        code VARCHAR(100),
+        stock_quantity INTEGER DEFAULT 0,
+        unit VARCHAR(20) DEFAULT 'kg',
+        description TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
@@ -251,6 +268,135 @@ async function createTables() {
       await query('INSERT INTO colors (name, hex_code) VALUES ($1, $2) ON CONFLICT (name) DO NOTHING', [color.name, color.hex]);
     }
 
+    // Migration: products tablosundaki type='material' kayıtları materials'a taşı
+    try {
+      // Önce type kolonu var mı kontrol et
+      const typeColumnExists = await query(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name='products' AND column_name='type'
+      `);
+
+      if (typeColumnExists.rows.length > 0) {
+        // type='material' olan kayıtları materials tablosuna kopyala
+        await query(`
+          INSERT INTO materials (id, name, category, color, stock_quantity, unit, description, created_at, updated_at)
+          SELECT id, name, category, color, stock_quantity, unit, description, created_at, updated_at
+          FROM products
+          WHERE type = 'material'
+          ON CONFLICT (id) DO NOTHING
+        `);
+
+        // type='material' olan kayıtları products'tan sil
+        await query(`DELETE FROM products WHERE type = 'material'`);
+
+        // type kolonunu kaldır
+        await query(`ALTER TABLE products DROP COLUMN IF EXISTS type`);
+
+        console.log('Migration completed: Materials moved to separate table');
+      }
+    } catch (migrationError) {
+      console.log('Migration skipped or already completed:', migrationError.message);
+    }
+
+    // Migration 2: Remove foreign key constraint from purchase_items
+    try {
+      // Check if constraint exists
+      const constraintCheck = await query(`
+        SELECT constraint_name 
+        FROM information_schema.table_constraints 
+        WHERE table_name = 'purchase_items' 
+        AND constraint_name = 'purchase_items_product_id_fkey'
+      `);
+
+      if (constraintCheck.rows.length > 0) {
+        // Drop the foreign key constraint
+        await query(`
+          ALTER TABLE purchase_items 
+          DROP CONSTRAINT IF EXISTS purchase_items_product_id_fkey
+        `);
+
+        console.log('Migration completed: Removed purchase_items foreign key constraint');
+      }
+    } catch (migrationError) {
+      console.log('Migration 2 skipped or already completed:', migrationError.message);
+    }
+
+    // Migration 3: Remove foreign key constraint from stock_movements
+    try {
+      // Check if constraint exists
+      const constraintCheck = await query(`
+        SELECT constraint_name 
+        FROM information_schema.table_constraints 
+        WHERE table_name = 'stock_movements' 
+        AND constraint_name = 'stock_movements_product_id_fkey'
+      `);
+
+      if (constraintCheck.rows.length > 0) {
+        // Drop the foreign key constraint
+        await query(`
+          ALTER TABLE stock_movements 
+          DROP CONSTRAINT IF EXISTS stock_movements_product_id_fkey
+        `);
+
+        console.log('Migration completed: Removed stock_movements foreign key constraint');
+      }
+    } catch (migrationError) {
+      console.log('Migration 3 skipped or already completed:', migrationError.message);
+    }
+
+    // Migration 4: Recalculate supplier balances from purchases
+    try {
+      // Check if migration is needed
+      const needsMigration = await query(`
+        SELECT COUNT(*) as count 
+        FROM customers 
+        WHERE type = 'supplier' 
+        AND balance = 0 
+        AND balance_usd = 0 
+        AND balance_eur = 0
+        AND id IN (SELECT DISTINCT supplier_id FROM purchases)
+      `);
+
+      if (needsMigration.rows[0].count > 0) {
+        console.log('Recalculating supplier balances from purchases...');
+
+        // Get all suppliers
+        const suppliers = await query(`SELECT id FROM customers WHERE type = 'supplier'`);
+
+        for (const supplier of suppliers.rows) {
+          // Calculate balances from purchases
+          const balances = await query(`
+            SELECT 
+              COALESCE(SUM(CASE WHEN currency = 'TRY' OR currency IS NULL THEN total_amount ELSE 0 END), 0) as balance_try,
+              COALESCE(SUM(CASE WHEN currency = 'USD' THEN total_amount ELSE 0 END), 0) as balance_usd,
+              COALESCE(SUM(CASE WHEN currency = 'EUR' THEN total_amount ELSE 0 END), 0) as balance_eur
+            FROM purchases
+            WHERE supplier_id = $1
+          `, [supplier.id]);
+
+          const balance = balances.rows[0];
+
+          // Update supplier balance
+          await query(`
+            UPDATE customers 
+            SET 
+              balance = $1,
+              balance_usd = $2,
+              balance_eur = $3,
+              updated_at = CURRENT_TIMESTAMP
+            WHERE id = $4
+          `, [balance.balance_try, balance.balance_usd, balance.balance_eur, supplier.id]);
+
+          console.log(`Updated supplier ${supplier.id} balances: TRY=${balance.balance_try}, USD=${balance.balance_usd}, EUR=${balance.balance_eur}`);
+        }
+
+        console.log('Migration completed: Supplier balances recalculated');
+      }
+    } catch (migrationError) {
+      console.log('Migration 4 skipped or already completed:', migrationError.message);
+    }
+
     console.log('Database tables created successfully');
   } catch (error) {
     console.error('Table creation error:', error);
@@ -340,20 +486,53 @@ ipcMain.handle('customers:create', async (_, customer) => {
 
 ipcMain.handle('customers:update', async (_, id, customer) => {
   try {
+    // Dinamik olarak güncellenecek alanları belirle
+    const updates = [];
+    const values = [];
+    let paramIndex = 1;
+
+    if (customer.name !== undefined) {
+      updates.push(`name = $${paramIndex++}`);
+      values.push(customer.name);
+    }
+    if (customer.email !== undefined) {
+      updates.push(`email = $${paramIndex++}`);
+      values.push(customer.email || null);
+    }
+    if (customer.phone !== undefined) {
+      updates.push(`phone = $${paramIndex++}`);
+      values.push(customer.phone || null);
+    }
+    if (customer.address !== undefined) {
+      updates.push(`address = $${paramIndex++}`);
+      values.push(customer.address || null);
+    }
+    if (customer.balance !== undefined) {
+      updates.push(`balance = $${paramIndex++}`);
+      values.push(customer.balance || 0);
+    }
+    if (customer.balance_usd !== undefined) {
+      updates.push(`balance_usd = $${paramIndex++}`);
+      values.push(customer.balance_usd || 0);
+    }
+    if (customer.balance_eur !== undefined) {
+      updates.push(`balance_eur = $${paramIndex++}`);
+      values.push(customer.balance_eur || 0);
+    }
+    if (customer.type !== undefined) {
+      updates.push(`type = $${paramIndex++}`);
+      values.push(customer.type || 'customer');
+    }
+
+    updates.push(`updated_at = CURRENT_TIMESTAMP`);
+    values.push(id);
+
     const result = await queryOne(`
       UPDATE customers 
-      SET name = $1, email = $2, phone = $3, address = $4, balance = $5, type = $6, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $7
+      SET ${updates.join(', ')}
+      WHERE id = $${paramIndex}
       RETURNING *
-    `, [
-      customer.name,
-      customer.email || null,
-      customer.phone || null,
-      customer.address || null,
-      customer.balance || 0,
-      customer.type || 'customer',
-      id
-    ]);
+    `, values);
 
     if (!result) {
       return { success: false, error: 'Müşteri bulunamadı' };
@@ -367,14 +546,45 @@ ipcMain.handle('customers:update', async (_, id, customer) => {
 
 ipcMain.handle('customers:delete', async (_, id) => {
   try {
+    // Start transaction
+    await query('BEGIN');
+
+    // Müşterinin satışlarını kontrol et
+    const sales = await queryAll('SELECT id FROM sales WHERE customer_id = $1', [id]);
+
+    // Her satış için satış kalemlerini ve stok hareketlerini sil
+    for (const sale of sales) {
+      // Satış kalemlerini sil
+      await query('DELETE FROM sale_items WHERE sale_id = $1', [sale.id]);
+
+      // Stok hareketlerini sil
+      await query('DELETE FROM stock_movements WHERE reference_type = $1 AND customer_id = $2', ['sale', id]);
+    }
+
+    // Satışları sil
+    await query('DELETE FROM sales WHERE customer_id = $1', [id]);
+
+    // Ödemeleri sil
+    await query('DELETE FROM customer_payments WHERE customer_id = $1', [id]);
+
+    // Kasa işlemlerini sil
+    await query('DELETE FROM cash_transactions WHERE customer_id = $1', [id]);
+
+    // Müşteriyi sil
     const result = await query('DELETE FROM customers WHERE id = $1', [id]);
 
     if (result.rowCount === 0) {
+      await query('ROLLBACK');
       return { success: false, error: 'Müşteri bulunamadı' };
     }
 
+    // Commit transaction
+    await query('COMMIT');
+
     return { success: true };
   } catch (error) {
+    // Rollback transaction
+    await query('ROLLBACK');
     return { success: false, error: error.message };
   }
 });
@@ -466,8 +676,8 @@ ipcMain.handle('products:get-all', async (_, page = 1, limit = 50) => {
 ipcMain.handle('products:create', async (_, product) => {
   try {
     const result = await queryOne(`
-      INSERT INTO products (name, category, color, stock_quantity, unit, description, type) 
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      INSERT INTO products (name, category, color, stock_quantity, unit, description) 
+      VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING *
     `, [
       product.name,
@@ -475,8 +685,7 @@ ipcMain.handle('products:create', async (_, product) => {
       product.color || null,
       product.stock_quantity || 0,
       product.unit || 'adet',
-      product.description || null,
-      product.type || 'product'
+      product.description || null
     ]);
 
     return { success: true, data: result };
@@ -713,8 +922,8 @@ ipcMain.handle('products:update', async (_, id, product) => {
   try {
     const result = await queryOne(`
       UPDATE products 
-      SET name = $1, category = $2, color = $3, stock_quantity = $4, unit = $5, description = $6, type = $7, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $8
+      SET name = $1, category = $2, color = $3, stock_quantity = $4, unit = $5, description = $6, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $7
       RETURNING *
     `, [
       product.name,
@@ -723,7 +932,6 @@ ipcMain.handle('products:update', async (_, id, product) => {
       product.stock_quantity || 0,
       product.unit || 'adet',
       product.description || null,
-      product.type || 'product',
       id
     ]);
 
@@ -739,6 +947,13 @@ ipcMain.handle('products:update', async (_, id, product) => {
 
 ipcMain.handle('products:delete', async (_, id) => {
   try {
+    // Önce sale_items'ları sil
+    await query('DELETE FROM sale_items WHERE product_id = $1', [id]);
+
+    // Sonra stock_movements'ları sil
+    await query('DELETE FROM stock_movements WHERE product_id = $1', [id]);
+
+    // En son ürünü sil
     const result = await query('DELETE FROM products WHERE id = $1', [id]);
 
     if (result.rowCount === 0) {
@@ -765,6 +980,90 @@ ipcMain.handle('products:update-stock', async (_, id, newStock) => {
     }
 
     return { success: true, data: result };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// Materials handlers
+ipcMain.handle('materials:get-all', async () => {
+  try {
+    const result = await query('SELECT * FROM materials ORDER BY name');
+    return { success: true, data: result.rows };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('materials:create', async (_, material) => {
+  try {
+    const result = await queryOne(`
+      INSERT INTO materials (name, category, color_shade, brand, code, stock_quantity, unit, description)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      RETURNING *
+    `, [
+      material.name,
+      material.category,
+      material.color_shade || null,
+      material.brand || null,
+      material.code || null,
+      material.stock_quantity || 0,
+      material.unit || 'kg',
+      material.description || null
+    ]);
+
+    return { success: true, data: result };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('materials:update', async (_, id, material) => {
+  try {
+    const result = await queryOne(`
+      UPDATE materials 
+      SET name = $1, category = $2, color_shade = $3, brand = $4, code = $5, 
+          stock_quantity = $6, unit = $7, description = $8, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $9
+      RETURNING *
+    `, [
+      material.name,
+      material.category,
+      material.color_shade || null,
+      material.brand || null,
+      material.code || null,
+      material.stock_quantity || 0,
+      material.unit || 'kg',
+      material.description || null,
+      id
+    ]);
+
+    if (!result) {
+      return { success: false, error: 'Malzeme bulunamadı' };
+    }
+
+    return { success: true, data: result };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('materials:delete', async (_, id) => {
+  try {
+    // Önce purchase_items'ları sil
+    await query('DELETE FROM purchase_items WHERE product_id = $1', [id]);
+
+    // Sonra stock_movements'ları sil
+    await query('DELETE FROM stock_movements WHERE product_id = $1', [id]);
+
+    // En son malzemeyi sil
+    const result = await query('DELETE FROM materials WHERE id = $1', [id]);
+
+    if (result.rowCount === 0) {
+      return { success: false, error: 'Malzeme bulunamadı' };
+    }
+
+    return { success: true };
   } catch (error) {
     return { success: false, error: error.message };
   }
@@ -1142,6 +1441,70 @@ ipcMain.handle('sales:create', async (_, sale) => {
     await query('COMMIT');
 
     return { success: true, data: saleResult };
+  } catch (error) {
+    // Rollback transaction
+    await query('ROLLBACK');
+    return { success: false, error: error.message };
+  }
+});
+
+// Sales delete handler
+ipcMain.handle('sales:delete', async (_, saleId) => {
+  try {
+    // Start transaction
+    await query('BEGIN');
+
+    // Önce satış bilgilerini al
+    const sale = await queryOne('SELECT * FROM sales WHERE id = $1', [saleId]);
+    if (!sale) {
+      await query('ROLLBACK');
+      return { success: false, error: 'Satış bulunamadı' };
+    }
+
+    // Satış kalemlerini al
+    const saleItems = await queryAll('SELECT * FROM sale_items WHERE sale_id = $1', [saleId]);
+
+    // Her ürün için stok geri ekle
+    for (const item of saleItems) {
+      await query(`
+        UPDATE products 
+        SET stock_quantity = stock_quantity + $1, updated_at = CURRENT_TIMESTAMP 
+        WHERE id = $2
+      `, [item.quantity_pieces, item.product_id]);
+    }
+
+    // Satış kalemlerini sil
+    await query('DELETE FROM sale_items WHERE sale_id = $1', [saleId]);
+
+    // Satışı sil
+    await query('DELETE FROM sales WHERE id = $1', [saleId]);
+
+    // Müşteri bakiyesini geri azalt (satış iptal edildiği için) - Para birimine göre
+    const currency = sale.currency || 'TRY';
+    if (currency === 'USD') {
+      await query(`
+        UPDATE customers 
+        SET balance_usd = balance_usd - $1, updated_at = CURRENT_TIMESTAMP 
+        WHERE id = $2
+      `, [sale.total_amount, sale.customer_id]);
+    } else if (currency === 'EUR') {
+      await query(`
+        UPDATE customers 
+        SET balance_eur = balance_eur - $1, updated_at = CURRENT_TIMESTAMP 
+        WHERE id = $2
+      `, [sale.total_amount, sale.customer_id]);
+    } else {
+      await query(`
+        UPDATE customers 
+        SET balance = balance - $1, updated_at = CURRENT_TIMESTAMP 
+        WHERE id = $2
+      `, [sale.total_amount, sale.customer_id]);
+    }
+
+    // Commit transaction
+    await query('COMMIT');
+
+    return { success: true };
   } catch (error) {
     // Rollback transaction
     await query('ROLLBACK');
@@ -1569,25 +1932,97 @@ ipcMain.handle('purchases:create', async (_, purchase) => {
     // Create purchase items
     if (purchase.items && purchase.items.length > 0) {
       for (const item of purchase.items) {
+        console.log('Processing purchase item:', {
+          product_id: item.product_id,
+          brand_from_item: item.brand,
+          brand_type: typeof item.brand,
+          brand_length: item.brand?.length
+        });
+
+        // Get brand from item or materials table
+        // Check for both null/undefined and empty string
+        let brand = (item.brand && item.brand.trim()) ? item.brand.trim() : null;
+        
+        // If brand not provided in item, get from materials table
+        if (!brand) {
+          const materialInfo = await queryOne(`SELECT brand FROM materials WHERE id = $1`, [item.product_id]);
+          brand = materialInfo?.brand || null;
+          console.log('Brand from materials table:', brand);
+        }
+
+        console.log('Final brand value to insert:', brand);
+
         await query(`
           INSERT INTO purchase_items (
-            purchase_id, product_id, quantity, unit_price, total_price
+            purchase_id, product_id, quantity, unit_price, total_price, brand
           ) 
-          VALUES ($1, $2, $3, $4, $5)
+          VALUES ($1, $2, $3, $4, $5, $6)
         `, [
           purchaseResult.id,
           item.product_id,
           item.quantity,
           item.unit_price,
-          item.total_price
+          item.total_price,
+          brand
         ]);
 
-        // Update product stock
+        // Check if it's a material or product and update accordingly
+        // First try materials table
+        const materialCheck = await query(`SELECT id, name, stock_quantity FROM materials WHERE id = $1`, [item.product_id]);
+
+        let previousStock = 0;
+        let newStock = 0;
+        let productName = '';
+
+        if (materialCheck.rows.length > 0) {
+          // Update material stock
+          previousStock = materialCheck.rows[0].stock_quantity || 0;
+          newStock = previousStock + item.quantity;
+          productName = materialCheck.rows[0].name || 'Bilinmeyen Malzeme';
+
+          await query(`
+            UPDATE materials 
+            SET stock_quantity = stock_quantity + $1, updated_at = CURRENT_TIMESTAMP 
+            WHERE id = $2
+          `, [item.quantity, item.product_id]);
+        } else {
+          // Update product stock
+          const productCheck = await query(`SELECT name, stock_quantity FROM products WHERE id = $1`, [item.product_id]);
+          previousStock = productCheck.rows[0]?.stock_quantity || 0;
+          newStock = previousStock + item.quantity;
+          productName = productCheck.rows[0]?.name || 'Bilinmeyen Ürün';
+
+          await query(`
+            UPDATE products 
+            SET stock_quantity = stock_quantity + $1, updated_at = CURRENT_TIMESTAMP 
+            WHERE id = $2
+          `, [item.quantity, item.product_id]);
+        }
+
+        // Get supplier name
+        const supplier = await queryOne(`SELECT name FROM customers WHERE id = $1`, [purchase.supplier_id]);
+        const supplierName = supplier?.name || 'Bilinmeyen Tedarikçi';
+
+        // Create stock movement record
         await query(`
-          UPDATE products 
-          SET stock_quantity = stock_quantity + $1, updated_at = CURRENT_TIMESTAMP 
-          WHERE id = $2
-        `, [item.quantity, item.product_id]);
+          INSERT INTO stock_movements (
+            product_id, movement_type, quantity, previous_stock, new_stock, 
+            reference_type, reference_id, unit_price, total_amount, notes, "user"
+          ) 
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        `, [
+          item.product_id,
+          'in',
+          item.quantity,
+          previousStock,
+          newStock,
+          'purchase',
+          purchaseResult.id,
+          item.unit_price,
+          item.total_price,
+          `Alım - ${productName} - Tedarikçi: ${supplierName}`,
+          'Sistem'
+        ]);
       }
     }
 
@@ -1604,14 +2039,51 @@ ipcMain.handle('purchases:create', async (_, purchase) => {
 
 ipcMain.handle('purchases:delete', async (_, id) => {
   try {
-    const result = await query('DELETE FROM purchases WHERE id = $1', [id]);
+    // Start transaction
+    await query('BEGIN');
 
-    if (result.rowCount === 0) {
+    // Önce alım bilgilerini al (bakiye güncellemesi için)
+    const purchase = await queryOne('SELECT supplier_id, total_amount, currency FROM purchases WHERE id = $1', [id]);
+
+    if (!purchase) {
+      await query('ROLLBACK');
       return { success: false, error: 'Alım bulunamadı' };
     }
 
+    // Alımı sil (CASCADE ile purchase_items de silinir)
+    await query('DELETE FROM purchases WHERE id = $1', [id]);
+
+    // Tedarikçi bakiyesini güncelle (alım tutarını çıkar)
+    const currency = purchase.currency || 'TRY';
+    const amount = parseFloat(purchase.total_amount) || 0;
+
+    if (currency === 'USD') {
+      await query(`
+        UPDATE customers 
+        SET balance_usd = balance_usd - $1, updated_at = CURRENT_TIMESTAMP 
+        WHERE id = $2
+      `, [amount, purchase.supplier_id]);
+    } else if (currency === 'EUR') {
+      await query(`
+        UPDATE customers 
+        SET balance_eur = balance_eur - $1, updated_at = CURRENT_TIMESTAMP 
+        WHERE id = $2
+      `, [amount, purchase.supplier_id]);
+    } else {
+      await query(`
+        UPDATE customers 
+        SET balance = balance - $1, updated_at = CURRENT_TIMESTAMP 
+        WHERE id = $2
+      `, [amount, purchase.supplier_id]);
+    }
+
+    // Commit transaction
+    await query('COMMIT');
+
     return { success: true };
   } catch (error) {
+    // Rollback transaction
+    await query('ROLLBACK');
     return { success: false, error: error.message };
   }
 });
@@ -1627,12 +2099,16 @@ ipcMain.handle('purchases:getById', async (event, purchaseId) => {
         pi.quantity,
         pi.unit_price,
         pi.total_price,
-        pr.category,
-        pr.color
+        pi.brand as purchase_brand,
+        m.name as material_name,
+        m.category,
+        m.color_shade,
+        m.brand as material_brand,
+        m.code
       FROM purchases p
       LEFT JOIN customers c ON p.supplier_id = c.id
       LEFT JOIN purchase_items pi ON p.id = pi.purchase_id
-      LEFT JOIN products pr ON pi.product_id = pr.id
+      LEFT JOIN materials m ON pi.product_id = m.id
       WHERE p.id = $1
     `;
 
@@ -1655,13 +2131,15 @@ ipcMain.handle('purchases:getById', async (event, purchaseId) => {
       currency: firstRow?.currency || 'TRY',
       total: firstRow?.total_amount || 0,
       date: firstRow?.purchase_date || null,
+      notes: firstRow?.notes || '',
 
       items: purchaseDetailsRows.map(row => ({
         productId: row.product_id,
-        productName: `${row.category || 'Bilinmiyor'} - ${row.color || 'Bilinmiyor'}`,
+        productName: row.material_name || `${row.category || 'Bilinmiyor'}${row.color_shade ? ' - ' + row.color_shade : ''}${row.code ? ' - ' + row.code : ''}${row.material_brand ? ' (' + row.material_brand + ')' : ''}`,
         quantity: row.quantity,
         unitPrice: row.unit_price,
-        total: row.total_price
+        total: row.total_price,
+        brand: row.purchase_brand || row.material_brand || null
       })).filter(item => item.productId)
     };
 

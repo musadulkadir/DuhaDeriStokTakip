@@ -14,20 +14,28 @@ import {
   ListItemText,
   CircularProgress,
   Box,
+  Divider,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
 } from '@mui/material';
-import { dbAPI } from '../services/api'; // api dosyanızın yolunu kontrol edin
+import { dbAPI } from '../services/api';
 
-// Alım kalemleri için bir interface (SaleItem'a benzer)
+// Alım kalemleri için interface
 interface PurchaseItem {
   productId: number;
   productName: string;
-  quantityPieces: number; // Adet
-  quantityDesi: number; // Desi
-  unitPricePerDesi: number; // Desi başı maliyet
-  total: number; // Toplam maliyet
+  quantity: number; // kg
+  unitPrice: number; // Birim fiyat
+  total: number; // Toplam tutar
+  brand?: string; // Firma
 }
 
-// Alım ana objesi için interface (Sale'e benzer)
+// Alım ana objesi için interface
 interface Purchase {
   id: number;
   supplierId: number;
@@ -36,6 +44,7 @@ interface Purchase {
   items: PurchaseItem[];
   total: number;
   date: string;
+  notes?: string;
 }
 
 interface Props {
@@ -73,81 +82,132 @@ const PurchaseDetailModal: React.FC<Props> = ({ open, onClose, purchaseId }) => 
   }, [open, purchaseId]); // 'open' ve 'purchaseId' değiştiğinde tetiklenir
 
   const handleClose = () => {
-    setPurchaseData(null); // Modalı kapatırken veriyi temizle
+    setPurchaseData(null);
     onClose();
   };
-  
-  const currencySymbol = purchaseData?.currency === 'USD' ? '$' : purchaseData?.currency === 'TRY' ? '₺' : '€';
+
+  const currencySymbol = purchaseData?.currency === 'USD' ? '$' : purchaseData?.currency === 'EUR' ? '€' : '₺';
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
-      <DialogTitle>
-        Alım Detayı - #{purchaseId}
+    <Dialog open={open} onClose={handleClose} maxWidth="lg" fullWidth>
+      <DialogTitle sx={{ bgcolor: 'primary.main', color: 'white' }}>
+        Alım Detayı #{purchaseId}
       </DialogTitle>
-      <DialogContent>
+      <DialogContent sx={{ mt: 2 }}>
         {loading && (
           <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
             <CircularProgress />
           </Box>
         )}
-        
+
         {purchaseData && !loading && (
-          <Grid container spacing={3}>
+          <Box>
             {/* Alım Bilgileri */}
-            <Grid item xs={12} md={6}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" sx={{ mb: 2 }}>
-                    Alım Bilgileri
-                  </Typography>
-                  <List dense>
-                    <ListItem>
-                      <ListItemText
-                        primary="Tedarikçi"
-                        secondary={purchaseData.supplierName}
-                      />
-                    </ListItem>
-                     <ListItem>
-                        <ListItemText
-                          primary="Tarih"
-                          secondary={new Date(purchaseData.date).toLocaleDateString('tr-TR')}
-                        />
-                      </ListItem>
-                    <ListItem>
-                      <ListItemText
-                        primary="Toplam Tutar"
-                        secondary={`${currencySymbol}${purchaseData.total.toLocaleString('tr-TR')}`}
-                      />
-                    </ListItem>
-                  </List>
-                </CardContent>
-              </Card>
-            </Grid>
+            <Card sx={{ mb: 3 }}>
+              <CardContent>
+                <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+                  Alım Bilgileri
+                </Typography>
+                <Divider sx={{ mb: 2 }} />
+                <Grid container spacing={2}>
+                  <Grid item xs={12} md={4}>
+                    <Typography variant="body2" color="text.secondary">
+                      Tedarikçi
+                    </Typography>
+                    <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                      {purchaseData.supplierName}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <Typography variant="body2" color="text.secondary">
+                      Tarih
+                    </Typography>
+                    <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                      {new Date(purchaseData.date).toLocaleDateString('tr-TR', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <Typography variant="body2" color="text.secondary">
+                      Toplam Tutar
+                    </Typography>
+                    <Typography variant="h6" sx={{ fontWeight: 700, color: 'primary.main' }}>
+                      {currencySymbol}{purchaseData.total.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </Typography>
+                  </Grid>
+                  {purchaseData.notes && (
+                    <Grid item xs={12}>
+                      <Typography variant="body2" color="text.secondary">
+                        Notlar
+                      </Typography>
+                      <Typography variant="body1">
+                        {purchaseData.notes}
+                      </Typography>
+                    </Grid>
+                  )}
+                </Grid>
+              </CardContent>
+            </Card>
+
             {/* Alım Kalemleri */}
-            <Grid item xs={12} md={6}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" sx={{ mb: 2 }}>
-                    Alım Kalemleri
-                  </Typography>
-                  <List dense>
-                    {purchaseData.items.map((item, index) => (
-                      <ListItem key={index}>
-                        <ListItemText
-                          primary={item.productName}
-                          secondary={`${(item.quantityPieces || 0).toLocaleString('tr-TR')} adet (${(item.quantityDesi || 0).toLocaleString('tr-TR')} desi) × ${currencySymbol}${(item.unitPricePerDesi || 0).toLocaleString('tr-TR')}/desi = ${currencySymbol}${(item.total || 0).toLocaleString('tr-TR')}`}
-                        />
-                      </ListItem>
-                    ))}
-                  </List>
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
+            <Card>
+              <CardContent>
+                <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+                  Alım Kalemleri ({purchaseData.items.length} kalem)
+                </Typography>
+                <Divider sx={{ mb: 2 }} />
+                <TableContainer component={Paper} variant="outlined">
+                  <Table>
+                    <TableHead>
+                      <TableRow sx={{ bgcolor: 'grey.100' }}>
+                        <TableCell sx={{ fontWeight: 600 }}>Malzeme</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>Firma</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 600 }}>Miktar (kg)</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 600 }}>Birim Fiyat</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 600 }}>Toplam</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {purchaseData.items.map((item, index) => (
+                        <TableRow key={index} hover>
+                          <TableCell>{item.productName}</TableCell>
+                          <TableCell>{item.brand || '-'}</TableCell>
+                          <TableCell align="right">
+                            {item.quantity.toLocaleString('tr-TR')} kg
+                          </TableCell>
+                          <TableCell align="right">
+                            {currencySymbol}{item.unitPrice.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 600 }}>
+                            {currencySymbol}{item.total.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      <TableRow>
+                        <TableCell colSpan={4} align="right" sx={{ fontWeight: 700, fontSize: '1.1rem' }}>
+                          Genel Toplam:
+                        </TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 700, fontSize: '1.1rem', color: 'primary.main' }}>
+                          {currencySymbol}{purchaseData.total.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </CardContent>
+            </Card>
+          </Box>
         )}
       </DialogContent>
-      <DialogActions>
-        <Button onClick={handleClose}>Kapat</Button>
+      <DialogActions sx={{ p: 2 }}>
+        <Button onClick={handleClose} variant="contained">
+          Kapat
+        </Button>
       </DialogActions>
     </Dialog>
   );
