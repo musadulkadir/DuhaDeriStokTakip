@@ -17,7 +17,7 @@ import EmployeeManagement from './components/EmployeeManagement';
 import ErrorBoundary from './components/ErrorBoundary';
 import EmployeeDetail from './components/EmployeeDetail';
 import SalesManagement from './components/SalesManagement';
-import PurchaseManagement from './components/PurchaseManagement';
+import SupplierManagement from './components/SupplierManagement';
 import StockMovements from './components/StockMovements';
 import CashManagement from './components/CashManagement';
 import Reports from './components/Reports';
@@ -251,7 +251,7 @@ export default function App() {
                   <Route path="/employees" element={<EmployeeManagement />} />
                   <Route path="/employees/:id" element={<EmployeeDetail />} />
                   <Route path="/sales" element={<SalesManagement />} />
-                  <Route path="/purchases" element={<PurchaseManagement />} />
+                  <Route path="/suppliers" element={<SupplierManagement />} />
                   <Route path="/cash" element={<CashManagement />} />
                   <Route path="/movements" element={<StockMovements />} />
                   <Route path="/reports" element={<Reports />} />
