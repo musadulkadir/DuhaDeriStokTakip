@@ -51,7 +51,7 @@ const CurrencyInput: React.FC<CurrencyInputProps> = ({
 
   return (
     <Grid container spacing={1} alignItems="end">
-      <Grid item xs={8}>
+      <Grid size={{ xs: 8, }}>
         <TextField
           fullWidth={fullWidth}
           label={label}
@@ -69,7 +69,7 @@ const CurrencyInput: React.FC<CurrencyInputProps> = ({
           }}
         />
       </Grid>
-      <Grid item xs={4}>
+      <Grid size={{ xs: 4, }}>
         <FormControl fullWidth disabled={disabled}>
           <InputLabel>Para Birimi</InputLabel>
           <Select

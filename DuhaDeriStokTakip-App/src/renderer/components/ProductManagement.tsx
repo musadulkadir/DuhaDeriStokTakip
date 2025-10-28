@@ -960,7 +960,7 @@ const ProductManagement: React.FC = () => {
       </Card>
 
       {/* Materials Table */}
-      <Card sx={{ mt: 3 }}>
+      <Card sx={{ mt: 3, mb: 3 }}>
         <CardContent sx={{ p: 0 }}>
           <Box sx={{ p: 3, pb: 0 }}>
             <Typography variant="h6" sx={{ fontWeight: 600 }}>
@@ -1411,16 +1411,6 @@ const ProductManagement: React.FC = () => {
           product={selectedProduct}
         />
       )}
-
-      {/* Pagination for Products */}
-      <Pagination
-        currentPage={productsCurrentPage}
-        totalPages={Math.ceil(allFilteredProducts.length / productsItemsPerPage)}
-        totalItems={allFilteredProducts.length}
-        itemsPerPage={productsItemsPerPage}
-        onPageChange={handleProductsPageChange}
-        onItemsPerPageChange={handleProductsItemsPerPageChange}
-      />
 
       {/* Snackbar for notifications */}
       <Snackbar

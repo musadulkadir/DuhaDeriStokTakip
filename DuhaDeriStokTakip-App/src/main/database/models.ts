@@ -1,7 +1,7 @@
 // TypeScript model definitions for database entities and API responses
 
 // Base interfaces for common fields
-interface BaseEntity {
+export interface BaseEntity {
   id?: number;
   created_at?: string;
   updated_at?: string;
@@ -43,7 +43,7 @@ export interface Employee extends BaseEntity {
   salary_currency?: string;
   balance?: number;
   hire_date?: string;
-  status?: 'active' | 'inactive';
+  status: 'active' | 'inactive';
 }
 
 // Category interface - matches categories table schema
@@ -170,23 +170,7 @@ export interface PaginatedResponse<T> {
   error?: string;
 }
 
-// Export all interfaces for easy importing
-export type {
-  BaseEntity,
-  Product,
-  Customer,
-  Employee,
-  Category,
-  Color,
-  CategoryResponse,
-  ColorResponse,
-  Sale,
-  SaleItem,
-  StockMovement,
-  CustomerPayment,
-  EmployeePayment,
-  CashTransaction,
-  Return,
-  ApiResponse,
-  PaginatedResponse
-};
+// Employee paginated response with salary totals
+export interface EmployeePaginatedResponse extends PaginatedResponse<Employee> {
+  totalSalary: number;
+}

@@ -603,21 +603,26 @@ function createWindow() {
     fullscreen: true
   });
 
-  const htmlPath = isDev
-    ? 'http://localhost:3000'
-    : `file://${path.join(__dirname, '../../dist-react/index.html')}`;
+  let htmlPath; // Yüklenecek yolu belirlemek için
 
-  console.log('Production HTML path:', path.join(__dirname, '../../dist-react/index.html'));
+  if (isDev) {
+    // GELİŞTİRME MODU
+    htmlPath = 'http://localhost:3000';
+    console.log('GELİŞTİRME MODU: Yükleniyor:', htmlPath);
+    //mainWindow.webContents.openDevTools(); // Geliştirici araçlarını aç
 
+  } else {
+    // PRODUCTION MODU
+    htmlPath = `file://${path.join(__dirname, '../../dist-react/index.html')}`;
+    console.log('PRODUCTION MODU: Yükleniyor:', htmlPath);
+  }
+
+  // Belirlenen yolu yükle
   mainWindow.loadURL(htmlPath);
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
   });
-
-  // if (isDev) {
-  //   mainWindow.webContents.openDevTools();
-  // }
 }
 
 app.whenReady().then(async () => {
@@ -802,8 +807,36 @@ ipcMain.handle('sales:getById', async (event, saleId) => {
   }
 });
 
+ipcMain.handle('employees:getCounts', async () => {
+  try {
+    const counts = await queryOne(`
+      SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active,
+        SUM(CASE WHEN status = 'inactive' THEN 1 ELSE 0 END) AS inactive
+      FROM employees
+    `);
+
+    return {
+      success: true,
+      data: {
+        countEmployees: counts.total || 0,
+        countActiveEmployees: counts.active || 0,
+        countInactiveEmployees: counts.inactive || 0,
+      }
+    };
+  } catch (error) {
+    console.error('employees:getCounts hatası:', error);
+    return {
+      success: false,
+      error: 'Çalışan sayıları alınamadı.',
+      data: { countEmployees: 0, countActiveEmployees: 0, countInactiveEmployees: 0 }
+    };
+  }
+});
+
 // Employee handlers
-ipcMain.handle('employees:get-all', async (_, page = 1, limit = 50) => {
+ipcMain.handle('employees:get-all', async (_, page = 1, limit = 10) => {
   try {
     const offset = (page - 1) * limit;
     const result = await queryAll('SELECT * FROM employees ORDER BY created_at DESC LIMIT $1 OFFSET $2', [limit, offset]);
@@ -1134,6 +1167,126 @@ ipcMain.handle('employees:update-balance', async (_, employeeId, newBalance) => 
     return { success: true, data: result };
   } catch (error) {
     return { success: false, error: error.message };
+  }
+});
+
+// Employee status update handler
+ipcMain.handle('employees:update-status', async (_, employeeId, status) => {
+  try {
+    // Validate status value
+    if (!status || !['active', 'inactive'].includes(status)) {
+      return { success: false, error: 'Geçersiz durum değeri. Durum "active" veya "inactive" olmalıdır.' };
+    }
+
+    // Validate employee ID
+    if (!employeeId || isNaN(employeeId)) {
+      return { success: false, error: 'Geçersiz çalışan ID değeri.' };
+    }
+
+    // Check if employee exists
+    const existingEmployee = await queryOne('SELECT id, status FROM employees WHERE id = $1', [employeeId]);
+    if (!existingEmployee) {
+      return { success: false, error: 'Çalışan bulunamadı' };
+    }
+
+    // Check if status is already the same
+    if (existingEmployee.status === status) {
+      return { success: false, error: `Çalışan zaten ${status === 'active' ? 'aktif' : 'pasif'} durumda.` };
+    }
+
+    // Update employee status
+    const result = await queryOne(`
+      UPDATE employees 
+      SET status = $1, updated_at = CURRENT_TIMESTAMP 
+      WHERE id = $2
+      RETURNING *
+    `, [status, employeeId]);
+
+    if (!result) {
+      return { success: false, error: 'Durum güncellenirken bir hata oluştu' };
+    }
+
+    return { success: true, data: result };
+  } catch (error) {
+    console.error('Employee status update error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Get employees by status handler
+ipcMain.handle('employees:get-by-status', async (_, status, page = 1, limit = 10, searchTerm = '') => {
+  try {
+    // Validate status value
+    if (!status || !['active', 'inactive'].includes(status)) {
+      return {
+        success: false,
+        data: [],
+        total: 0,
+        totalSalary: 0,
+        page,
+        limit,
+        error: 'Geçersiz durum değeri. Durum "active" veya "inactive" olmalıdır.'
+      };
+    }
+
+    // Validate pagination parameters
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.max(1, Math.min(100, parseInt(limit) || 50)); // Max 100 items per page
+    const offset = (pageNum - 1) * limitNum;
+
+    // Build search condition
+    let searchCondition = '';
+    let queryParams = [status];
+    let countParams = [status];
+
+    if (searchTerm && searchTerm.trim()) {
+      const search = `%${searchTerm.trim().toLowerCase()}%`;
+      searchCondition = ` AND (
+        LOWER(name) LIKE $${queryParams.length + 1} OR 
+        LOWER(phone) LIKE $${queryParams.length + 1} OR 
+        LOWER(email) LIKE $${queryParams.length + 1} OR 
+        LOWER(position) LIKE $${queryParams.length + 1}
+      )`;
+      queryParams.push(search);
+      countParams.push(search);
+    }
+
+    // Get employees by status with pagination and search
+    const result = await queryAll(`
+      SELECT * FROM employees 
+      WHERE status = $1 ${searchCondition}
+      ORDER BY created_at DESC 
+      LIMIT $${queryParams.length + 1} OFFSET $${queryParams.length + 2}
+    `, [...queryParams, limitNum, offset]);
+
+    // Get total count and total salary for all employees with this status and search
+    const statsResult = await queryOne(`
+      SELECT 
+        COUNT(*) as total,
+        COALESCE(SUM(COALESCE(salary, 0)), 0) as total_salary
+      FROM employees 
+      WHERE status = $1 ${searchCondition}
+    `, countParams);
+
+    return {
+      success: true,
+      data: result,
+      total: parseInt(statsResult.total),
+      totalSalary: parseFloat(statsResult.total_salary) || 0,
+      page: pageNum,
+      limit: limitNum
+    };
+  } catch (error) {
+    console.error('Get employees by status error:', error);
+    return {
+      success: false,
+      data: [],
+      total: 0,
+      totalSalary: 0,
+      page: page || 1,
+      limit: limit || 50,
+      error: error.message
+    };
   }
 });
 
@@ -1490,12 +1643,69 @@ ipcMain.handle('customers:update-balance', async (_, customerId, newBalance) => 
 });
 
 // Employee payments handlers
-ipcMain.handle('employee-payments:get-by-employee', async (_, employeeId) => {
+ipcMain.handle('employee-payments:get-by-employee', async (_, employeeId, page = 1, limit = 10) => {
   try {
-    const result = await queryAll('SELECT * FROM employee_payments WHERE employee_id = $1 ORDER BY created_at DESC', [employeeId]);
-    return { success: true, data: result };
+    // Validate pagination parameters
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.max(1, Math.min(100, parseInt(limit) || 10));
+    const offset = (pageNum - 1) * limitNum;
+
+    // Get payments with pagination
+    const result = await queryAll(`
+      SELECT * FROM employee_payments 
+      WHERE employee_id = $1 
+      ORDER BY created_at DESC 
+      LIMIT $2 OFFSET $3
+    `, [employeeId, limitNum, offset]);
+
+    // Get total count
+    const countResult = await queryOne(`
+      SELECT COUNT(*) as total FROM employee_payments WHERE employee_id = $1
+    `, [employeeId]);
+
+    // Get currency totals
+    const totalsResult = await queryAll(`
+      SELECT 
+        currency,
+        SUM(amount) as total_amount
+      FROM employee_payments 
+      WHERE employee_id = $1 
+      GROUP BY currency
+    `, [employeeId]);
+
+    const totalCount = parseInt(countResult?.total || countResult?.count || 0);
+
+    console.log('🔍 Backend - Employee Payments Query:', {
+      employeeId,
+      resultCount: result.length,
+      countResult,
+      totalCount,
+      currencyTotals: totalsResult,
+      samplePayment: result[0]
+    });
+
+    const response = {
+      success: true,
+      data: result || [],
+      total: totalCount,
+      page: pageNum,
+      limit: limitNum,
+      currencyTotals: totalsResult || []
+    };
+
+    console.log('📤 Backend Response:', response);
+
+    return response;
   } catch (error) {
-    return { success: false, error: error.message };
+    return {
+      success: false,
+      data: [],
+      total: 0,
+      page: page || 1,
+      limit: limit || 10,
+      currencyTotals: [],
+      error: error.message
+    };
   }
 });
 

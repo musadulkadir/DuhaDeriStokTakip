@@ -81,10 +81,10 @@ const StockMovements: React.FC = () => {
   const formatNumberWithCommas = (value: string): string => {
     // Sadece rakam karakterlerini al
     const numericValue = value.replace(/[^\d]/g, '');
-    
+
     // Eğer boşsa boş döndür
     if (!numericValue) return '';
-    
+
     // Üç haneli ayraçlarla formatla
     return numericValue.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   };
@@ -104,14 +104,14 @@ const StockMovements: React.FC = () => {
         const enrichedMovements = response.data.map((movement: StockMovement) => {
           const product = products.find(p => p.id === movement.product_id);
           const customer = customers.find(c => c.id === movement.customer_id);
-          
+
           let description = movement.notes || '';
           if (movement.reference_type === 'sale' && customer) {
             description = `Satış - ${customer.name}`;
           } else if (movement.reference_type === 'sale' && !customer) {
             description = 'Satış - Müşteri bilgisi bulunamadı';
           }
-          
+
           return {
             ...movement,
             productName: product?.name || (product ? `${product.category} - ${product.color}` : 'Bilinmeyen Ürün'),
@@ -194,12 +194,12 @@ const StockMovements: React.FC = () => {
 
   const filteredMovements = movements.filter(movement => {
     const matchesSearch = (movement.productName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (movement.notes || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (movement.user || '').toLowerCase().includes(searchTerm.toLowerCase());
+      (movement.notes || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (movement.user || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchesType = filterType === '' || movement.movement_type === filterType;
-    const matchesDateRange = (!startDate || (movement.date && movement.date >= startDate)) && 
-                            (!endDate || (movement.date && movement.date <= endDate));
-    
+    const matchesDateRange = (!startDate || (movement.date && movement.date >= startDate)) &&
+      (!endDate || (movement.date && movement.date <= endDate));
+
     return matchesSearch && matchesType && matchesDateRange;
   });
 
@@ -236,7 +236,7 @@ const StockMovements: React.FC = () => {
 
   const totalIn = filteredMovements.filter(m => m.movement_type === 'in').reduce((sum, m) => sum + (m.quantity || 0), 0);
   const totalOut = filteredMovements.filter(m => m.movement_type === 'out').reduce((sum, m) => sum + (m.quantity || 0), 0);
-  const netChange = totalIn - totalOut;
+  const netChange = totalIn + totalOut;
 
   const handleAddMovement = async () => {
     if (!newMovement.productId || !newMovement.quantity) {
@@ -268,7 +268,7 @@ const StockMovements: React.FC = () => {
         previous_stock: previousStock,
         new_stock: newStock,
         reference_type: 'adjustment',
-        notes: newMovement.description || null,
+        notes: newMovement.description || undefined,
         user: 'Sistem Kullanıcısı',
       };
 
@@ -276,7 +276,7 @@ const StockMovements: React.FC = () => {
       if (response.success) {
         // Ürün stokunu güncelle
         await dbAPI.updateProductStock(parseInt(newMovement.productId), newStock);
-        
+
         setSnackbar({ open: true, message: 'Stok hareketi başarıyla eklendi', severity: 'success' });
         setAddDialogOpen(false);
         setNewMovement({
@@ -286,7 +286,7 @@ const StockMovements: React.FC = () => {
           description: '',
           reference: '',
         });
-        
+
         // Verileri yeniden yükle
         await loadProducts();
         await loadMovements();
@@ -301,9 +301,9 @@ const StockMovements: React.FC = () => {
   };
 
   return (
-    <Box>
+    <Box sx={{ mr: 2, }}>
       {/* Header */}
-      <Box sx={{ mb: 4 }}>
+      <Box sx={{ mb: 4, mt: 2 }}>
         <Typography variant="h3" sx={{ fontWeight: 700, mb: 1 }}>
           Stok Hareketleri
         </Typography>
@@ -314,7 +314,7 @@ const StockMovements: React.FC = () => {
 
       {/* Summary Cards */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Card>
             <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
               <Avatar sx={{ bgcolor: '#4CAF50', mr: 2 }}>
@@ -331,7 +331,7 @@ const StockMovements: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Card>
             <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
               <Avatar sx={{ bgcolor: '#F44336', mr: 2 }}>
@@ -339,7 +339,7 @@ const StockMovements: React.FC = () => {
               </Avatar>
               <Box>
                 <Typography variant="h6" sx={{ fontWeight: 600, color: '#F44336' }}>
-                  -{totalOut.toLocaleString('tr-TR')}
+                  {totalOut.toLocaleString('tr-TR')}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   Toplam Çıkış
@@ -348,7 +348,7 @@ const StockMovements: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Card>
             <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
               <Avatar sx={{ bgcolor: netChange >= 0 ? '#4CAF50' : '#F44336', mr: 2 }}>
@@ -365,7 +365,7 @@ const StockMovements: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Card>
             <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
               <Avatar sx={{ bgcolor: 'primary.main', mr: 2 }}>
@@ -390,16 +390,16 @@ const StockMovements: React.FC = () => {
           <Typography variant="h6" sx={{ mb: 3, fontWeight: 600 }}>
             Filtreleme ve Arama
           </Typography>
-          <Grid container spacing={3} alignItems="center">
-            <Grid item xs={12} md={3}>
+          <Grid container spacing={1} alignItems="center">
+            <Grid size={{ xs: 12, md: 3, }}>
               <TextField
                 fullWidth
-                size="large"
+                size="medium"
                 placeholder="Ürün, açıklama veya kullanıcı ara..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                sx={{ 
-                  '& .MuiOutlinedInput-root': { 
+                sx={{
+                  '& .MuiOutlinedInput-root': {
                     minHeight: '56px',
                     fontSize: '1.1rem',
                   },
@@ -417,11 +417,11 @@ const StockMovements: React.FC = () => {
                 }}
               />
             </Grid>
-            <Grid item xs={12} md={3}>
-              <FormControl fullWidth size="large" variant="outlined">
-                <InputLabel 
+            <Grid size={{ xs: 12, md: 2, }}>
+              <FormControl fullWidth size="medium" variant="outlined">
+                <InputLabel
                   id="movement-type-filter-label"
-                  sx={{ 
+                  sx={{
                     fontSize: '1.1rem',
                     fontWeight: 600,
                   }}
@@ -433,7 +433,7 @@ const StockMovements: React.FC = () => {
                   value={filterType}
                   label="Hareket Tipi"
                   onChange={(e) => setFilterType(e.target.value)}
-                  sx={{ 
+                  sx={{
                     minHeight: '56px',
                     '& .MuiSelect-select': {
                       fontSize: '1.1rem',
@@ -463,17 +463,17 @@ const StockMovements: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid item xs={12} md={2}>
+            <Grid size={{ xs: 12, md: 2, }}>
               <TextField
                 fullWidth
-                size="large"
+                size="medium"
                 label="Başlangıç Tarihi"
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
                 InputLabelProps={{ shrink: true }}
-                sx={{ 
-                  '& .MuiOutlinedInput-root': { 
+                sx={{
+                  '& .MuiOutlinedInput-root': {
                     minHeight: '56px',
                     fontSize: '1.1rem',
                   },
@@ -488,17 +488,17 @@ const StockMovements: React.FC = () => {
                 }}
               />
             </Grid>
-            <Grid item xs={12} md={2}>
+            <Grid size={{ xs: 12, md: 2, }}>
               <TextField
                 fullWidth
-                size="large"
+                size="medium"
                 label="Bitiş Tarihi"
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
                 InputLabelProps={{ shrink: true }}
-                sx={{ 
-                  '& .MuiOutlinedInput-root': { 
+                sx={{
+                  '& .MuiOutlinedInput-root': {
                     minHeight: '56px',
                     fontSize: '1.1rem',
                   },
@@ -513,7 +513,7 @@ const StockMovements: React.FC = () => {
                 }}
               />
             </Grid>
-            <Grid item xs={12} md={3}>
+            <Grid size={{ xs: 12, md: 3, }}>
               <Box sx={{ display: 'flex', gap: 1 }}>
                 <Button
                   variant="outlined"
@@ -572,7 +572,7 @@ const StockMovements: React.FC = () => {
                     </TableCell>
                     <TableCell align="center">
                       <Chip
-                        label={movement.movement_type === 'out' ? `-${(movement.quantity || 0).toLocaleString('tr-TR')}` : `+${(movement.quantity || 0).toLocaleString('tr-TR')}`}
+                        label={movement.movement_type === 'out' ? `${(movement.quantity || 0).toLocaleString('tr-TR')}` : `+${(movement.quantity || 0).toLocaleString('tr-TR')}`}
                         color={movement.movement_type === 'out' ? 'error' : 'success'}
                         size="small"
                         sx={{ fontWeight: 600 }}
@@ -617,7 +617,7 @@ const StockMovements: React.FC = () => {
               </TableBody>
             </Table>
           </TableContainer>
-          
+
           {/* Pagination */}
           <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
             <Pagination
@@ -649,13 +649,13 @@ const StockMovements: React.FC = () => {
         <DialogTitle>Yeni Stok Hareketi Ekle</DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12}>
+            <Grid size={{ xs: 12, }}>
               <FormControl fullWidth variant="outlined">
                 <InputLabel>Ürün Seçin</InputLabel>
                 <Select
                   value={newMovement.productId}
                   label="Ürün Seçin"
-                  onChange={(e) => setNewMovement({...newMovement, productId: e.target.value})}
+                  onChange={(e) => setNewMovement({ ...newMovement, productId: e.target.value })}
                 >
                   <MenuItem value="">Ürün seçin...</MenuItem>
                   {products.map(product => (
@@ -670,10 +670,10 @@ const StockMovements: React.FC = () => {
                             border: product.color === 'Beyaz' ? '1px solid #ccc' : 'none',
                           }}
                         />
-                        {product.category} - {product.color} 
-                        <Chip 
-                          label={`${(product.stock_quantity || 0).toLocaleString('tr-TR')} adet`} 
-                          size="small" 
+                        {product.category} - {product.color}
+                        <Chip
+                          label={`${(product.stock_quantity || 0).toLocaleString('tr-TR')} adet`}
+                          size="small"
                           variant="outlined"
                           sx={{ ml: 'auto' }}
                         />
@@ -683,13 +683,13 @@ const StockMovements: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <FormControl fullWidth variant="outlined">
                 <InputLabel>Hareket Tipi</InputLabel>
                 <Select
                   value={newMovement.type}
                   label="Hareket Tipi"
-                  onChange={(e) => setNewMovement({...newMovement, type: e.target.value as 'in' | 'out'})}
+                  onChange={(e) => setNewMovement({ ...newMovement, type: e.target.value as 'in' | 'out' })}
                 >
                   <MenuItem value="">Tip seçin...</MenuItem>
                   <MenuItem value="in">
@@ -707,7 +707,7 @@ const StockMovements: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <TextField
                 fullWidth
                 label="Miktar"
@@ -715,26 +715,26 @@ const StockMovements: React.FC = () => {
                 value={newMovement.quantity}
                 onChange={(e) => {
                   const formatted = formatNumberWithCommas(e.target.value);
-                  setNewMovement({...newMovement, quantity: formatted});
+                  setNewMovement({ ...newMovement, quantity: formatted });
                 }}
               />
             </Grid>
-            <Grid item xs={12}>
+            <Grid size={{ xs: 12, }}>
               <TextField
                 fullWidth
                 label="Açıklama"
                 multiline
                 rows={3}
                 value={newMovement.description}
-                onChange={(e) => setNewMovement({...newMovement, description: e.target.value})}
+                onChange={(e) => setNewMovement({ ...newMovement, description: e.target.value })}
               />
             </Grid>
-            <Grid item xs={12}>
+            <Grid size={{ xs: 12, }}>
               <TextField
                 fullWidth
                 label="Referans No (Opsiyonel)"
                 value={newMovement.reference}
-                onChange={(e) => setNewMovement({...newMovement, reference: e.target.value})}
+                onChange={(e) => setNewMovement({ ...newMovement, reference: e.target.value })}
               />
             </Grid>
           </Grid>
