@@ -74,7 +74,7 @@ const ProductManagement: React.FC = () => {
   // Pagination states for Products (Deri Ürünleri)
   const [productsCurrentPage, setProductsCurrentPage] = useState(1);
   const [productsItemsPerPage, setProductsItemsPerPage] = useState(10);
-  
+
   // Pagination states for Materials (Malzemeler)
   const [materialsCurrentPage, setMaterialsCurrentPage] = useState(1);
   const [materialsItemsPerPage, setMaterialsItemsPerPage] = useState(10);
@@ -836,7 +836,7 @@ const ProductManagement: React.FC = () => {
               </TableBody>
             </Table>
           </TableContainer>
-          
+
           {/* Pagination for Products */}
           <Pagination
             currentPage={productsCurrentPage}
@@ -850,7 +850,7 @@ const ProductManagement: React.FC = () => {
       </Card>
 
       {/* Materials Table */}
-      <Card sx={{ mt: 3 }}>
+      <Card sx={{ mt: 3, mb: 3 }}>
         <CardContent sx={{ p: 0 }}>
           <Box sx={{ p: 3, pb: 0 }}>
             <Typography variant="h6" sx={{ fontWeight: 600 }}>
@@ -944,7 +944,7 @@ const ProductManagement: React.FC = () => {
               </TableBody>
             </Table>
           </TableContainer>
-          
+
           {/* Pagination for Materials */}
           <Pagination
             currentPage={materialsCurrentPage}
@@ -1269,16 +1269,6 @@ const ProductManagement: React.FC = () => {
           product={selectedProduct}
         />
       )}
-
-      {/* Pagination for Products */}
-      <Pagination
-        currentPage={productsCurrentPage}
-        totalPages={Math.ceil(allFilteredProducts.length / productsItemsPerPage)}
-        totalItems={allFilteredProducts.length}
-        itemsPerPage={productsItemsPerPage}
-        onPageChange={handleProductsPageChange}
-        onItemsPerPageChange={handleProductsItemsPerPageChange}
-      />
 
       {/* Snackbar for notifications */}
       <Snackbar

@@ -74,7 +74,7 @@ const EmployeeManagement: React.FC = () => {
 
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(25);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const [totalItems, setTotalItems] = useState<number>(0);
 
   // Employee status states
@@ -109,11 +109,11 @@ const EmployeeManagement: React.FC = () => {
   }
 
   // Çalışanları yükle
-  const loadEmployees = async (page = currentPage, limit = itemsPerPage) => {
+  const loadEmployees = async (page = currentPage, limit = itemsPerPage, search = searchTerm) => {
     setLoading(true);
     try {
       const status = showInactiveEmployees ? 'inactive' : 'active';
-      const response = await dbAPI.getEmployeesByStatus(status, page, limit);
+      const response = await dbAPI.getEmployeesByStatus(status, page, limit, search);
       if (response.success) {
         setEmployees(response.data);
         setTotalItems(response.total || 0);
@@ -131,7 +131,7 @@ const EmployeeManagement: React.FC = () => {
   useEffect(() => {
     loadEmployeesCount();
     loadEmployees();
-  }, [currentPage, itemsPerPage, showInactiveEmployees]);
+  }, [currentPage, itemsPerPage, showInactiveEmployees, searchTerm]);
 
   // Pagination handlers
   const handlePageChange = (page: number) => {
@@ -149,14 +149,6 @@ const EmployeeManagement: React.FC = () => {
       setCurrentPage(1);
     }
   }, [searchTerm]);
-
-  // Filtrelenmiş çalışanlar
-  const filteredEmployees = employees.filter(employee =>
-    employee.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    employee.phone?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    employee.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    employee.position?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
 
   // Çalışan ekle
   const handleAddEmployee = async () => {
@@ -441,7 +433,7 @@ const EmployeeManagement: React.FC = () => {
         <CardContent sx={{ p: 0 }}>
           <Box sx={{ p: 3, pb: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Typography variant="h6" sx={{ fontWeight: 600 }}>
-              {showInactiveEmployees ? 'Pasif' : 'Aktif'} Çalışanlar ({filteredEmployees.length} çalışan)
+              {showInactiveEmployees ? 'Pasif' : 'Aktif'} Çalışanlar ({totalItems} çalışan)
             </Typography>
             <Button
               variant="outlined"
@@ -476,7 +468,7 @@ const EmployeeManagement: React.FC = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {filteredEmployees.map((employee) => (
+                {employees.map((employee) => (
                   <TableRow key={employee.id} hover>
                     <TableCell sx={{ fontWeight: 600 }}>{employee.id}</TableCell>
                     <TableCell>{employee.name}</TableCell>
@@ -546,7 +538,7 @@ const EmployeeManagement: React.FC = () => {
                     </TableCell>
                   </TableRow>
                 ))}
-                {filteredEmployees.length === 0 && (
+                {employees.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={9} align="center">
                       {loading ? 'Yükleniyor...' : 'Çalışan bulunamadı'}

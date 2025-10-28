@@ -168,8 +168,16 @@ class DatabaseAPI {
     return window.require("electron").ipcRenderer.invoke('employees:update-balance', id, amount);
   }
 
-  async getEmployeePayments(employeeId: number): Promise<ApiResponse<EmployeePayment[]>> {
-    return window.require("electron").ipcRenderer.invoke('employee-payments:get-by-employee', employeeId);
+  async getEmployeePayments(employeeId: number, page = 1, limit = 10): Promise<{
+    success: boolean;
+    data: EmployeePayment[];
+    total: number;
+    page: number;
+    limit: number;
+    currencyTotals: { currency: string; total_amount: number }[];
+    error?: string;
+  }> {
+    return window.require("electron").ipcRenderer.invoke('employee-payments:get-by-employee', employeeId, page, limit);
   }
 
   async createEmployeePayment(payment: Omit<EmployeePayment, 'id' | 'created_at'>): Promise<ApiResponse<EmployeePayment>> {
@@ -184,8 +192,8 @@ class DatabaseAPI {
     return window.require("electron").ipcRenderer.invoke('employees:update-status', id, status);
   }
 
-  async getEmployeesByStatus(status: 'active' | 'inactive', page = 1, limit = 50): Promise<EmployeePaginatedResponse> {
-    return window.require("electron").ipcRenderer.invoke('employees:get-by-status', status, page, limit);
+  async getEmployeesByStatus(status: 'active' | 'inactive', page = 1, limit = 50, searchTerm = ''): Promise<EmployeePaginatedResponse> {
+    return window.require("electron").ipcRenderer.invoke('employees:get-by-status', status, page, limit, searchTerm);
   }
 
   // Categories operations

@@ -31,24 +31,25 @@ import {
   Snackbar,
   Alert,
   CircularProgress,
-  InputAdornment,
+
 } from '@mui/material';
 import {
   ArrowBack,
-  Add,
   Payment,
   Person,
   Phone,
-  Business,
+  EmailOutlined,
   Work,
   AccountBalance,
   TrendingUp,
-  AttachMoney,
   Delete,
+  PointOfSaleOutlined
 } from '@mui/icons-material';
 import { dbAPI } from '../services/api';
 import CurrencySelect from './common/CurrencySelect';
 import { DEFAULT_CURRENCIES } from '../constants/currencies';
+import { CashTransaction } from '@/main/database/models';
+import Pagination from './common/Pagination';
 
 interface Employee {
   id?: number;
@@ -65,6 +66,7 @@ interface Employee {
 interface EmployeePayment {
   id: number;
   amount: number;
+  currency: string;
   paymentType: string;
   paymentDate: string;
   notes?: string;
@@ -72,8 +74,8 @@ interface EmployeePayment {
 
 interface EmployeeStats {
   totalPayments: number;
-  totalPaid: number;
-  currentBalance: number;
+  totalPaidByCurrency: { [currency: string]: number };
+  currentBalanceByCurrency: { [currency: string]: number };
   lastPaymentDate?: string;
 }
 
@@ -82,13 +84,18 @@ const EmployeeDetail: React.FC = () => {
   const navigate = useNavigate();
   const employeeId = parseInt(id || '0');
 
-  const [employee, setEmployee] = useState<Employee | null>(null);
+  const [employee, setEmployee] = useState<Employee | undefined>(undefined);
   const [payments, setPayments] = useState<EmployeePayment[]>([]);
   const [stats, setStats] = useState<EmployeeStats>({
     totalPayments: 0,
-    totalPaid: 0,
-    currentBalance: 0,
+    totalPaidByCurrency: {},
+    currentBalanceByCurrency: {},
   });
+
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [totalPaymentsCount, setTotalPaymentsCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
 
@@ -104,7 +111,7 @@ const EmployeeDetail: React.FC = () => {
   // Çalışan verilerini yükle
   const loadEmployeeData = async () => {
     if (!employeeId) return;
-    
+
     setLoading(true);
     try {
       // Çalışan bilgilerini yükle
@@ -114,20 +121,66 @@ const EmployeeDetail: React.FC = () => {
       }
 
       // Çalışan ödemelerini yükle
-      const paymentsResponse = await dbAPI.getEmployeePayments(employeeId);
-      if (paymentsResponse.success) {
-        const formattedPayments = paymentsResponse.data.map((payment: any) => ({
-          id: payment.id,
-          amount: payment.amount,
-          paymentType: payment.payment_type,
-          paymentDate: payment.payment_date,
-          notes: payment.notes,
-        }));
-        setPayments(formattedPayments);
+      const paymentsResponse = await dbAPI.getEmployeePayments(employeeId, currentPage, itemsPerPage);
+      console.log('🔍 Payments Response:', paymentsResponse);
+      console.log('🔍 Response type:', typeof paymentsResponse);
+
+      // Eski API formatı kontrolü - eğer response.data varsa ama total/currencyTotals yoksa
+      const isOldFormat = paymentsResponse.success && paymentsResponse.data &&
+        (paymentsResponse.total === undefined || paymentsResponse.currencyTotals === undefined);
+
+      if (isOldFormat) {
+        console.log('⚠️ Old API format detected, manually calculating totals...');
       }
 
-      // İstatistikleri hesapla
-      calculateStats(employeeResponse.data, paymentsResponse.data || []);
+      if (paymentsResponse.success) {
+        if (paymentsResponse.data && paymentsResponse.data.length > 0) {
+          const formattedPayments = paymentsResponse.data.map((payment: any) => ({
+            id: payment.id,
+            amount: payment.amount,
+            currency: payment.currency || 'TRY',
+            paymentType: payment.payment_type,
+            paymentDate: payment.payment_date,
+            notes: payment.notes,
+          }));
+          setPayments(formattedPayments);
+          console.log('✅ Formatted payments:', formattedPayments.length);
+        } else {
+          setPayments([]);
+        }
+
+        let totalCount = paymentsResponse.total || 0;
+        let currTotals = paymentsResponse.currencyTotals || [];
+
+        // Eğer total veya currencyTotals undefined ise, manuel hesapla
+        if (isOldFormat && paymentsResponse.data) {
+          console.log('📊 Manually calculating totals from data...');
+          totalCount = paymentsResponse.data.length;
+
+          // Currency totals'ı manuel hesapla
+          const currencyMap: { [key: string]: number } = {};
+          paymentsResponse.data.forEach((payment: any) => {
+            const curr = payment.currency || 'TRY';
+            currencyMap[curr] = (currencyMap[curr] || 0) + (Number(payment.amount) || 0);
+          });
+
+          currTotals = Object.entries(currencyMap).map(([currency, total_amount]) => ({
+            currency,
+            total_amount
+          }));
+
+          console.log('✅ Manually calculated - Total:', totalCount, 'Currency totals:', currTotals);
+        }
+
+        setTotalPaymentsCount(totalCount);
+        console.log('✅ Total payments count:', totalCount);
+        console.log('✅ Currency totals:', currTotals);
+
+        // İstatistikleri hesapla
+        if (employeeResponse.data) {
+          calculateStats(employeeResponse.data, currTotals, totalCount);
+        }
+      }
 
     } catch (error) {
       console.error('Error loading employee data:', error);
@@ -138,18 +191,47 @@ const EmployeeDetail: React.FC = () => {
   };
 
   // İstatistikleri hesapla
-  const calculateStats = (employee: Employee, payments: any[]) => {
-    const totalPayments = payments.length;
-    const totalPaid = payments.reduce((sum: number, payment: any) => sum + (payment.amount || 0), 0);
-    
-    const lastPayment = payments.sort((a: any, b: any) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime())[0];
+  const calculateStats = (employee: Employee, currencyTotals: any[], totalCount: number) => {
+    console.log('📊 calculateStats called:', { currencyTotals, totalCount });
 
-    setStats({
-      totalPayments,
-      totalPaid,
-      currentBalance: employee?.balance || 0,
-      lastPaymentDate: lastPayment?.payment_date,
-    });
+    const totalPaidByCurrency: { [currency: string]: number } = {};
+    const currentBalanceByCurrency: { [currency: string]: number } = {};
+
+    // Para birimlerine göre toplam ödemeleri hesapla
+    if (currencyTotals && currencyTotals.length > 0) {
+      currencyTotals.forEach((total: any) => {
+        const currency = total.currency || 'TRY';
+        totalPaidByCurrency[currency] = Number(total.total_amount) || 0;
+        console.log(`💰 Currency: ${currency}, Amount: ${total.total_amount}`);
+      });
+    } else {
+      // Eğer hiç ödeme yoksa, varsayılan olarak TRY'yi 0 ile göster
+      totalPaidByCurrency['TRY'] = 0;
+      console.log('⚠️ No currency totals, setting TRY to 0');
+    }
+
+    // Çalışan bakiyesi - şimdilik sadece TRY (gelecekte multi-currency olabilir)
+    currentBalanceByCurrency['TRY'] = employee?.balance || 0;
+    console.log('💳 Balance TRY:', employee?.balance);
+
+    const newStats = {
+      totalPayments: totalCount,
+      totalPaidByCurrency,
+      currentBalanceByCurrency,
+    };
+
+    console.log('📈 Setting stats:', newStats);
+    setStats(newStats);
+  };
+
+  // Pagination handlers
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  const handleItemsPerPageChange = (newItemsPerPage: number) => {
+    setItemsPerPage(newItemsPerPage);
+    setCurrentPage(1);
   };
 
   // Ödeme ekle
@@ -161,7 +243,7 @@ const EmployeeDetail: React.FC = () => {
 
     try {
       const amount = parseFloat(paymentAmount);
-      
+
       // Ödeme kaydı oluştur
       const paymentData = {
         employee_id: employeeId,
@@ -173,16 +255,16 @@ const EmployeeDetail: React.FC = () => {
       };
 
       const paymentResponse = await dbAPI.createEmployeePayment(paymentData);
-      if (!paymentResponse.success) {
+      if (!paymentResponse.success || !paymentResponse.data) {
         throw new Error(paymentResponse.error || 'Ödeme kaydedilemedi');
       }
 
       // Çalışan bakiyesini güncelle
-      const newBalance = (employee.balance || 0) + amount;
+      const newBalance = (Number(employee.balance) || 0) - amount;
       await dbAPI.updateEmployeeBalance(employeeId, newBalance);
 
       // Kasa işlemi oluştur (gider)
-      const cashTransactionData = {
+      const cashTransactionData: CashTransaction = {
         type: 'out',
         amount,
         currency: paymentCurrency,
@@ -192,27 +274,27 @@ const EmployeeDetail: React.FC = () => {
         reference_id: paymentResponse.data.id,
         user: 'İK Kullanıcısı',
       };
-      
+
       await dbAPI.createCashTransaction(cashTransactionData);
 
       setSnackbar({ open: true, message: 'Ödeme başarıyla kaydedildi', severity: 'success' });
-      
+
       // Formu temizle ve dialog'u kapat
       setPaymentAmount('');
       setPaymentType('salary');
       setPaymentCurrency(DEFAULT_CURRENCIES.EMPLOYEE_PAYMENT);
       setPaymentNotes('');
       setPaymentDialogOpen(false);
-      
+
       // Verileri yeniden yükle
       await loadEmployeeData();
 
     } catch (error) {
       console.error('Payment error:', error);
-      setSnackbar({ 
-        open: true, 
-        message: error instanceof Error ? error.message : 'Ödeme kaydedilirken hata oluştu', 
-        severity: 'error' 
+      setSnackbar({
+        open: true,
+        message: error instanceof Error ? error.message : 'Ödeme kaydedilirken hata oluştu',
+        severity: 'error'
       });
     }
   };
@@ -230,7 +312,7 @@ const EmployeeDetail: React.FC = () => {
       await dbAPI.updateEmployeeBalance(employeeId, newBalance);
 
       // Kasa işlemini tersine çevir (gelir olarak ekle)
-      const cashTransactionData = {
+      const cashTransactionData: CashTransaction = {
         type: 'in',
         amount: selectedPayment.amount,
         category: 'Ödeme İptali',
@@ -238,29 +320,29 @@ const EmployeeDetail: React.FC = () => {
         reference_type: 'payment_cancel',
         user: 'İK Kullanıcısı',
       };
-      
+
       await dbAPI.createCashTransaction(cashTransactionData);
 
       setSnackbar({ open: true, message: 'Ödeme başarıyla silindi', severity: 'success' });
       setDeletePaymentDialogOpen(false);
       setSelectedPayment(null);
-      
+
       // Verileri yeniden yükle
       await loadEmployeeData();
 
     } catch (error) {
       console.error('Delete payment error:', error);
-      setSnackbar({ 
-        open: true, 
-        message: 'Ödeme silinirken hata oluştu', 
-        severity: 'error' 
+      setSnackbar({
+        open: true,
+        message: 'Ödeme silinirken hata oluştu',
+        severity: 'error'
       });
     }
   };
 
   useEffect(() => {
     loadEmployeeData();
-  }, [employeeId]);
+  }, [employeeId, currentPage, itemsPerPage]);
 
   if (loading) {
     return (
@@ -310,140 +392,154 @@ const EmployeeDetail: React.FC = () => {
 
       {/* Employee Info & Stats */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
-        {/* Employee Info */}
-        <Grid item xs={12} md={4}>
+        {/* Employee Info Card - Yatay Layout */}
+        <Grid size={{ xs: 12 }}>
           <Card>
             <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-                <Avatar sx={{ bgcolor: 'primary.main', width: 60, height: 60, mr: 2 }}>
-                  <Person sx={{ fontSize: 30 }} />
-                </Avatar>
-                <Box>
-                  <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                    {employee.name}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Çalışan #{employee.id}
-                  </Typography>
+              <Box sx={{ display: 'flex', gap: 3, alignItems: 'flex-start' }}>
+                {/* Sol taraf - Avatar ve İsim */}
+                <Box sx={{ display: 'flex', alignItems: 'center', minWidth: 200 }}>
+                  <Avatar sx={{ bgcolor: 'primary.main', width: 60, height: 60, mr: 2 }}>
+                    <Person sx={{ fontSize: 30 }} />
+                  </Avatar>
+                  <Box>
+                    <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                      {employee.name}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Çalışan #{employee.id}
+                    </Typography>
+                  </Box>
+                </Box>
+
+                {/* Sağ taraf - Bilgiler (2'şer yatay) */}
+                <Box sx={{ flexGrow: 1, display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 2 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <Work sx={{ mr: 1.5, color: 'text.secondary', fontSize: 20 }} />
+                    <Box>
+                      <Typography variant="caption" color="text.secondary">Pozisyon</Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                        {employee.position || 'Belirtilmemiş'}
+                      </Typography>
+                    </Box>
+                  </Box>
+
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <Phone sx={{ mr: 1.5, color: 'text.secondary', fontSize: 20 }} />
+                    <Box>
+                      <Typography variant="caption" color="text.secondary">Telefon</Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                        {employee.phone || 'Belirtilmemiş'}
+                      </Typography>
+                    </Box>
+                  </Box>
+
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <EmailOutlined sx={{ mr: 1.5, color: 'text.secondary', fontSize: 20 }} />
+                    <Box>
+                      <Typography variant="caption" color="text.secondary">Email</Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                        {employee.email || 'Belirtilmemiş'}
+                      </Typography>
+                    </Box>
+                  </Box>
+
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <PointOfSaleOutlined sx={{ mr: 1.5, color: 'text.secondary', fontSize: 20 }} />
+                    <Box>
+                      <Typography variant="caption" color="text.secondary">Maaş</Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                        ₺{(employee.salary || 0).toLocaleString('tr-TR')}
+                      </Typography>
+                    </Box>
+                  </Box>
                 </Box>
               </Box>
-              
-              <List dense>
-                <ListItem>
-                  <Work sx={{ mr: 2, color: 'text.secondary' }} />
-                  <ListItemText 
-                    primary="Pozisyon" 
-                    secondary={employee.position || 'Belirtilmemiş'} 
-                  />
-                </ListItem>
-                <ListItem>
-                  <Phone sx={{ mr: 2, color: 'text.secondary' }} />
-                  <ListItemText 
-                    primary="Telefon" 
-                    secondary={employee.phone || 'Belirtilmemiş'} 
-                  />
-                </ListItem>
-                <ListItem>
-                  <Business sx={{ mr: 2, color: 'text.secondary' }} />
-                  <ListItemText 
-                    primary="Email" 
-                    secondary={employee.email || 'Belirtilmemiş'} 
-                  />
-                </ListItem>
-                <ListItem>
-                  <AttachMoney sx={{ mr: 2, color: 'text.secondary' }} />
-                  <ListItemText 
-                    primary="Maaş" 
-                    secondary={`₺${(employee.salary || 0).toLocaleString('tr-TR')}`} 
-                  />
-                </ListItem>
-              </List>
             </CardContent>
           </Card>
         </Grid>
 
-        {/* Stats Cards */}
-        <Grid item xs={12} md={8}>
-          <Grid container spacing={2}>
-            <Grid size={{ xs: 6, md: 3, }}>
-              <Card>
-                <CardContent sx={{ textAlign: 'center', p: 2 }}>
-                  <Avatar sx={{ bgcolor: 'info.main', mx: 'auto', mb: 1 }}>
-                    <Payment />
-                  </Avatar>
-                  <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                    {stats.totalPayments}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Toplam Ödeme
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid size={{ xs: 6, md: 3, }}>
-              <Card>
-                <CardContent sx={{ textAlign: 'center', p: 2 }}>
-                  <Avatar sx={{ bgcolor: 'success.main', mx: 'auto', mb: 1 }}>
-                    <TrendingUp />
-                  </Avatar>
-                  <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                    ₺{stats.totalPaid.toLocaleString('tr-TR')}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Toplam Ödenen
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid size={{ xs: 6, md: 3, }}>
-              <Card>
-                <CardContent sx={{ textAlign: 'center', p: 2 }}>
-                  <Avatar sx={{ bgcolor: 'warning.main', mx: 'auto', mb: 1 }}>
-                    <AccountBalance />
-                  </Avatar>
-                  <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                    ₺{stats.currentBalance.toLocaleString('tr-TR')}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Güncel Bakiye
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid size={{ xs: 6, md: 3, }}>
-              <Card>
-                <CardContent sx={{ textAlign: 'center', p: 2 }}>
-                  <Avatar sx={{ 
-                    bgcolor: employee.status === 'active' ? 'success.main' : 'error.main', 
-                    mx: 'auto', mb: 1 
-                  }}>
-                    <Person />
-                  </Avatar>
-                  <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                    {employee.status === 'active' ? 'Aktif' : 'Pasif'}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Durum
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
+        {/* Stats Cards - 4,1,1 Layout */}
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Card>
+            <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
+              <Avatar sx={{ bgcolor: 'success.main', width: 40, height: 40, mr: 2 }}>
+                <TrendingUp fontSize="small" />
+              </Avatar>
+              <Box sx={{ flexGrow: 1 }}>
+                <Typography variant="caption" color="text.secondary">
+                  Toplam Ödenen
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mt: 0.5 }}>
+                  {Object.entries(stats.totalPaidByCurrency).map(([currency, amount]) => (
+                    <Typography key={currency} variant="h6" sx={{ fontWeight: 700 }}>
+                      {currency === 'TRY' ? '₺' : currency === 'USD' ? '$' : '€'}{amount.toLocaleString('tr-TR')}
+                    </Typography>
+                  ))}
+                  {Object.keys(stats.totalPaidByCurrency).length === 0 && (
+                    <Typography variant="h6" sx={{ fontWeight: 700 }}>₺0</Typography>
+                  )}
+                </Box>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid size={{ xs: 6, md: 3 }}>
+          <Card>
+            <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
+              <Avatar sx={{ bgcolor: 'info.main', width: 40, height: 40, mr: 2 }}>
+                <Payment fontSize="small" />
+              </Avatar>
+              <Box>
+                <Typography variant="caption" color="text.secondary">
+                  Toplam Ödeme
+                </Typography>
+                <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                  {stats.totalPayments}
+                </Typography>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid size={{ xs: 6, md: 3 }}>
+          <Card>
+            <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
+              <Avatar sx={{
+                bgcolor: employee.status === 'active' ? 'success.main' : 'error.main',
+                width: 40, height: 40, mr: 2
+              }}>
+                <Person fontSize="small" />
+              </Avatar>
+              <Box>
+                <Typography variant="caption" color="text.secondary">
+                  Durum
+                </Typography>
+                <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                  {employee.status === 'active' ? 'Aktif' : 'Pasif'}
+                </Typography>
+              </Box>
+            </CardContent>
+          </Card>
         </Grid>
       </Grid>
 
       {/* Payment History */}
       <Card>
-        <CardContent>
-          <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
-            Ödeme Geçmişi ({payments.length} ödeme)
-          </Typography>
+        <CardContent sx={{ p: 0 }}>
+          <Box sx={{ p: 3, pb: 0 }}>
+            <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+              Ödeme Geçmişi ({totalPaymentsCount} ödeme)
+            </Typography>
+          </Box>
           <TableContainer>
             <Table>
               <TableHead>
                 <TableRow>
                   <TableCell>Tarih</TableCell>
                   <TableCell align="right">Tutar</TableCell>
+                  <TableCell>Para Birimi</TableCell>
                   <TableCell>Tip</TableCell>
                   <TableCell>Notlar</TableCell>
                   <TableCell align="center">İşlem</TableCell>
@@ -451,21 +547,29 @@ const EmployeeDetail: React.FC = () => {
               </TableHead>
               <TableBody>
                 {payments.map((payment) => (
-                  <TableRow key={payment.id}>
+                  <TableRow key={payment.id} hover>
                     <TableCell>
                       {new Date(payment.paymentDate).toLocaleDateString('tr-TR')}
                     </TableCell>
                     <TableCell align="right">
-                      <Typography variant="body2" sx={{ color: 'success.main', fontWeight: 600 }}>
-                        +₺{payment.amount.toLocaleString('tr-TR')}
+                      <Typography variant="body2" sx={{ color: 'error.main', fontWeight: 600 }}>
+                        -{payment.currency === 'TRY' ? '₺' : payment.currency === 'USD' ? '$' : '€'}{payment.amount.toLocaleString('tr-TR')}
                       </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={payment.currency}
+                        variant="outlined"
+                        size="small"
+                        color="primary"
+                      />
                     </TableCell>
                     <TableCell>
                       <Chip
                         label={
                           payment.paymentType === 'salary' ? 'Maaş' :
-                          payment.paymentType === 'bonus' ? 'Prim' :
-                          payment.paymentType === 'advance' ? 'Avans' : 'Diğer'
+                            payment.paymentType === 'bonus' ? 'Prim' :
+                              payment.paymentType === 'advance' ? 'Avans' : 'Diğer'
                         }
                         variant="outlined"
                         size="small"
@@ -488,8 +592,8 @@ const EmployeeDetail: React.FC = () => {
                 ))}
                 {payments.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={5} align="center">
-                      Henüz ödeme kaydı bulunmuyor
+                    <TableCell colSpan={6} align="center">
+                      {loading ? 'Yükleniyor...' : 'Henüz ödeme kaydı bulunmuyor'}
                     </TableCell>
                   </TableRow>
                 )}
@@ -499,22 +603,32 @@ const EmployeeDetail: React.FC = () => {
         </CardContent>
       </Card>
 
+      {/* Pagination */}
+      <Pagination
+        currentPage={currentPage}
+        totalPages={Math.ceil(totalPaymentsCount / itemsPerPage)}
+        totalItems={totalPaymentsCount}
+        itemsPerPage={itemsPerPage}
+        onPageChange={handlePageChange}
+        onItemsPerPageChange={handleItemsPerPageChange}
+      />
+
       {/* Payment Dialog */}
       <Dialog open={paymentDialogOpen} onClose={() => setPaymentDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Ödeme Yap - {employee.name}</DialogTitle>
         <DialogContent>
           <Grid container spacing={3} sx={{ mt: 1 }}>
-            <Grid item xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <TextField
                 fullWidth
-                size="large"
+                size="medium"
                 label="Ödeme Tutarı"
                 type="number"
                 value={paymentAmount}
                 onChange={(e) => setPaymentAmount(e.target.value)}
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <CurrencySelect
                 value={paymentCurrency}
                 onChange={setPaymentCurrency}
@@ -523,8 +637,8 @@ const EmployeeDetail: React.FC = () => {
                 size="large"
               />
             </Grid>
-            <Grid item xs={12}>
-              <FormControl fullWidth size="large">
+            <Grid size={{ xs: 12 }}>
+              <FormControl fullWidth size="medium">
                 <InputLabel>Ödeme Tipi</InputLabel>
                 <Select
                   value={paymentType}
@@ -539,10 +653,10 @@ const EmployeeDetail: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid item xs={12}>
+            <Grid size={{ xs: 12 }}>
               <TextField
                 fullWidth
-                size="large"
+                size="medium"
                 label="Notlar (Opsiyonel)"
                 multiline
                 rows={3}
@@ -555,9 +669,9 @@ const EmployeeDetail: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setPaymentDialogOpen(false)}>İptal</Button>
-          <Button 
-            onClick={handleAddPayment} 
-            variant="contained"
+          <Button
+            onClick={handleAddPayment}
+            variant='contained'
             disabled={!paymentAmount || parseFloat(paymentAmount) <= 0}
           >
             Ödeme Kaydet
@@ -575,22 +689,27 @@ const EmployeeDetail: React.FC = () => {
           {selectedPayment && (
             <Box sx={{ mt: 2, p: 2, bgcolor: 'background.paper', borderRadius: 1 }}>
               <Typography variant="body2">
-                <strong>Tutar:</strong> ₺{selectedPayment.amount.toLocaleString('tr-TR')}
+                <strong>Tutar:</strong> {selectedPayment.currency === 'TRY' ? '₺' : selectedPayment.currency === 'USD' ? '$' : '€'}{selectedPayment.amount.toLocaleString('tr-TR')}
+              </Typography>
+              <Typography variant="body2">
+                <strong>Para Birimi:</strong> {selectedPayment.currency}
               </Typography>
               <Typography variant="body2">
                 <strong>Tarih:</strong> {new Date(selectedPayment.paymentDate).toLocaleDateString('tr-TR')}
               </Typography>
               <Typography variant="body2">
-                <strong>Tip:</strong> {selectedPayment.paymentType}
+                <strong>Tip:</strong> {selectedPayment.paymentType === 'salary' ? 'Maaş' :
+                  selectedPayment.paymentType === 'bonus' ? 'Prim' :
+                    selectedPayment.paymentType === 'advance' ? 'Avans' : 'Diğer'}
               </Typography>
             </Box>
           )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDeletePaymentDialogOpen(false)}>İptal</Button>
-          <Button 
-            onClick={handleDeletePayment} 
-            color="error" 
+          <Button
+            onClick={handleDeletePayment}
+            color="error"
             variant="contained"
           >
             Sil

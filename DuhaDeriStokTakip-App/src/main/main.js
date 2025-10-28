@@ -915,7 +915,7 @@ ipcMain.handle('employees:update-status', async (_, employeeId, status) => {
 });
 
 // Get employees by status handler
-ipcMain.handle('employees:get-by-status', async (_, status, page = 1, limit = 10) => {
+ipcMain.handle('employees:get-by-status', async (_, status, page = 1, limit = 10, searchTerm = '') => {
   try {
     // Validate status value
     if (!status || !['active', 'inactive'].includes(status)) {
@@ -935,22 +935,39 @@ ipcMain.handle('employees:get-by-status', async (_, status, page = 1, limit = 10
     const limitNum = Math.max(1, Math.min(100, parseInt(limit) || 50)); // Max 100 items per page
     const offset = (pageNum - 1) * limitNum;
 
-    // Get employees by status with pagination
+    // Build search condition
+    let searchCondition = '';
+    let queryParams = [status];
+    let countParams = [status];
+
+    if (searchTerm && searchTerm.trim()) {
+      const search = `%${searchTerm.trim().toLowerCase()}%`;
+      searchCondition = ` AND (
+        LOWER(name) LIKE $${queryParams.length + 1} OR 
+        LOWER(phone) LIKE $${queryParams.length + 1} OR 
+        LOWER(email) LIKE $${queryParams.length + 1} OR 
+        LOWER(position) LIKE $${queryParams.length + 1}
+      )`;
+      queryParams.push(search);
+      countParams.push(search);
+    }
+
+    // Get employees by status with pagination and search
     const result = await queryAll(`
       SELECT * FROM employees 
-      WHERE status = $1 
+      WHERE status = $1 ${searchCondition}
       ORDER BY created_at DESC 
-      LIMIT $2 OFFSET $3
-    `, [status, limitNum, offset]);
+      LIMIT $${queryParams.length + 1} OFFSET $${queryParams.length + 2}
+    `, [...queryParams, limitNum, offset]);
 
-    // Get total count and total salary for all employees with this status
+    // Get total count and total salary for all employees with this status and search
     const statsResult = await queryOne(`
       SELECT 
         COUNT(*) as total,
         COALESCE(SUM(COALESCE(salary, 0)), 0) as total_salary
       FROM employees 
-      WHERE status = $1
-    `, [status]);
+      WHERE status = $1 ${searchCondition}
+    `, countParams);
 
     return {
       success: true,
@@ -1263,12 +1280,69 @@ ipcMain.handle('customers:update-balance', async (_, customerId, newBalance) => 
 });
 
 // Employee payments handlers
-ipcMain.handle('employee-payments:get-by-employee', async (_, employeeId) => {
+ipcMain.handle('employee-payments:get-by-employee', async (_, employeeId, page = 1, limit = 10) => {
   try {
-    const result = await queryAll('SELECT * FROM employee_payments WHERE employee_id = $1 ORDER BY created_at DESC', [employeeId]);
-    return { success: true, data: result };
+    // Validate pagination parameters
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.max(1, Math.min(100, parseInt(limit) || 10));
+    const offset = (pageNum - 1) * limitNum;
+
+    // Get payments with pagination
+    const result = await queryAll(`
+      SELECT * FROM employee_payments 
+      WHERE employee_id = $1 
+      ORDER BY created_at DESC 
+      LIMIT $2 OFFSET $3
+    `, [employeeId, limitNum, offset]);
+
+    // Get total count
+    const countResult = await queryOne(`
+      SELECT COUNT(*) as total FROM employee_payments WHERE employee_id = $1
+    `, [employeeId]);
+
+    // Get currency totals
+    const totalsResult = await queryAll(`
+      SELECT 
+        currency,
+        SUM(amount) as total_amount
+      FROM employee_payments 
+      WHERE employee_id = $1 
+      GROUP BY currency
+    `, [employeeId]);
+
+    const totalCount = parseInt(countResult?.total || countResult?.count || 0);
+
+    console.log('🔍 Backend - Employee Payments Query:', {
+      employeeId,
+      resultCount: result.length,
+      countResult,
+      totalCount,
+      currencyTotals: totalsResult,
+      samplePayment: result[0]
+    });
+
+    const response = {
+      success: true,
+      data: result || [],
+      total: totalCount,
+      page: pageNum,
+      limit: limitNum,
+      currencyTotals: totalsResult || []
+    };
+
+    console.log('📤 Backend Response:', response);
+
+    return response;
   } catch (error) {
-    return { success: false, error: error.message };
+    return {
+      success: false,
+      data: [],
+      total: 0,
+      page: page || 1,
+      limit: limit || 10,
+      currencyTotals: [],
+      error: error.message
+    };
   }
 });
 

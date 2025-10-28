@@ -38,7 +38,7 @@ export interface Employee extends BaseEntity {
   salary_currency?: string;
   balance?: number;
   hire_date?: string;
-  status?: 'active' | 'inactive';
+  status: 'active' | 'inactive';
 }
 
 // Category interface - matches categories table schema
