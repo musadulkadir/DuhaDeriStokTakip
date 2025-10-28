@@ -978,8 +978,8 @@ const SupplierDetail: React.FC = () => {
   };
 
   const getBalanceColor = (balance: number) => {
-    if (balance > 0) return 'error'; // Borç (kırmızı)
-    if (balance < 0) return 'success'; // Alacak (yeşil)
+    if (balance > 0) return 'error'; // Biz tedarikçiye borçluyuz (kırmızı)
+    if (balance < 0) return 'success'; // Tedarikçi bize borçlu (yeşil)
     return 'default';
   };
 
@@ -1077,7 +1077,10 @@ const SupplierDetail: React.FC = () => {
           <Card>
             <CardContent>
               <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-                Borç Durumu
+                Bakiye Durumu
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+                Pozitif: Tedarikçiye borçluyuz | Negatif: Tedarikçi borçlu
               </Typography>
               <Box sx={{ mb: 2 }}>
                 <Chip

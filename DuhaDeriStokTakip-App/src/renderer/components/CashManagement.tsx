@@ -43,6 +43,7 @@ import {
   Save,
   Cancel,
   Warning,
+  SwapHoriz,
 } from '@mui/icons-material';
 import Pagination from './common/Pagination';
 import { dbAPI } from '../services/api';
@@ -117,6 +118,7 @@ const CashManagement: React.FC = () => {
   const [addTransactionDialogOpen, setAddTransactionDialogOpen] = useState(false);
   const [editTransactionDialogOpen, setEditTransactionDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [currencyExchangeDialogOpen, setCurrencyExchangeDialogOpen] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<CashTransaction | null>(null);
 
   // Form states
@@ -126,6 +128,12 @@ const CashManagement: React.FC = () => {
   const [category, setCategory] = useState('');
   const [description, setDescription] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
+
+  // Para çevirme form states
+  const [fromCurrency, setFromCurrency] = useState('USD');
+  const [toCurrency, setToCurrency] = useState('EUR');
+  const [fromAmount, setFromAmount] = useState('');
+  const [toAmount, setToAmount] = useState('');
 
   // Tutar formatlama fonksiyonları
   const formatNumberWithCommas = (value: string): string => {
@@ -211,11 +219,12 @@ const CashManagement: React.FC = () => {
     return transactions.map((transaction) => {
       const currency = transaction.currency || 'TRY';
       const previousBalance = balancesByCurrency[currency];
+      const amount = Number(transaction.amount) || 0;
 
       // Yeni bakiyeyi hesapla
       const newBalance = transaction.type === 'in'
-        ? previousBalance + transaction.amount
-        : previousBalance - transaction.amount;
+        ? previousBalance + amount
+        : previousBalance - amount;
 
       // Bakiyeyi güncelle
       balancesByCurrency[currency] = newBalance;
@@ -230,86 +239,145 @@ const CashManagement: React.FC = () => {
 
   // Özet hesapla
   const calculateSummary = async (transactions: CashTransaction[]) => {
+    console.log('calculateSummary çağrıldı, işlem sayısı:', transactions.length);
+
+    // İlk işlemi kontrol et
+    if (transactions.length > 0) {
+      const testAmount = Number(transactions[0].amount);
+      console.log('İlk işlem:', {
+        type: transactions[0].type,
+        amount: transactions[0].amount,
+        currency: transactions[0].currency,
+        amountType: typeof transactions[0].amount,
+        convertedAmount: testAmount,
+        convertedType: typeof testAmount,
+        isNaN: isNaN(testAmount)
+      });
+    }
+
     const today = new Date().toISOString().split('T')[0];
     const currentMonth = new Date().toISOString().substring(0, 7);
 
     // Kasa işlemlerini para birimi bazında hesapla
-    const cashSummary = transactions.reduce((acc, transaction) => {
-      const transactionDate = transaction.created_at.split('T')[0];
-      const transactionMonth = transaction.created_at.substring(0, 7);
-      const currency = transaction.currency || 'USD';
+    let cashSummary;
+    try {
+      cashSummary = transactions.reduce((acc, transaction) => {
+        // created_at kontrolü
+        if (!transaction.created_at) {
+          console.warn('created_at yok:', transaction);
+          return acc;
+        }
 
-      if (transaction.type === 'in') {
-        if (currency === 'TRY') {
-          acc.totalBalanceTRY += transaction.amount;
-          if (transactionDate === today) {
-            acc.todayIncomeTRY += transaction.amount;
-          }
-          if (transactionMonth === currentMonth) {
-            acc.monthlyIncomeTRY += transaction.amount;
-          }
-        } else if (currency === 'EUR') {
-          acc.totalBalanceEUR += transaction.amount;
-          if (transactionDate === today) {
-            acc.todayIncomeEUR += transaction.amount;
-          }
-          if (transactionMonth === currentMonth) {
-            acc.monthlyIncomeEUR += transaction.amount;
+        // created_at'i string'e çevir (Date objesi olabilir)
+        const createdAtStr = typeof transaction.created_at === 'string'
+          ? transaction.created_at
+          : new Date(transaction.created_at).toISOString();
+
+        const transactionDate = createdAtStr.split('T')[0];
+        const transactionMonth = createdAtStr.substring(0, 7);
+        const currency = transaction.currency || 'TRY';
+        const amount = Number(transaction.amount) || 0;
+
+        if (transaction.type === 'in') {
+          if (currency === 'TRY') {
+            acc.totalBalanceTRY += amount;
+            if (transactionDate === today) {
+              acc.todayIncomeTRY += amount;
+            }
+            if (transactionMonth === currentMonth) {
+              acc.monthlyIncomeTRY += amount;
+            }
+          } else if (currency === 'EUR') {
+            acc.totalBalanceEUR += amount;
+            if (transactionDate === today) {
+              acc.todayIncomeEUR += amount;
+            }
+            if (transactionMonth === currentMonth) {
+              acc.monthlyIncomeEUR += amount;
+            }
+          } else {
+            acc.totalBalanceUSD += amount;
+            if (transactionDate === today) {
+              acc.todayIncomeUSD += amount;
+            }
+            if (transactionMonth === currentMonth) {
+              acc.monthlyIncomeUSD += amount;
+            }
           }
         } else {
-          acc.totalBalanceUSD += transaction.amount;
-          if (transactionDate === today) {
-            acc.todayIncomeUSD += transaction.amount;
-          }
-          if (transactionMonth === currentMonth) {
-            acc.monthlyIncomeUSD += transaction.amount;
-          }
-        }
-      } else {
-        if (currency === 'TRY') {
-          acc.totalBalanceTRY -= transaction.amount;
-          if (transactionDate === today) {
-            acc.todayExpenseTRY += transaction.amount;
-          }
-          if (transactionMonth === currentMonth) {
-            acc.monthlyExpenseTRY += transaction.amount;
-          }
-        } else if (currency === 'EUR') {
-          acc.totalBalanceEUR -= transaction.amount;
-          if (transactionDate === today) {
-            acc.todayExpenseEUR += transaction.amount;
-          }
-          if (transactionMonth === currentMonth) {
-            acc.monthlyExpenseEUR += transaction.amount;
-          }
-        } else {
-          acc.totalBalanceUSD -= transaction.amount;
-          if (transactionDate === today) {
-            acc.todayExpenseUSD += transaction.amount;
-          }
-          if (transactionMonth === currentMonth) {
-            acc.monthlyExpenseUSD += transaction.amount;
+          if (currency === 'TRY') {
+            acc.totalBalanceTRY -= amount;
+            if (transactionDate === today) {
+              acc.todayExpenseTRY += amount;
+            }
+            if (transactionMonth === currentMonth) {
+              acc.monthlyExpenseTRY += amount;
+            }
+          } else if (currency === 'EUR') {
+            acc.totalBalanceEUR -= amount;
+            if (transactionDate === today) {
+              acc.todayExpenseEUR += amount;
+            }
+            if (transactionMonth === currentMonth) {
+              acc.monthlyExpenseEUR += amount;
+            }
+          } else {
+            acc.totalBalanceUSD -= amount;
+            if (transactionDate === today) {
+              acc.todayExpenseUSD += amount;
+            }
+            if (transactionMonth === currentMonth) {
+              acc.monthlyExpenseUSD += amount;
+            }
           }
         }
-      }
 
-      return acc;
-    }, {
-      totalBalanceTRY: 0,
-      totalBalanceUSD: 0,
-      totalBalanceEUR: 0,
-      todayIncomeTRY: 0,
-      todayIncomeUSD: 0,
-      todayIncomeEUR: 0,
-      todayExpenseTRY: 0,
-      todayExpenseUSD: 0,
-      todayExpenseEUR: 0,
-      monthlyIncomeTRY: 0,
-      monthlyIncomeUSD: 0,
-      monthlyIncomeEUR: 0,
-      monthlyExpenseTRY: 0,
-      monthlyExpenseUSD: 0,
-      monthlyExpenseEUR: 0,
+        return acc;
+      }, {
+        totalBalanceTRY: 0,
+        totalBalanceUSD: 0,
+        totalBalanceEUR: 0,
+        todayIncomeTRY: 0,
+        todayIncomeUSD: 0,
+        todayIncomeEUR: 0,
+        todayExpenseTRY: 0,
+        todayExpenseUSD: 0,
+        todayExpenseEUR: 0,
+        monthlyIncomeTRY: 0,
+        monthlyIncomeUSD: 0,
+        monthlyIncomeEUR: 0,
+        monthlyExpenseTRY: 0,
+        monthlyExpenseUSD: 0,
+        monthlyExpenseEUR: 0,
+      });
+    } catch (error) {
+      console.error('Reduce hatası:', error);
+      cashSummary = {
+        totalBalanceTRY: 0,
+        totalBalanceUSD: 0,
+        totalBalanceEUR: 0,
+        todayIncomeTRY: 0,
+        todayIncomeUSD: 0,
+        todayIncomeEUR: 0,
+        todayExpenseTRY: 0,
+        todayExpenseUSD: 0,
+        todayExpenseEUR: 0,
+        monthlyIncomeTRY: 0,
+        monthlyIncomeUSD: 0,
+        monthlyIncomeEUR: 0,
+        monthlyExpenseTRY: 0,
+        monthlyExpenseUSD: 0,
+        monthlyExpenseEUR: 0,
+      };
+    }
+
+    // Debug: Kasa bakiyelerini kontrol et
+    console.log('Kasa Bakiyeleri:', {
+      totalBalanceTRY: cashSummary.totalBalanceTRY,
+      totalBalanceUSD: cashSummary.totalBalanceUSD,
+      totalBalanceEUR: cashSummary.totalBalanceEUR,
+      todayIncomeTRY: cashSummary.todayIncomeTRY,
+      todayExpenseTRY: cashSummary.todayExpenseTRY,
     });
 
     // Müşteri borçlarını para birimi bazında hesapla
@@ -323,19 +391,19 @@ const CashManagement: React.FC = () => {
         customersResponse.data.forEach((customer: any) => {
           // Müşteri bakiyesi negatifse borç var demektir
           // TL borcu
-          const balanceTRY = customer.balanceTRY || customer.balance || 0;
+          const balanceTRY = Number(customer.balanceTRY || customer.balance || 0);
           if (balanceTRY < 0) {
             totalDebtTRY += Math.abs(balanceTRY);
           }
 
           // USD borcu  
-          const balanceUSD = customer.balanceUSD || 0;
+          const balanceUSD = Number(customer.balanceUSD || 0);
           if (balanceUSD < 0) {
             totalDebtUSD += Math.abs(balanceUSD);
           }
 
           // EUR borcu
-          const balanceEUR = customer.balanceEUR || 0;
+          const balanceEUR = Number(customer.balanceEUR || 0);
           if (balanceEUR < 0) {
             totalDebtEUR += Math.abs(balanceEUR);
           }
@@ -409,6 +477,83 @@ const CashManagement: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Para çevirme işlemi
+  const handleCurrencyExchange = async () => {
+    const newErrors: string[] = [];
+
+    const fromAmt = parseFormattedNumber(fromAmount);
+    const toAmt = parseFormattedNumber(toAmount);
+
+    if (!fromAmount || fromAmt <= 0) {
+      newErrors.push('Çıkış tutarı girin');
+    }
+
+    if (!toAmount || toAmt <= 0) {
+      newErrors.push('Giriş tutarı girin');
+    }
+
+    if (fromCurrency === toCurrency) {
+      newErrors.push('Farklı para birimleri seçin');
+    }
+
+    if (newErrors.length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // 1. Çıkış işlemi (out)
+      const outTransaction = {
+        type: 'out' as const,
+        amount: fromAmt,
+        currency: fromCurrency,
+        category: 'Para Çevirme',
+        description: `${fromCurrency} → ${toCurrency} çevirme işlemi (Çıkış)`,
+        reference_type: 'other' as const,
+        user: 'Kasa Kullanıcısı',
+      };
+
+      const outResponse = await dbAPI.createCashTransaction(outTransaction);
+      if (!outResponse.success) {
+        throw new Error('Çıkış işlemi başarısız');
+      }
+
+      // 2. Giriş işlemi (in)
+      const inTransaction = {
+        type: 'in' as const,
+        amount: toAmt,
+        currency: toCurrency,
+        category: 'Para Çevirme',
+        description: `${fromCurrency} → ${toCurrency} çevirme işlemi (Giriş)`,
+        reference_type: 'other' as const,
+        user: 'Kasa Kullanıcısı',
+      };
+
+      const inResponse = await dbAPI.createCashTransaction(inTransaction);
+      if (!inResponse.success) {
+        throw new Error('Giriş işlemi başarısız');
+      }
+
+      await loadTransactions();
+      setSnackbar({ open: true, message: 'Para çevirme işlemi başarıyla tamamlandı', severity: 'success' });
+      handleCloseCurrencyExchangeDialog();
+    } catch (error) {
+      setSnackbar({ open: true, message: 'Para çevirme işlemi başarısız oldu', severity: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCloseCurrencyExchangeDialog = () => {
+    setCurrencyExchangeDialogOpen(false);
+    setFromCurrency('USD');
+    setToCurrency('EUR');
+    setFromAmount('');
+    setToAmount('');
+    setErrors([]);
   };
 
   // İşlem sil
@@ -533,7 +678,7 @@ const CashManagement: React.FC = () => {
       {/* Summary Cards */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         {/* TL Kasa Bakiyesi */}
-        <Grid item xs={12} sm={6} lg={2}>
+        <Grid size={{ xs: 12, sm: 6, lg: 2 }}>
           <Card>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -698,10 +843,12 @@ const CashManagement: React.FC = () => {
         <Grid item>
           <Button
             variant="outlined"
-            startIcon={<History />}
+            startIcon={<SwapHoriz />}
+            onClick={() => setCurrencyExchangeDialogOpen(true)}
             size="large"
+            color="secondary"
           >
-            Geçmiş Rapor
+            Para Çevirme
           </Button>
         </Grid>
       </Grid>
@@ -997,6 +1144,105 @@ const CashManagement: React.FC = () => {
             startIcon={<Save />}
           >
             {loading ? 'Güncelleniyor...' : 'Güncelle'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Currency Exchange Dialog */}
+      <Dialog 
+        open={currencyExchangeDialogOpen} 
+        onClose={handleCloseCurrencyExchangeDialog}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Para Çevirme İşlemi</DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2 }}>
+            {errors.length > 0 && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {errors.map((error, index) => (
+                  <div key={index}>{error}</div>
+                ))}
+              </Alert>
+            )}
+
+            <Grid container spacing={2}>
+              <Grid size={{ xs:12}}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Bir para biriminden diğerine çevirme işlemi yapın
+                </Typography>
+              </Grid>
+
+              {/* Çıkış Para Birimi */}
+              <Grid size={{ xs:2 }}>
+                <FormControl fullWidth>
+                  <InputLabel>Çıkış Para Birimi</InputLabel>
+                  <Select
+                    value={fromCurrency}
+                    label="Çıkış Para Birimi"
+                    onChange={(e) => setFromCurrency(e.target.value)}
+                  >
+                    <MenuItem value="TRY">TRY (₺)</MenuItem>
+                    <MenuItem value="USD">USD ($)</MenuItem>
+                    <MenuItem value="EUR">EUR (€)</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              {/* Çıkış Tutarı */}
+              <Grid size={{xs:3}}>
+                <TextField
+                  fullWidth
+                  label="Çıkış Tutarı"
+                  value={fromAmount}
+                  onChange={(e) => setFromAmount(formatNumberWithCommas(e.target.value))}
+                  placeholder="0.00"
+                />
+              </Grid>
+
+              {/* Swap Icon */}
+              <Grid item xs={12} sx={{ display: 'flex', justifyContent: 'center', my: 1 }}>
+                <SwapHoriz sx={{ fontSize: 40, color: 'primary.main' }} />
+              </Grid>
+
+              {/* Giriş Para Birimi */}
+              <Grid size={{ xs:2}}>
+                <FormControl fullWidth>
+                  <InputLabel>Giriş Para Birimi</InputLabel>
+                  <Select
+                    value={toCurrency}
+                    label="Giriş Para Birimi"
+                    onChange={(e) => setToCurrency(e.target.value)}
+                  >
+                    <MenuItem value="TRY">TRY (₺)</MenuItem>
+                    <MenuItem value="USD">USD ($)</MenuItem>
+                    <MenuItem value="EUR">EUR (€)</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              {/* Giriş Tutarı */}
+              <Grid size={{ xs:3 }}>
+                <TextField
+                  fullWidth
+                  label="Giriş Tutarı"
+                  value={toAmount}
+                  onChange={(e) => setToAmount(formatNumberWithCommas(e.target.value))}
+                  placeholder="0.00"
+                />
+              </Grid>
+            </Grid>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseCurrencyExchangeDialog}>İptal</Button>
+          <Button
+            onClick={handleCurrencyExchange}
+            variant="contained"
+            disabled={loading}
+            startIcon={<SwapHoriz />}
+          >
+            {loading ? 'İşleniyor...' : 'Çevir'}
           </Button>
         </DialogActions>
       </Dialog>

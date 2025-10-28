@@ -271,7 +271,7 @@ const SupplierManagement: React.FC = () => {
                                     {suppliers.filter(s => ((s.balanceTRY || 0) + (s.balanceUSD || 0) + (s.balanceEUR || 0)) > 0).length}
                                 </Typography>
                                 <Typography variant="body2" color="text.secondary">
-                                    Borçlu Tedarikçi
+                                    Alacaklı Tedarikçi
                                 </Typography>
                             </Box>
                         </CardContent>
@@ -288,42 +288,20 @@ const SupplierManagement: React.FC = () => {
                                     {suppliers.filter(s => ((s.balanceTRY || 0) + (s.balanceUSD || 0) + (s.balanceEUR || 0)) < 0).length}
                                 </Typography>
                                 <Typography variant="body2" color="text.secondary">
-                                    Alacaklı Tedarikçi
+                                    Borçlu Tedarikçi
                                 </Typography>
                             </Box>
                         </CardContent>
                     </Card>
                 </Grid>
-                <Grid item xs={12} sm={6} md={3}>
-                    <Card>
-                        <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
-                            <Avatar sx={{ bgcolor: 'warning.main', mr: 2 }}>
-                                <AccountBalance />
-                            </Avatar>
-                            <Box>
-                                <Typography variant="h6" sx={{ fontWeight: 600, mb: 0.5 }}>
-                                    ₺{suppliers.reduce((sum, s) => sum + (s.balanceTRY || 0), 0).toLocaleString()}
-                                </Typography>
-                                <Typography variant="h6" sx={{ fontWeight: 600, mb: 0.5 }}>
-                                    ${suppliers.reduce((sum, s) => sum + (s.balanceUSD || 0), 0).toLocaleString()}
-                                </Typography>
-                                <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                                    €{suppliers.reduce((sum, s) => sum + (s.balanceEUR || 0), 0).toLocaleString()}
-                                </Typography>
-                                <Typography variant="body2" color="text.secondary">
-                                    Net Bakiye (TL / USD / EUR)
-                                </Typography>
-                            </Box>
-                        </CardContent>
-                    </Card>
-                </Grid>
+
             </Grid>
 
             {/* Search and Add */}
             <Card sx={{ mb: 3 }}>
                 <CardContent>
                     <Grid container spacing={3} alignItems="center">
-                        <Grid item xs={12} md={8}>
+                        <Grid size={{ xs:12, md:4 }}>
                             <TextField
                                 fullWidth
                                 size="large"
