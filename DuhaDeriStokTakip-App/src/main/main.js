@@ -5,7 +5,8 @@ const os = require('os');
 const { initializeDatabase, query, queryOne, queryAll } = require('./database');
 
 // Environment detection
-const isDev = process.env.NODE_ENV === 'development';
+//const isDev = process.env.NODE_ENV === 'development';
+const isDev = true;
 
 let db;
 let mainWindow;
@@ -603,7 +604,7 @@ function createWindow() {
   });
 
   const htmlPath = isDev
-    ? 'http://localhost:3002'
+    ? 'http://localhost:3000'
     : `file://${path.join(__dirname, '../../dist-react/index.html')}`;
 
   console.log('Production HTML path:', path.join(__dirname, '../../dist-react/index.html'));
@@ -614,9 +615,9 @@ function createWindow() {
     mainWindow.show();
   });
 
-  if (isDev) {
-    mainWindow.webContents.openDevTools();
-  }
+  // if (isDev) {
+  //   mainWindow.webContents.openDevTools();
+  // }
 }
 
 app.whenReady().then(async () => {
@@ -670,8 +671,8 @@ ipcMain.handle('products:get-all', async (_, page = 1, limit = 50) => {
 ipcMain.handle('products:create', async (_, product) => {
   try {
     const result = await queryOne(`
-      INSERT INTO products (name, category, color, stock_quantity, unit, description, type) 
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      INSERT INTO products (name, category, color, stock_quantity, unit, description) 
+      VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING *
     `, [
       product.name,
@@ -679,8 +680,7 @@ ipcMain.handle('products:create', async (_, product) => {
       product.color || null,
       product.stock_quantity || 0,
       product.unit || 'adet',
-      product.description || null,
-      product.type || 'product'
+      product.description || null
     ]);
 
     return { success: true, data: result };
@@ -889,8 +889,8 @@ ipcMain.handle('products:update', async (_, id, product) => {
   try {
     const result = await queryOne(`
       UPDATE products 
-      SET name = $1, category = $2, color = $3, stock_quantity = $4, unit = $5, description = $6, type = $7, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $8
+      SET name = $1, category = $2, color = $3, stock_quantity = $4, unit = $5, description = $6, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $7
       RETURNING *
     `, [
       product.name,
@@ -899,7 +899,6 @@ ipcMain.handle('products:update', async (_, id, product) => {
       product.stock_quantity || 0,
       product.unit || 'adet',
       product.description || null,
-      product.type || 'product',
       id
     ]);
 
@@ -1723,17 +1722,38 @@ ipcMain.handle('purchases:create', async (_, purchase) => {
     // Create purchase items
     if (purchase.items && purchase.items.length > 0) {
       for (const item of purchase.items) {
+        console.log('Processing purchase item:', {
+          product_id: item.product_id,
+          brand_from_item: item.brand,
+          brand_type: typeof item.brand,
+          brand_length: item.brand?.length
+        });
+
+        // Get brand from item or materials table
+        // Check for both null/undefined and empty string
+        let brand = (item.brand && item.brand.trim()) ? item.brand.trim() : null;
+        
+        // If brand not provided in item, get from materials table
+        if (!brand) {
+          const materialInfo = await queryOne(`SELECT brand FROM materials WHERE id = $1`, [item.product_id]);
+          brand = materialInfo?.brand || null;
+          console.log('Brand from materials table:', brand);
+        }
+
+        console.log('Final brand value to insert:', brand);
+
         await query(`
           INSERT INTO purchase_items (
-            purchase_id, product_id, quantity, unit_price, total_price
+            purchase_id, product_id, quantity, unit_price, total_price, brand
           ) 
-          VALUES ($1, $2, $3, $4, $5)
+          VALUES ($1, $2, $3, $4, $5, $6)
         `, [
           purchaseResult.id,
           item.product_id,
           item.quantity,
           item.unit_price,
-          item.total_price
+          item.total_price,
+          brand
         ]);
 
         // Check if it's a material or product and update accordingly
@@ -1869,10 +1889,11 @@ ipcMain.handle('purchases:getById', async (event, purchaseId) => {
         pi.quantity,
         pi.unit_price,
         pi.total_price,
+        pi.brand as purchase_brand,
         m.name as material_name,
         m.category,
         m.color_shade,
-        m.brand,
+        m.brand as material_brand,
         m.code
       FROM purchases p
       LEFT JOIN customers c ON p.supplier_id = c.id
@@ -1904,10 +1925,11 @@ ipcMain.handle('purchases:getById', async (event, purchaseId) => {
 
       items: purchaseDetailsRows.map(row => ({
         productId: row.product_id,
-        productName: row.material_name || `${row.category || 'Bilinmiyor'}${row.color_shade ? ' - ' + row.color_shade : ''}${row.code ? ' - ' + row.code : ''}${row.brand ? ' (' + row.brand + ')' : ''}`,
+        productName: row.material_name || `${row.category || 'Bilinmiyor'}${row.color_shade ? ' - ' + row.color_shade : ''}${row.code ? ' - ' + row.code : ''}${row.material_brand ? ' (' + row.material_brand + ')' : ''}`,
         quantity: row.quantity,
         unitPrice: row.unit_price,
-        total: row.total_price
+        total: row.total_price,
+        brand: row.purchase_brand || row.material_brand || null
       })).filter(item => item.productId)
     };
 

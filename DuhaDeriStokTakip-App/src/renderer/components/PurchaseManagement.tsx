@@ -54,6 +54,7 @@ interface PurchaseItem {
   unit_price: number;
   total_price: number;
   material_type?: string; // boya, cila, binder
+  brand?: string; // firma
 }
 
 interface NewPurchase {
@@ -248,18 +249,21 @@ const PurchaseManagement: React.FC = () => {
       });
 
       let materialId: number;
+      let materialBrand: string | undefined;
 
       if (existingMaterial) {
         // Mevcut malzemeyi kullan
         materialId = existingMaterial.id!;
+        materialBrand = existingMaterial.brand || undefined;
         setSnackbar({ open: true, message: 'Mevcut malzeme kullanıldı', severity: 'info' });
       } else {
         // Yeni malzeme oluştur
+        const brandValue = currentItem.brand?.trim() || undefined;
         const materialData = {
           name: materialName,
           category: currentItem.category,
           color_shade: currentItem.color_shade || undefined,
-          brand: currentItem.brand || undefined,
+          brand: brandValue,
           code: currentItem.code || undefined,
           stock_quantity: 0,
           unit: 'kg',
@@ -272,6 +276,7 @@ const PurchaseManagement: React.FC = () => {
         }
 
         materialId = materialResponse.data.id || 0;
+        materialBrand = brandValue;
         setSnackbar({ open: true, message: 'Yeni malzeme oluşturuldu', severity: 'success' });
 
         // Malzeme listesini yenile
@@ -284,6 +289,7 @@ const PurchaseManagement: React.FC = () => {
         quantity,
         unit_price: unitPrice,
         total_price: quantity * unitPrice,
+        brand: materialBrand,
       };
 
       setNewPurchase(prev => ({
@@ -347,6 +353,8 @@ const PurchaseManagement: React.FC = () => {
         notes: newPurchase.notes,
         items: newPurchase.items,
       };
+
+      console.log('Sending purchase data:', JSON.stringify(purchaseData, null, 2));
 
       const purchaseResponse = await dbAPI.createPurchase(purchaseData);
       if (!purchaseResponse.success) {
@@ -729,7 +737,8 @@ const PurchaseManagement: React.FC = () => {
         <DialogContent>
           <Grid container spacing={3} sx={{ mt: 1 }}>
             {/* Tedarikçi ve Para Birimi */}
-            <Grid item xs={12} md={6}>
+
+            <Grid size={{ xs: 6, md: 3 }} >
               <FormControl fullWidth size="medium">
                 <InputLabel sx={{ fontSize: '1.1rem' }}>Tedarikçi</InputLabel>
                 <Select
@@ -738,7 +747,7 @@ const PurchaseManagement: React.FC = () => {
                   onChange={(e) => setNewPurchase({ ...newPurchase, supplier_id: e.target.value })}
                   sx={{
                     '& .MuiSelect-select': {
-                      fontSize: '1.1rem',
+                      fontSize: '1rem',
                       py: 2
                     }
                   }}
@@ -747,7 +756,7 @@ const PurchaseManagement: React.FC = () => {
                     <MenuItem
                       key={supplier.id}
                       value={supplier.id?.toString()}
-                      sx={{ fontSize: '1.1rem', py: 1.5 }}
+                      sx={{ fontSize: '1rem', py: 1.5 }}
                     >
                       {supplier.name}
                     </MenuItem>
@@ -755,38 +764,50 @@ const PurchaseManagement: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid item xs={12} md={6}>
+            <Grid size={{ xs: 6, md: 3 }}>
               <FormControl fullWidth size="medium">
-                <InputLabel sx={{ fontSize: '1.1rem' }}>Para Birimi</InputLabel>
+                <InputLabel sx={{ fontSize: '1rem' }}>Para Birimi</InputLabel>
                 <Select
                   value={newPurchase.currency}
                   label="Para Birimi"
                   onChange={(e) => setNewPurchase({ ...newPurchase, currency: e.target.value })}
                   sx={{
                     '& .MuiSelect-select': {
-                      fontSize: '1.1rem',
+                      fontSize: '1rem',
                       py: 2
                     }
                   }}
                 >
-                  <MenuItem value="TRY" sx={{ fontSize: '1.1rem', py: 1.5 }}>TRY (₺)</MenuItem>
-                  <MenuItem value="USD" sx={{ fontSize: '1.1rem', py: 1.5 }}>USD ($)</MenuItem>
-                  <MenuItem value="EUR" sx={{ fontSize: '1.1rem', py: 1.5 }}>EUR (€)</MenuItem>
+                  <MenuItem value="TRY" sx={{ fontSize: '1rem', py: 1.5 }}>TRY (₺)</MenuItem>
+                  <MenuItem value="USD" sx={{ fontSize: '1rem', py: 1.5 }}>USD ($)</MenuItem>
+                  <MenuItem value="EUR" sx={{ fontSize: '1rem', py: 1.5 }}>EUR (€)</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
+            {/* Açıklama */}
+            <Grid size={{ xs: 12, md: 6 }}>
+              <TextField
+                fullWidth
+                label="Açıklama (Opsiyonel)"
+                multiline
+                rows={1}
+                value={newPurchase.notes}
+                onChange={(e) => setNewPurchase({ ...newPurchase, notes: e.target.value })}
+                placeholder="Alım ile ilgili notlar..."
+              />
+            </Grid>
 
             {/* Malzeme Ekleme */}
-            <Grid item xs={12}>
+            <Grid size={{ xs: 12 }}>
               <Divider sx={{ my: 2 }}>
                 <Typography variant="h6">Malzeme Ekle</Typography>
               </Divider>
             </Grid>
 
             {/* Kategori Seçimi */}
-            <Grid item xs={12} md={3}>
+            <Grid size={{ xs: 12, md: 2 }}>
               <FormControl fullWidth size="medium">
-                <InputLabel sx={{ fontSize: '1.1rem' }}>Kategori</InputLabel>
+                <InputLabel sx={{ fontSize: '1rem' }} size='medium'>Kategori</InputLabel>
                 <Select
                   value={currentItem.category}
                   label="Kategori"
@@ -799,40 +820,52 @@ const PurchaseManagement: React.FC = () => {
                   })}
                   sx={{
                     '& .MuiSelect-select': {
-                      fontSize: '1.1rem',
+                      fontSize: '1rem',
                       py: 2
                     }
                   }}
                 >
-                  <MenuItem value="Boya" sx={{ fontSize: '1.1rem', py: 1.5 }}>Boya</MenuItem>
-                  <MenuItem value="Cila" sx={{ fontSize: '1.1rem', py: 1.5 }}>Cila</MenuItem>
-                  <MenuItem value="Binder" sx={{ fontSize: '1.1rem', py: 1.5 }}>Binder</MenuItem>
+                  <MenuItem value="Boya" sx={{ fontSize: '1rem', py: 1.5 }}>Boya</MenuItem>
+                  <MenuItem value="Cila" sx={{ fontSize: '1rem', py: 1.5 }}>Cila</MenuItem>
+                  <MenuItem value="Binder" sx={{ fontSize: '1rem', py: 1.5 }}>Binder</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
 
             {/* Boya için Renk Tonu */}
             {currentItem.category === 'Boya' && (
-              <Grid item xs={12} md={3}>
+              <Grid size={{ xs: 6, md: 2 }}>
                 <TextField
                   fullWidth
                   label="Renk Tonu"
                   value={currentItem.color_shade}
                   onChange={(e) => setCurrentItem({ ...currentItem, color_shade: e.target.value })}
                   placeholder="Örn: Açık Kahverengi"
+                  InputProps={{
+                    sx: { fontSize: '1rem', minHeight: '60px' }
+                  }}
+                  InputLabelProps={{
+                    sx: { fontSize: '1rem' }
+                  }}
                 />
               </Grid>
             )}
 
             {/* Cila için Firma */}
             {currentItem.category === 'Cila' && (
-              <Grid item xs={12} md={3}>
+              <Grid size={{ xs: 6, md: 2 }}>
                 <TextField
                   fullWidth
                   label="Firma"
                   value={currentItem.brand}
                   onChange={(e) => setCurrentItem({ ...currentItem, brand: e.target.value })}
                   placeholder="Örn: Sayerlack"
+                  InputProps={{
+                    sx: { fontSize: '1rem', minHeight: '60px' }
+                  }}
+                  InputLabelProps={{
+                    sx: { fontSize: '1rem' }
+                  }}
                 />
               </Grid>
             )}
@@ -840,37 +873,55 @@ const PurchaseManagement: React.FC = () => {
             {/* Binder için Kod ve Firma */}
             {currentItem.category === 'Binder' && (
               <>
-                <Grid item xs={12} md={2}>
+                <Grid size={{ xs: 6, md: 2 }}>
                   <TextField
                     fullWidth
                     label="Kod"
                     value={currentItem.code}
                     onChange={(e) => setCurrentItem({ ...currentItem, code: e.target.value })}
                     placeholder="Örn: B-100"
+                    InputProps={{
+                      sx: { fontSize: '1rem', minHeight: '60px' }
+                    }}
+                    InputLabelProps={{
+                      sx: { fontSize: '1rem' }
+                    }}
                   />
                 </Grid>
-                <Grid item xs={12} md={2}>
+                <Grid size={{ xs: 6, md: 2 }}>
                   <TextField
                     fullWidth
                     label="Firma"
                     value={currentItem.brand}
                     onChange={(e) => setCurrentItem({ ...currentItem, brand: e.target.value })}
-                    placeholder="Örn: BASF"
+                    placeholder="Örn: Verbo"
+                    InputProps={{
+                      sx: { fontSize: '1rem', minHeight: '60px' }
+                    }}
+                    InputLabelProps={{
+                      sx: { fontSize: '1rem' }
+                    }}
                   />
                 </Grid>
               </>
             )}
 
             {/* Miktar ve Fiyat */}
-            <Grid item xs={12} md={currentItem.category === 'Binder' ? 2 : 3}>
+            <Grid size={{ xs: 6, md: 2 }}>
               <TextField
                 fullWidth
                 label="Miktar (kg)"
                 value={currentItem.quantity}
                 onChange={(e) => setCurrentItem({ ...currentItem, quantity: formatNumberWithCommas(e.target.value) })}
+                InputProps={{
+                  sx: { fontSize: '1rem', minHeight: '60px' }
+                }}
+                InputLabelProps={{
+                  sx: { fontSize: '1rem' }
+                }}
               />
             </Grid>
-            <Grid item xs={12} md={currentItem.category === 'Binder' ? 2 : 3}>
+            <Grid size={{ xs: 6, md: 2 }}>
               <TextField
                 fullWidth
                 label="Birim Fiyat"
@@ -878,14 +929,20 @@ const PurchaseManagement: React.FC = () => {
                 onChange={(e) => setCurrentItem({ ...currentItem, unit_price: formatDecimalNumber(e.target.value) })}
                 placeholder="Örn: 2.5"
                 helperText="Küsuratlı sayı girebilirsiniz (Örn: 2.5)"
+                InputProps={{
+                  sx: { fontSize: '1rem', minHeight: '60px' }
+                }}
+                InputLabelProps={{
+                  sx: { fontSize: '1rem' }
+                }}
               />
             </Grid>
-            <Grid item xs={12} md={currentItem.category === 'Binder' ? 1 : 2}>
+            <Grid size={{ xs: 6, md: 2 }}>
               <Button
                 fullWidth
                 variant="outlined"
                 onClick={handleAddItem}
-                sx={{ height: '56px' }}
+                sx={{ height: '60px', fontSize: '1rem' }}
               >
                 Ekle
               </Button>
@@ -894,12 +951,12 @@ const PurchaseManagement: React.FC = () => {
             {/* Eklenen Ürünler */}
             {newPurchase.items.length > 0 && (
               <>
-                <Grid item xs={12}>
+                <Grid size={{ xs: 12 }}>
                   <Divider sx={{ my: 2 }}>
                     <Typography variant="h6">Eklenen Malzemeler</Typography>
                   </Divider>
                 </Grid>
-                <Grid item xs={12}>
+                <Grid size={{ xs: 12 }}>
                   <TableContainer>
                     <Table size="small">
                       <TableHead>
@@ -945,18 +1002,7 @@ const PurchaseManagement: React.FC = () => {
               </>
             )}
 
-            {/* Açıklama */}
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Açıklama (Opsiyonel)"
-                multiline
-                rows={2}
-                value={newPurchase.notes}
-                onChange={(e) => setNewPurchase({ ...newPurchase, notes: e.target.value })}
-                placeholder="Alım ile ilgili notlar..."
-              />
-            </Grid>
+
           </Grid>
         </DialogContent>
         <DialogActions>

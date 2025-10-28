@@ -689,9 +689,11 @@ const SalesManagement: React.FC = () => {
                     <Grid item xs={12} md={2}>
                       <TextField
                         label="Adet"
-                        type="number"
                         value={quantityPieces}
-                        onChange={(e) => setQuantityPieces(e.target.value)}
+                        onChange={(e) => {
+                          const formatted = formatNumberWithCommas(e.target.value);
+                          setQuantityPieces(formatted);
+                        }}
                         fullWidth
                         size="medium"
                         helperText="Stoktan düşecek"
@@ -819,10 +821,10 @@ const SalesManagement: React.FC = () => {
                             {saleItems.map((item, index) => (
                               <TableRow key={index}>
                                 <TableCell>{item.productName}</TableCell>
-                                <TableCell align="right">{item.quantityPieces.toLocaleString('tr-TR')} adet</TableCell>
-                                <TableCell align="right">{item.quantityDesi.toLocaleString('tr-TR')} desi</TableCell>
-                                <TableCell align="right">{saleCurrency === 'USD' ? '$' : saleCurrency === 'TRY' ? '₺' : '€'}{item.unitPricePerDesi.toLocaleString('tr-TR')}/desi</TableCell>
-                                <TableCell align="right">{saleCurrency === 'USD' ? '$' : saleCurrency === 'TRY' ? '₺' : '€'}{item.total.toLocaleString('tr-TR')}</TableCell>
+                                <TableCell align="right">{Number(item.quantityPieces).toLocaleString('tr-TR')} adet</TableCell>
+                                <TableCell align="right">{Number(item.quantityDesi).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} desi</TableCell>
+                                <TableCell align="right">{saleCurrency === 'USD' ? '$' : saleCurrency === 'TRY' ? '₺' : '€'}{Number(item.unitPricePerDesi).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/desi</TableCell>
+                                <TableCell align="right">{saleCurrency === 'USD' ? '$' : saleCurrency === 'TRY' ? '₺' : '€'}{Number(item.total).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
                                 <TableCell align="center">
                                   <IconButton
                                     size="small"
@@ -840,7 +842,7 @@ const SalesManagement: React.FC = () => {
                       <Divider sx={{ my: 2 }} />
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <Typography variant="h6">
-                          Genel Toplam: {saleCurrency === 'USD' ? '$' : saleCurrency === 'TRY' ? '₺' : '€'}{calculateTotal().toLocaleString('tr-TR')}
+                          Genel Toplam: {saleCurrency === 'USD' ? '$' : saleCurrency === 'TRY' ? '₺' : '€'}{calculateTotal().toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </Typography>
                         <Box sx={{ display: 'flex', gap: 1 }}>
                           <Button

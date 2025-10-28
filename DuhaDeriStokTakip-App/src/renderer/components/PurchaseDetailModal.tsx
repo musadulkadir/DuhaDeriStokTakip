@@ -32,6 +32,7 @@ interface PurchaseItem {
   quantity: number; // kg
   unitPrice: number; // Birim fiyat
   total: number; // Toplam tutar
+  brand?: string; // Firma
 }
 
 // Alım ana objesi için interface
@@ -84,7 +85,7 @@ const PurchaseDetailModal: React.FC<Props> = ({ open, onClose, purchaseId }) => 
     setPurchaseData(null);
     onClose();
   };
-  
+
   const currencySymbol = purchaseData?.currency === 'USD' ? '$' : purchaseData?.currency === 'EUR' ? '€' : '₺';
 
   return (
@@ -98,7 +99,7 @@ const PurchaseDetailModal: React.FC<Props> = ({ open, onClose, purchaseId }) => 
             <CircularProgress />
           </Box>
         )}
-        
+
         {purchaseData && !loading && (
           <Box>
             {/* Alım Bilgileri */}
@@ -165,6 +166,7 @@ const PurchaseDetailModal: React.FC<Props> = ({ open, onClose, purchaseId }) => 
                     <TableHead>
                       <TableRow sx={{ bgcolor: 'grey.100' }}>
                         <TableCell sx={{ fontWeight: 600 }}>Malzeme</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>Firma</TableCell>
                         <TableCell align="right" sx={{ fontWeight: 600 }}>Miktar (kg)</TableCell>
                         <TableCell align="right" sx={{ fontWeight: 600 }}>Birim Fiyat</TableCell>
                         <TableCell align="right" sx={{ fontWeight: 600 }}>Toplam</TableCell>
@@ -174,6 +176,7 @@ const PurchaseDetailModal: React.FC<Props> = ({ open, onClose, purchaseId }) => 
                       {purchaseData.items.map((item, index) => (
                         <TableRow key={index} hover>
                           <TableCell>{item.productName}</TableCell>
+                          <TableCell>{item.brand || '-'}</TableCell>
                           <TableCell align="right">
                             {item.quantity.toLocaleString('tr-TR')} kg
                           </TableCell>
@@ -186,7 +189,7 @@ const PurchaseDetailModal: React.FC<Props> = ({ open, onClose, purchaseId }) => 
                         </TableRow>
                       ))}
                       <TableRow>
-                        <TableCell colSpan={3} align="right" sx={{ fontWeight: 700, fontSize: '1.1rem' }}>
+                        <TableCell colSpan={4} align="right" sx={{ fontWeight: 700, fontSize: '1.1rem' }}>
                           Genel Toplam:
                         </TableCell>
                         <TableCell align="right" sx={{ fontWeight: 700, fontSize: '1.1rem', color: 'primary.main' }}>
