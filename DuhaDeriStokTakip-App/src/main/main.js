@@ -599,8 +599,17 @@ function createWindow() {
       contextIsolation: false,
       enableRemoteModule: true,
     },
-    show: false,
-    fullscreen: true
+    show: false, // Başlangıçta gizli
+    backgroundColor: '#F5F5F5' // SplashScreen arka planı ile aynı
+  });
+
+  // Window'u maximize et
+  mainWindow.maximize();
+
+  // ready-to-show olayında pencereyi göster
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+    console.log('Window is ready and shown');
   });
 
   let htmlPath; // Yüklenecek yolu belirlemek için
@@ -619,20 +628,20 @@ function createWindow() {
 
   // Belirlenen yolu yükle
   mainWindow.loadURL(htmlPath);
-
-  mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
-  });
 }
 
 app.whenReady().then(async () => {
+  // Window'u hemen oluştur
+  createWindow();
+
+  // Database'i arka planda başlat
   try {
     db = await initializeDatabase();
     await createTables();
-    createWindow();
+    console.log('Database initialized successfully');
   } catch (error) {
     console.error('Failed to initialize database:', error);
-    app.quit();
+    // Database hatası olsa bile uygulama kapanmasın
   }
 
   app.on('activate', () => {
@@ -1513,6 +1522,24 @@ ipcMain.handle('sales:delete', async (_, saleId) => {
 });
 
 // Customer payments handlers
+ipcMain.handle('customer-payments:get-all', async () => {
+  try {
+    const result = await queryAll(`
+      SELECT 
+        cp.*,
+        c.name as customer_name,
+        c.type as customer_type
+      FROM customer_payments cp
+      LEFT JOIN customers c ON cp.customer_id = c.id
+      WHERE c.type = 'customer' OR c.type IS NULL
+      ORDER BY cp.created_at DESC
+    `);
+    return { success: true, data: result };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
 ipcMain.handle('customer-payments:get-by-customer', async (_, customerId) => {
   try {
     const result = await queryAll('SELECT * FROM customer_payments WHERE customer_id = $1 ORDER BY created_at DESC', [customerId]);
@@ -1942,7 +1969,7 @@ ipcMain.handle('purchases:create', async (_, purchase) => {
         // Get brand from item or materials table
         // Check for both null/undefined and empty string
         let brand = (item.brand && item.brand.trim()) ? item.brand.trim() : null;
-        
+
         // If brand not provided in item, get from materials table
         if (!brand) {
           const materialInfo = await queryOne(`SELECT brand FROM materials WHERE id = $1`, [item.product_id]);

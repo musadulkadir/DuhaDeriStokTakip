@@ -194,4 +194,4 @@ const Sidebar: React.FC<SidebarProps> = ({ open, toggleSidebar }) => {
   );
 };
 
-export default Sidebar;
+export default React.memo(Sidebar);

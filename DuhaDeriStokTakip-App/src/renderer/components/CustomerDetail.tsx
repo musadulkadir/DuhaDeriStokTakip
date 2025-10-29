@@ -692,29 +692,28 @@ const CustomerDetail: React.FC = () => {
     if (!selectedPayment || !customer) return;
 
     try {
+      // Önce ilgili kasa işlemini bul ve sil
+      try {
+        const cashResponse = await dbAPI.getCashTransactions();
+        if (cashResponse.success && cashResponse.data) {
+          const relatedCashTransaction = cashResponse.data.find(
+            (t: any) => t.reference_type === 'payment' && t.reference_id === selectedPayment.id
+          );
+          if (relatedCashTransaction) {
+            await dbAPI.deleteCashTransaction(relatedCashTransaction.id);
+          }
+        }
+      } catch (error) {
+        console.error('Kasa işlemi silinirken hata:', error);
+      }
+
       // Ödeme kaydını sil
       const deleteResponse = await dbAPI.deletePayment(selectedPayment.id);
       if (!deleteResponse.success) {
         throw new Error(deleteResponse.error || 'Ödeme silinemedi');
       }
 
-      // Müşteri bakiyesi artık ödeme kayıtlarından hesaplanıyor, ayrı güncelleme gerekmiyor
-
-      // Kasa işlemini tersine çevir (gider olarak ekle)
-      const cashTransactionData = {
-        type: 'out' as const,
-        amount: selectedPayment.amount,
-        currency: selectedPayment.currency || 'TRY',
-        category: 'Ödeme İptali',
-        description: `${customer.name} - Ödeme iptali`,
-        reference_type: 'payment_cancel',
-        customer_id: customerId,
-        user: 'Kasa Kullanıcısı',
-      };
-
-      await dbAPI.createCashTransaction(cashTransactionData);
-
-      setSnackbar({ open: true, message: 'Ödeme başarıyla silindi', severity: 'success' });
+      setSnackbar({ open: true, message: 'Ödeme ve ilgili kasa işlemi başarıyla silindi', severity: 'success' });
       setDeletePaymentDialogOpen(false);
       setSelectedPayment(null);
 

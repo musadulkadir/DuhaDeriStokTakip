@@ -24,8 +24,10 @@ import {
   Download,
   Print,
   AttachMoney,
+  AccountBalanceWallet,
 } from '@mui/icons-material';
 import { dbAPI } from '../services/api';
+import Pagination from './common/Pagination';
 
 interface SaleReport {
   date: string;
@@ -60,6 +62,13 @@ const Reports: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [salesData, setSalesData] = useState<SaleReport[]>([]);
   const [purchasesData, setPurchasesData] = useState<any[]>([]);
+  const [supplierPaymentsData, setSupplierPaymentsData] = useState<any[]>([]);
+  const [cashIncomeData, setCashIncomeData] = useState<any[]>([]); // Kasa girişleri
+  const [cashBalance, setCashBalance] = useState({ TRY: 0, USD: 0, EUR: 0 });
+  
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
 
   // Satış verilerini yükle
   const loadSalesData = async () => {
@@ -122,25 +131,99 @@ const Reports: React.FC = () => {
     }
   };
 
+
+
+  // Kasa çıkışlarını yükle (GİDER - TÜM OUT işlemleri)
+  const loadSupplierPaymentsData = async () => {
+    try {
+      // Kasa işlemlerinden TÜM çıkışları al
+      const response = await dbAPI.getCashTransactions();
+      if (response.success && response.data) {
+        // Sadece gider (out) işlemlerini al - HİÇBİR FİLTRE YOK
+        const filtered = response.data.filter((transaction: any) => {
+          const transactionDate = new Date(transaction.created_at);
+          const start = new Date(startDate);
+          const end = new Date(endDate);
+          return transaction.type === 'out' && 
+                 transactionDate >= start && 
+                 transactionDate <= end;
+        });
+        setSupplierPaymentsData(filtered);
+      } else {
+        setSupplierPaymentsData([]);
+      }
+    } catch (error) {
+      setSupplierPaymentsData([]);
+      console.error('Error loading supplier payments data:', error);
+    }
+  };
+
+  // Kasa girişlerini yükle (GELİR - TÜM IN işlemleri)
+  const loadCashIncome = async () => {
+    try {
+      const response = await dbAPI.getCashTransactions();
+      if (response.success && response.data) {
+        // Sadece IN işlemleri - HİÇBİR FİLTRE YOK
+        const filtered = response.data.filter((t: any) => {
+          const transactionDate = new Date(t.created_at);
+          const start = new Date(startDate);
+          const end = new Date(endDate);
+          return t.type === 'in' && 
+                 transactionDate >= start && 
+                 transactionDate <= end;
+        });
+        setCashIncomeData(filtered);
+      }
+    } catch (error) {
+      console.error('Error loading cash income:', error);
+    }
+  };
+
+  // Kasa bakiyesini hesapla (TÜM ZAMANLAR)
+  const loadCashBalance = async () => {
+    try {
+      const response = await dbAPI.getCashTransactions();
+      if (response.success && response.data) {
+        const balance = { TRY: 0, USD: 0, EUR: 0 };
+        response.data.forEach((t: any) => {
+          const currency = (t.currency || 'TRY') as 'TRY' | 'USD' | 'EUR';
+          const amount = Number(t.amount) || 0;
+          if (t.type === 'in') {
+            balance[currency] += amount;
+          } else {
+            balance[currency] -= amount;
+          }
+        });
+        setCashBalance(balance);
+      }
+    } catch (error) {
+      console.error('Error loading cash balance:', error);
+    }
+  };
+
   useEffect(() => {
     loadSalesData();
     loadPurchasesData();
+    loadCashIncome(); // Kasa girişlerini yükle (GELİR)
+    loadSupplierPaymentsData(); // Kasa çıkışlarını yükle (GİDER)
+    loadCashBalance();
+    setCurrentPage(1); // Tarih değişince sayfa 1'e dön
   }, [startDate, endDate]);
 
-  // Gelir istatistikleri (Satışlar)
+  // Gelir istatistikleri (SADECE Kasa Girişleri - Para Çevirme Hariç)
   const incomeStats = {
-    totalSales: salesData?.length || 0,
-    totalRevenueTRY: salesData?.filter(sale => sale.currency === 'TRY').reduce((sum, sale) => sum + (Number(sale?.total) || 0), 0) || 0,
-    totalRevenueUSD: salesData?.filter(sale => sale.currency === 'USD').reduce((sum, sale) => sum + (Number(sale?.total) || 0), 0) || 0,
-    totalRevenueEUR: salesData?.filter(sale => sale.currency === 'EUR').reduce((sum, sale) => sum + (Number(sale?.total) || 0), 0) || 0,
+    totalPayments: cashIncomeData?.length || 0,
+    totalRevenueTRY: cashIncomeData?.filter((p: any) => (p.currency || 'TRY') === 'TRY').reduce((sum: number, p: any) => sum + (Number(p?.amount) || 0), 0) || 0,
+    totalRevenueUSD: cashIncomeData?.filter((p: any) => (p.currency || 'TRY') === 'USD').reduce((sum: number, p: any) => sum + (Number(p?.amount) || 0), 0) || 0,
+    totalRevenueEUR: cashIncomeData?.filter((p: any) => (p.currency || 'TRY') === 'EUR').reduce((sum: number, p: any) => sum + (Number(p?.amount) || 0), 0) || 0,
   };
 
-  // Gider istatistikleri (Alımlar)
+  // Gider istatistikleri (SADECE Kasa Çıkışları - Para Çevirme Hariç)
   const expenseStats = {
-    totalPurchases: purchasesData?.length || 0,
-    totalExpenseTRY: purchasesData?.filter((p: any) => p.currency === 'TRY').reduce((sum: number, p: any) => sum + (Number(p?.total_amount) || 0), 0) || 0,
-    totalExpenseUSD: purchasesData?.filter((p: any) => p.currency === 'USD').reduce((sum: number, p: any) => sum + (Number(p?.total_amount) || 0), 0) || 0,
-    totalExpenseEUR: purchasesData?.filter((p: any) => p.currency === 'EUR').reduce((sum: number, p: any) => sum + (Number(p?.total_amount) || 0), 0) || 0,
+    totalPayments: supplierPaymentsData?.length || 0,
+    totalExpenseTRY: supplierPaymentsData?.filter((p: any) => (p.currency || 'TRY') === 'TRY').reduce((sum: number, p: any) => sum + (Number(p?.amount) || 0), 0) || 0,
+    totalExpenseUSD: supplierPaymentsData?.filter((p: any) => (p.currency || 'TRY') === 'USD').reduce((sum: number, p: any) => sum + (Number(p?.amount) || 0), 0) || 0,
+    totalExpenseEUR: supplierPaymentsData?.filter((p: any) => (p.currency || 'TRY') === 'EUR').reduce((sum: number, p: any) => sum + (Number(p?.amount) || 0), 0) || 0,
   };
 
   // Net kar/zarar
@@ -237,7 +320,7 @@ const Reports: React.FC = () => {
                   <Typography variant="h6">Toplam Satış</Typography>
                 </Box>
                 <Typography variant="h4" sx={{ mb: 1 }}>
-                  {incomeStats.totalSales}
+                  {incomeStats.totalPayments}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   adet işlem
@@ -297,7 +380,7 @@ const Reports: React.FC = () => {
                   <Typography variant="h6">Toplam Alım</Typography>
                 </Box>
                 <Typography variant="h4" sx={{ mb: 1 }}>
-                  {expenseStats.totalPurchases}
+                  {expenseStats.totalPayments}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   adet işlem
@@ -412,90 +495,38 @@ const Reports: React.FC = () => {
         <Card>
           <CardContent>
             <Typography variant="h6" sx={{ mb: 2 }}>
-              Gelir Detayları (Satışlar)
+              Gelir Detayları (Kasa Girişleri)
             </Typography>
             <TableContainer>
-              <Table>
+              <Table sx={{ tableLayout: 'fixed' }}>
                 <TableHead>
                   <TableRow>
-                    <TableCell>Tarih</TableCell>
-                    <TableCell>Müşteri</TableCell>
-                    <TableCell>Ürün</TableCell>
-                    <TableCell align="right">Miktar</TableCell>
-                    <TableCell align="right">Birim Fiyat</TableCell>
-                    <TableCell align="right">Toplam</TableCell>
+                    <TableCell sx={{ width: '15%' }}>Tarih</TableCell>
+                    <TableCell sx={{ width: '20%' }}>Kategori</TableCell>
+                    <TableCell sx={{ width: '45%' }}>Açıklama</TableCell>
+                    <TableCell align="right" sx={{ width: '20%' }}>Tutar</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {(salesData || []).map((sale, index) => (
-                    <TableRow key={index}>
-                      <TableCell>{sale?.date ? new Date(sale.date).toLocaleDateString('tr-TR') : '-'}</TableCell>
-                      <TableCell>{sale?.customerName || '-'}</TableCell>
-                      <TableCell>{sale?.productName || '-'}</TableCell>
-                      <TableCell align="right">
-                        <Typography variant="body2">
-                          {(sale?.quantity || 0).toLocaleString('tr-TR')} adet
-                        </Typography>
-                        <Typography variant="caption" display="block" color="text.secondary">
-                          {(sale?.quantityInDesi || 0).toLocaleString('tr-TR')} desi
-                        </Typography>
-                      </TableCell>
-                      <TableCell align="right">
-                        {sale?.currency === 'USD' ? '$' : sale?.currency === 'EUR' ? '€' : '₺'}
-                        {(sale?.unitPrice || 0).toLocaleString('tr-TR')}
-                      </TableCell>
-                      <TableCell align="right">
-                        {sale?.currency === 'USD' ? '$' : sale?.currency === 'EUR' ? '€' : '₺'}
-                        {(sale?.total || 0).toLocaleString('tr-TR')}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {salesData.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={6} align="center">
-                        {loading ? 'Yükleniyor...' : 'Veri bulunamadı'}
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Expense Table */}
-      {reportType === 'expense' && (
-        <Card>
-          <CardContent>
-            <Typography variant="h6" sx={{ mb: 2 }}>
-              Gider Detayları (Alımlar)
-            </Typography>
-            <TableContainer>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Tarih</TableCell>
-                    <TableCell>Tedarikçi</TableCell>
-                    <TableCell>Açıklama</TableCell>
-                    <TableCell align="right">Toplam</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {(purchasesData || []).map((purchase: any, index) => (
-                    <TableRow key={index}>
-                      <TableCell>
-                        {purchase?.purchase_date ? new Date(purchase.purchase_date).toLocaleDateString('tr-TR') : '-'}
-                      </TableCell>
-                      <TableCell>{purchase?.supplier_name || 'Bilinmeyen Tedarikçi'}</TableCell>
-                      <TableCell>{purchase?.notes || 'Malzeme alımı'}</TableCell>
-                      <TableCell align="right">
-                        {purchase?.currency === 'USD' ? '$' : purchase?.currency === 'EUR' ? '€' : '₺'}
-                        {(Number(purchase?.total_amount) || 0).toLocaleString('tr-TR')}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {purchasesData.length === 0 && (
+                  {(() => {
+                    const startIndex = (currentPage - 1) * itemsPerPage;
+                    const endIndex = startIndex + itemsPerPage;
+                    const paginatedData = (cashIncomeData || []).slice(startIndex, endIndex);
+                    return paginatedData.map((transaction: any, index) => (
+                      <TableRow key={index}>
+                        <TableCell>
+                          {transaction?.created_at ? new Date(transaction.created_at).toLocaleDateString('tr-TR') : '-'}
+                        </TableCell>
+                        <TableCell>{transaction?.category || 'Genel Gelir'}</TableCell>
+                        <TableCell>{transaction?.description || '-'}</TableCell>
+                        <TableCell align="right">
+                          {(transaction?.currency || 'TRY') === 'USD' ? '$' : (transaction?.currency || 'TRY') === 'EUR' ? '€' : '₺'}
+                          {(Number(transaction?.amount) || 0).toLocaleString('tr-TR')}
+                        </TableCell>
+                      </TableRow>
+                    ));
+                  })()}
+                  {cashIncomeData.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={4} align="center">
                         {loading ? 'Yükleniyor...' : 'Veri bulunamadı'}
@@ -505,6 +536,80 @@ const Reports: React.FC = () => {
                 </TableBody>
               </Table>
             </TableContainer>
+            
+            {/* Pagination */}
+            {cashIncomeData.length > 0 && (
+              <Pagination
+                currentPage={currentPage}
+                totalPages={Math.ceil(cashIncomeData.length / itemsPerPage)}
+                totalItems={cashIncomeData.length}
+                itemsPerPage={itemsPerPage}
+                onPageChange={setCurrentPage}
+                onItemsPerPageChange={setItemsPerPage}
+              />
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Expense Table */}
+      {reportType === 'expense' && (
+        <Card>
+          <CardContent>
+            <Typography variant="h6" sx={{ mb: 2 }}>
+              Gider Detayları (Kasa Çıkışları)
+            </Typography>
+            <TableContainer>
+              <Table sx={{ tableLayout: 'fixed' }}>
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ width: '15%' }}>Tarih</TableCell>
+                    <TableCell sx={{ width: '20%' }}>Kategori</TableCell>
+                    <TableCell sx={{ width: '45%' }}>Açıklama</TableCell>
+                    <TableCell align="right" sx={{ width: '20%' }}>Tutar</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {(() => {
+                    const startIndex = (currentPage - 1) * itemsPerPage;
+                    const endIndex = startIndex + itemsPerPage;
+                    const paginatedData = (supplierPaymentsData || []).slice(startIndex, endIndex);
+                    return paginatedData.map((transaction: any, index) => (
+                      <TableRow key={index}>
+                        <TableCell>
+                          {transaction?.created_at ? new Date(transaction.created_at).toLocaleDateString('tr-TR') : '-'}
+                        </TableCell>
+                        <TableCell>{transaction?.category || 'Genel Gider'}</TableCell>
+                        <TableCell>{transaction?.description || '-'}</TableCell>
+                        <TableCell align="right">
+                          {(transaction?.currency || 'TRY') === 'USD' ? '$' : (transaction?.currency || 'TRY') === 'EUR' ? '€' : '₺'}
+                          {(Number(transaction?.amount) || 0).toLocaleString('tr-TR')}
+                        </TableCell>
+                      </TableRow>
+                    ));
+                  })()}
+                  {supplierPaymentsData.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={4} align="center">
+                        {loading ? 'Yükleniyor...' : 'Veri bulunamadı'}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+            
+            {/* Pagination */}
+            {supplierPaymentsData.length > 0 && (
+              <Pagination
+                currentPage={currentPage}
+                totalPages={Math.ceil(supplierPaymentsData.length / itemsPerPage)}
+                totalItems={supplierPaymentsData.length}
+                itemsPerPage={itemsPerPage}
+                onPageChange={setCurrentPage}
+                onItemsPerPageChange={setItemsPerPage}
+              />
+            )}
           </CardContent>
         </Card>
       )}
@@ -517,13 +622,13 @@ const Reports: React.FC = () => {
               Net Kar/Zarar Özeti
             </Typography>
             <TableContainer>
-              <Table>
+              <Table sx={{ tableLayout: 'fixed' }}>
                 <TableHead>
                   <TableRow>
-                    <TableCell>Para Birimi</TableCell>
-                    <TableCell align="right">Toplam Gelir</TableCell>
-                    <TableCell align="right">Toplam Gider</TableCell>
-                    <TableCell align="right">Net Kar/Zarar</TableCell>
+                    <TableCell sx={{ width: '25%' }}>Para Birimi</TableCell>
+                    <TableCell align="right" sx={{ width: '25%' }}>Toplam Gelir</TableCell>
+                    <TableCell align="right" sx={{ width: '25%' }}>Toplam Gider</TableCell>
+                    <TableCell align="right" sx={{ width: '25%' }}>Net Kar/Zarar</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -566,6 +671,59 @@ const Reports: React.FC = () => {
                 </TableBody>
               </Table>
             </TableContainer>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Kasa Bakiyesi Kartı - Net tablosunda göster */}
+      {reportType === 'net' && (
+        <Card sx={{ mt: 3, background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)' }}>
+          <CardContent>
+            <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <AccountBalanceWallet />
+              Güncel Kasa Bakiyesi (Tüm Zamanlar)
+            </Typography>
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Bu bakiye, başlangıçtan bugüne kadar olan tüm kasa işlemlerinin toplamıdır.
+            </Alert>
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={4}>
+                <Card sx={{ background: cashBalance.TRY >= 0 ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' }}>
+                  <CardContent>
+                    <Typography variant="body2" sx={{ color: 'white', opacity: 0.9 }}>
+                      TRY Bakiye
+                    </Typography>
+                    <Typography variant="h4" sx={{ color: 'white', fontWeight: 'bold', mt: 1 }}>
+                      ₺{cashBalance.TRY.toLocaleString('tr-TR')}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <Card sx={{ background: cashBalance.USD >= 0 ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' }}>
+                  <CardContent>
+                    <Typography variant="body2" sx={{ color: 'white', opacity: 0.9 }}>
+                      USD Bakiye
+                    </Typography>
+                    <Typography variant="h4" sx={{ color: 'white', fontWeight: 'bold', mt: 1 }}>
+                      ${cashBalance.USD.toLocaleString('tr-TR')}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <Card sx={{ background: cashBalance.EUR >= 0 ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' }}>
+                  <CardContent>
+                    <Typography variant="body2" sx={{ color: 'white', opacity: 0.9 }}>
+                      EUR Bakiye
+                    </Typography>
+                    <Typography variant="h4" sx={{ color: 'white', fontWeight: 'bold', mt: 1 }}>
+                      €{cashBalance.EUR.toLocaleString('tr-TR')}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+            </Grid>
           </CardContent>
         </Card>
       )}

@@ -83,16 +83,15 @@ const Dashboard: React.FC = () => {
   const loadDashboardData = async () => {
     setLoading(true);
     try {
-      // Ürünleri yükle
-      const productsResponse = await dbAPI.getProducts();
+      // Tüm API çağrılarını paralel yap
+      const [productsResponse, customersResponse, cashResponse] = await Promise.all([
+        dbAPI.getProducts(),
+        dbAPI.getCustomers(),
+        dbAPI.getCashTransactions()
+      ]);
+
       const products = productsResponse.success ? productsResponse.data : [];
-
-      // Müşterileri yükle
-      const customersResponse = await dbAPI.getCustomers();
       const customers = customersResponse.success ? customersResponse.data : [];
-
-      // Kasa işlemlerini yükle
-      const cashResponse = await dbAPI.getCashTransactions();
       const cashTransactions = cashResponse.success ? cashResponse.data : [];
 
       // İstatistikleri hesapla
@@ -100,56 +99,35 @@ const Dashboard: React.FC = () => {
       const totalStock = products.reduce((sum: number, p: Product) => sum + (Number(p.stock_quantity) || 0), 0);
       const totalCustomers = customers.length;
 
-      // Para birimi bazında toplam bakiye hesapla
-      const totalBalanceTRY = (cashTransactions || []).reduce((sum: number, t: any) => {
-        const currency = t.currency && t.currency.trim() !== '' ? t.currency : 'TRY';
-        if (currency === 'TRY') {
-          return sum + (t.type === 'in' ? (Number(t.amount) || 0) : -(Number(t.amount) || 0));
-        }
-        return sum;
-      }, 0);
-
-      const totalBalanceUSD = (cashTransactions || []).reduce((sum: number, t: any) => {
-        const currency = t.currency && t.currency.trim() !== '' ? t.currency : 'TRY';
-        if (currency === 'USD') {
-          return sum + (t.type === 'in' ? (Number(t.amount) || 0) : -(Number(t.amount) || 0));
-        }
-        return sum;
-      }, 0);
-
-      // Aylık gelir/gider hesapla
+      // Para birimi bazında toplam bakiye ve aylık gelir/gider hesapla (tek döngüde)
       const currentMonth = new Date().toISOString().substring(0, 7);
-      const monthlyTransactions = (cashTransactions || []).filter((t: any) =>
-        t.created_at && t.created_at.substring(0, 7) === currentMonth
-      );
+      let totalBalanceTRY = 0;
+      let totalBalanceUSD = 0;
+      let monthlyIncomeTRY = 0;
+      let monthlyIncomeUSD = 0;
+      let monthlyExpenseTRY = 0;
+      let monthlyExpenseUSD = 0;
 
-      const monthlyIncomeTRY = monthlyTransactions
-        .filter((t: any) => {
-          const currency = t.currency && t.currency.trim() !== '' ? t.currency : 'TRY';
-          return t.type === 'in' && currency === 'TRY';
-        })
-        .reduce((sum: number, t: any) => sum + (Number(t.amount) || 0), 0);
+      (cashTransactions || []).forEach((t: any) => {
+        const currency = t.currency && t.currency.trim() !== '' ? t.currency : 'TRY';
+        const amount = Number(t.amount) || 0;
+        const isIncome = t.type === 'in';
+        const isCurrentMonth = t.created_at && t.created_at.substring(0, 7) === currentMonth;
 
-      const monthlyIncomeUSD = monthlyTransactions
-        .filter((t: any) => {
-          const currency = t.currency && t.currency.trim() !== '' ? t.currency : 'TRY';
-          return t.type === 'in' && currency === 'USD';
-        })
-        .reduce((sum: number, t: any) => sum + (Number(t.amount) || 0), 0);
-
-      const monthlyExpenseTRY = monthlyTransactions
-        .filter((t: any) => {
-          const currency = t.currency && t.currency.trim() !== '' ? t.currency : 'TRY';
-          return t.type === 'out' && currency === 'TRY';
-        })
-        .reduce((sum: number, t: any) => sum + (Number(t.amount) || 0), 0);
-
-      const monthlyExpenseUSD = monthlyTransactions
-        .filter((t: any) => {
-          const currency = t.currency && t.currency.trim() !== '' ? t.currency : 'TRY';
-          return t.type === 'out' && currency === 'USD';
-        })
-        .reduce((sum: number, t: any) => sum + (Number(t.amount) || 0), 0);
+        if (currency === 'TRY') {
+          totalBalanceTRY += isIncome ? amount : -amount;
+          if (isCurrentMonth) {
+            if (isIncome) monthlyIncomeTRY += amount;
+            else monthlyExpenseTRY += amount;
+          }
+        } else if (currency === 'USD') {
+          totalBalanceUSD += isIncome ? amount : -amount;
+          if (isCurrentMonth) {
+            if (isIncome) monthlyIncomeUSD += amount;
+            else monthlyExpenseUSD += amount;
+          }
+        }
+      });
 
       setStats({
         totalProducts,

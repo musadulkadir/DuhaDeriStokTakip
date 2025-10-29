@@ -440,9 +440,25 @@ const SupplierDetail: React.FC = () => {
 
     setLoading(true);
     try {
+      // Önce ilgili kasa işlemini bul ve sil
+      try {
+        const cashResponse = await dbAPI.getCashTransactions();
+        if (cashResponse.success && cashResponse.data) {
+          const relatedCashTransaction = cashResponse.data.find(
+            (t: any) => t.reference_type === 'supplier_payment' && t.reference_id === paymentId
+          );
+          if (relatedCashTransaction && relatedCashTransaction.id) {
+            await dbAPI.deleteCashTransaction(relatedCashTransaction.id);
+          }
+        }
+      } catch (error) {
+        console.error('Kasa işlemi silinirken hata:', error);
+      }
+
+      // Sonra ödemeyi sil
       const response = await dbAPI.deletePayment(paymentId);
       if (response.success) {
-        setSnackbar({ open: true, message: 'Ödeme başarıyla silindi', severity: 'success' });
+        setSnackbar({ open: true, message: 'Ödeme ve ilgili kasa işlemi başarıyla silindi', severity: 'success' });
         await loadSupplier(); // Bakiyeyi güncelle
         await loadPayments();
       } else {
@@ -639,21 +655,10 @@ const SupplierDetail: React.FC = () => {
         throw new Error(purchaseResponse.error || 'Alım kaydedilemedi');
       }
 
-      // Kasadan ödeme düşme
-      const cashTransactionData = {
-        type: 'out' as const,
-        amount: totalAmount,
-        currency: newPurchase.currency,
-        category: 'purchase',
-        description: `Malzeme alımı - ${supplier.name}`,
-        reference_type: 'purchase',
-        customer_id: supplier.id,
-        user: 'Sistem Kullanıcısı',
-      };
+      // NOT: Kasadan para çıkışı YAPMA! Sadece tedarikçiye borç oluştur.
+      // Kasadan para çıkışı sadece ödeme yapıldığında olacak.
 
-      await dbAPI.createCashTransaction(cashTransactionData);
-
-      // Tedarikçi bakiyesini güncelle
+      // Tedarikçi bakiyesini güncelle (borç artır)
       const currency = newPurchase.currency || 'TRY';
       const updateData: any = {};
 

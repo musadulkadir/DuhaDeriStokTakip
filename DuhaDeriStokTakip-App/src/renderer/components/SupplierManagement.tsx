@@ -301,7 +301,7 @@ const SupplierManagement: React.FC = () => {
             <Card sx={{ mb: 3 }}>
                 <CardContent>
                     <Grid container spacing={3} alignItems="center">
-                        <Grid size={{ xs:12, md:4 }}>
+                        <Grid size={{ xs: 12, md: 4 }}>
                             <TextField
                                 fullWidth
                                 size="large"

@@ -1,5 +1,5 @@
 // src/renderer/App.tsx
-import React, { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { MemoryRouter as Router, Routes, Route } from 'react-router-dom';
 import {
   CssBaseline,
@@ -14,7 +14,6 @@ import CustomerManagement from './components/CustomerManagement';
 import CustomerDetail from './components/CustomerDetail';
 import SupplierDetail from './components/SupplierDetail';
 import EmployeeManagement from './components/EmployeeManagement';
-import ErrorBoundary from './components/ErrorBoundary';
 import EmployeeDetail from './components/EmployeeDetail';
 import SalesManagement from './components/SalesManagement';
 import SupplierManagement from './components/SupplierManagement';
@@ -22,6 +21,9 @@ import StockMovements from './components/StockMovements';
 import CashManagement from './components/CashManagement';
 import Reports from './components/Reports';
 import Settings from './components/Settings';
+import ErrorBoundary from './components/ErrorBoundary';
+import LoginScreen from './components/LoginScreen';
+import SplashScreen from './components/SplashScreen';
 
 // Deri temalı açık tasarım
 const leatherTheme = createTheme({
@@ -197,10 +199,46 @@ const leatherTheme = createTheme({
 
 export default function App() {
   const [open, setOpen] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    // Uygulama başlangıcında kısa bir yükleme süresi
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+    }, 1500); // 1.5 saniye yükleme ekranı
+
+    return () => clearTimeout(timer);
+  }, []);
 
   const toggleSidebar = () => {
     setOpen(!open);
   };
+
+  const handleLogin = () => {
+    // Şifre doğru, direkt giriş yap (database zaten yüklü)
+    setIsAuthenticated(true);
+  };
+
+  // Yükleme ekranı
+  if (isLoading) {
+    return (
+      <ThemeProvider theme={leatherTheme}>
+        <CssBaseline />
+        <SplashScreen />
+      </ThemeProvider>
+    );
+  }
+
+  // Şifre ekranı
+  if (!isAuthenticated) {
+    return (
+      <ThemeProvider theme={leatherTheme}>
+        <CssBaseline />
+        <LoginScreen onLogin={handleLogin} />
+      </ThemeProvider>
+    );
+  }
 
   return (
     <ThemeProvider theme={leatherTheme}>

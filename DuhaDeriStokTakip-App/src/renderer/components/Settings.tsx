@@ -59,6 +59,19 @@ const Settings: React.FC = () => {
   const [userDialogOpen, setUserDialogOpen] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
+  // Şifre değiştirme
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
+
+  // Şifre localStorage'da saklanıyor (production'da daha güvenli yöntem kullan!)
+  const RECOVERY_PASSWORD = '6508';
+  const getStoredPassword = () => localStorage.getItem('appPassword') || 'admin123';
+  const setStoredPassword = (password: string) => localStorage.setItem('appPassword', password);
+
   const handleSettingChange = (setting: string, value: any) => {
     setSettings(prev => ({
       ...prev,
@@ -71,6 +84,47 @@ const Settings: React.FC = () => {
     console.log('Ayarlar kaydedildi:', settings);
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 3000);
+  };
+
+  const handleChangePassword = () => {
+    setPasswordError('');
+
+    // Validasyon
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setPasswordError('Tüm alanları doldurun');
+      return;
+    }
+
+    const storedPassword = getStoredPassword();
+
+    // Mevcut şifre veya kurtarma şifresi kontrolü
+    if (currentPassword !== storedPassword && currentPassword !== RECOVERY_PASSWORD) {
+      setPasswordError('Mevcut şifre veya kurtarma şifresi hatalı');
+      return;
+    }
+
+    // Yeni şifre kontrolü
+    if (newPassword.length < 4) {
+      setPasswordError('Yeni şifre en az 4 karakter olmalı');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Yeni şifreler eşleşmiyor');
+      return;
+    }
+
+    // Şifreyi kaydet
+    setStoredPassword(newPassword);
+    setPasswordSuccess(true);
+    setPasswordDialogOpen(false);
+
+    // Formu temizle
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+
+    setTimeout(() => setPasswordSuccess(false), 3000);
   };
 
   const users = [
@@ -110,14 +164,14 @@ const Settings: React.FC = () => {
                   Genel Ayarlar
                 </Typography>
               </Box>
-              
+
               <List>
                 <ListItem>
                   <ListItemIcon>
                     <Notifications />
                   </ListItemIcon>
-                  <ListItemText 
-                    primary="Bildirimler" 
+                  <ListItemText
+                    primary="Bildirimler"
                     secondary="Stok uyarıları ve sistem bildirimleri"
                   />
                   <ListItemSecondaryAction>
@@ -127,13 +181,13 @@ const Settings: React.FC = () => {
                     />
                   </ListItemSecondaryAction>
                 </ListItem>
-                
+
                 <ListItem>
                   <ListItemIcon>
                     <Backup />
                   </ListItemIcon>
-                  <ListItemText 
-                    primary="Otomatik Yedekleme" 
+                  <ListItemText
+                    primary="Otomatik Yedekleme"
                     secondary="Günlük otomatik veri yedekleme"
                   />
                   <ListItemSecondaryAction>
@@ -143,13 +197,13 @@ const Settings: React.FC = () => {
                     />
                   </ListItemSecondaryAction>
                 </ListItem>
-                
+
                 <ListItem>
                   <ListItemIcon>
                     <Palette />
                   </ListItemIcon>
-                  <ListItemText 
-                    primary="Koyu Tema" 
+                  <ListItemText
+                    primary="Koyu Tema"
                     secondary="Koyu renk temasını kullan"
                   />
                   <ListItemSecondaryAction>
@@ -159,13 +213,13 @@ const Settings: React.FC = () => {
                     />
                   </ListItemSecondaryAction>
                 </ListItem>
-                
+
                 <ListItem>
                   <ListItemIcon>
                     <Storage />
                   </ListItemIcon>
-                  <ListItemText 
-                    primary="Otomatik Kaydetme" 
+                  <ListItemText
+                    primary="Otomatik Kaydetme"
                     secondary="Değişiklikleri otomatik kaydet"
                   />
                   <ListItemSecondaryAction>
@@ -190,7 +244,7 @@ const Settings: React.FC = () => {
                   Uygulama Ayarları
                 </Typography>
               </Box>
-              
+
               <Grid container spacing={3}>
                 <Grid item xs={12} sm={6}>
                   <TextField
@@ -205,7 +259,7 @@ const Settings: React.FC = () => {
                     <MenuItem value="de">Deutsch</MenuItem>
                   </TextField>
                 </Grid>
-                
+
                 <Grid item xs={12} sm={6}>
                   <TextField
                     fullWidth
@@ -219,7 +273,7 @@ const Settings: React.FC = () => {
                     <MenuItem value="EUR">€ Euro</MenuItem>
                   </TextField>
                 </Grid>
-                
+
                 <Grid item xs={12}>
                   <TextField
                     fullWidth
@@ -231,6 +285,62 @@ const Settings: React.FC = () => {
                   />
                 </Grid>
               </Grid>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Password Management */}
+        <Grid item xs={12} lg={6}>
+          <Card sx={{ mb: 3 }}>
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+                <Avatar sx={{ bgcolor: 'error.main', mr: 2 }}>
+                  <Security />
+                </Avatar>
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  Güvenlik
+                </Typography>
+              </Box>
+
+              {passwordSuccess && (
+                <Alert severity="success" sx={{ mb: 2 }}>
+                  Şifre başarıyla değiştirildi!
+                </Alert>
+              )}
+
+              <List>
+                <ListItem>
+                  <ListItemIcon>
+                    <Security />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary="Şifre Değiştir"
+                    secondary="Giriş şifrenizi değiştirin"
+                  />
+                  <ListItemSecondaryAction>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={() => setPasswordDialogOpen(true)}
+                    >
+                      Değiştir
+                    </Button>
+                  </ListItemSecondaryAction>
+                </ListItem>
+
+                <Divider sx={{ my: 2 }} />
+
+                <ListItem>
+                  <ListItemText
+                    primary={
+                      <Typography variant="body2" color="text.secondary">
+                        <strong>Kurtarma Şifresi:</strong> 6508
+                      </Typography>
+                    }
+                    secondary="Şifrenizi unutursanız bu kodu kullanabilirsiniz"
+                  />
+                </ListItem>
+              </List>
             </CardContent>
           </Card>
         </Grid>
@@ -257,7 +367,7 @@ const Settings: React.FC = () => {
                   Kullanıcı Ekle
                 </Button>
               </Box>
-              
+
               <List>
                 {users.map((user) => (
                   <ListItem key={user.id}>
@@ -270,9 +380,9 @@ const Settings: React.FC = () => {
                       primary={
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                           {user.name}
-                          <Chip 
-                            label={user.role} 
-                            size="small" 
+                          <Chip
+                            label={user.role}
+                            size="small"
                             color={user.role === 'Admin' ? 'primary' : 'default'}
                           />
                           {!user.active && (
@@ -307,7 +417,7 @@ const Settings: React.FC = () => {
                   Yedekleme & Veri
                 </Typography>
               </Box>
-              
+
               <Grid container spacing={2}>
                 <Grid item xs={12}>
                   <Button
@@ -343,9 +453,9 @@ const Settings: React.FC = () => {
                 </Grid>
 
               </Grid>
-              
+
               <Divider sx={{ my: 2 }} />
-              
+
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                 <Info sx={{ fontSize: 16, color: 'text.secondary' }} />
                 <Typography variant="body2" color="text.secondary">
@@ -393,8 +503,8 @@ const Settings: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setBackupDialogOpen(false)}>İptal</Button>
-          <Button 
-            variant="contained" 
+          <Button
+            variant="contained"
             onClick={() => {
               // Yedekleme işlemi
               alert('Yedek oluşturuluyor... Bu işlem birkaç saniye sürebilir.');
@@ -440,6 +550,64 @@ const Settings: React.FC = () => {
           <Button onClick={() => setUserDialogOpen(false)}>İptal</Button>
           <Button variant="contained" onClick={() => setUserDialogOpen(false)}>
             Kullanıcı Ekle
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Password Change Dialog */}
+      <Dialog open={passwordDialogOpen} onClose={() => setPasswordDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Şifre Değiştir</DialogTitle>
+        <DialogContent>
+          {passwordError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {passwordError}
+            </Alert>
+          )}
+
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Mevcut Şifre veya Kurtarma Şifresi"
+                type="password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                helperText="Kurtarma şifresi: 6508"
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Yeni Şifre"
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                helperText="En az 4 karakter"
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Yeni Şifre (Tekrar)"
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setPasswordDialogOpen(false);
+            setPasswordError('');
+            setCurrentPassword('');
+            setNewPassword('');
+            setConfirmPassword('');
+          }}>
+            İptal
+          </Button>
+          <Button variant="contained" onClick={handleChangePassword}>
+            Şifreyi Değiştir
           </Button>
         </DialogActions>
       </Dialog>

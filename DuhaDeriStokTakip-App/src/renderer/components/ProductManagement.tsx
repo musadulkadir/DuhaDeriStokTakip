@@ -148,7 +148,6 @@ const ProductManagement: React.FC = () => {
 
   // Ürünleri ve malzemeleri yükle
   const loadProducts = async (page = productsCurrentPage, limit = productsItemsPerPage) => {
-    console.log('loadProducts çağrıldı', { page, limit });
     setLoading(true);
     try {
       // Hem products hem materials'ı yükle
@@ -156,9 +155,6 @@ const ProductManagement: React.FC = () => {
         dbAPI.getProducts(page, limit),
         dbAPI.getMaterials()
       ]);
-
-      console.log('Products API yanıtı:', productsResponse);
-      console.log('Materials API yanıtı:', materialsResponse);
 
       const allProducts = [];
 
@@ -180,7 +176,6 @@ const ProductManagement: React.FC = () => {
         allProducts.push(...processedMaterials);
       }
 
-      console.log('Tüm ürünler:', allProducts);
       setProducts(allProducts);
 
       if (!productsResponse.success && !materialsResponse.success) {
@@ -248,9 +243,7 @@ const ProductManagement: React.FC = () => {
         description: newProduct.description || undefined
       };
 
-      console.log('Sending product data:', productData);
       const response = await dbAPI.createProduct(productData);
-      console.log('API Response:', response);
 
       if (response.success) {
         // Yeni ürün başarıyla eklendi, şimdi stok hareketi oluştur
@@ -510,22 +503,16 @@ const ProductManagement: React.FC = () => {
       return;
     }
 
-    console.log('Ürün/Malzeme siliniyor:', selectedProduct);
     setLoading(true);
 
     try {
-      console.log('API çağrısı yapılıyor...');
-
       // Malzeme mi ürün mü kontrol et
       const isMaterial = selectedProduct.type === 'material';
       const response = isMaterial
         ? await dbAPI.deleteMaterial(selectedProduct.id!)
         : await dbAPI.deleteProduct(selectedProduct.id!);
 
-      console.log('Silme yanıtı:', response);
-
       if (response.success) {
-        console.log('Silme başarılı, UI güncelleniyor...');
         setSnackbar({
           open: true,
           message: `${isMaterial ? 'Malzeme' : 'Ürün'} başarıyla silindi`,
@@ -534,9 +521,7 @@ const ProductManagement: React.FC = () => {
         setDeleteDialogOpen(false);
         setSelectedProduct(null);
         await loadProducts();
-        console.log('Ürünler yeniden yüklendi');
       } else {
-        console.error('Silme başarısız:', response.error);
         setSnackbar({
           open: true,
           message: response.error || `${isMaterial ? 'Malzeme' : 'Ürün'} silinemedi`,
@@ -596,11 +581,6 @@ const ProductManagement: React.FC = () => {
   const materialsEndIndex = materialsStartIndex + materialsItemsPerPage;
   const filteredMaterials = allFilteredMaterials.slice(materialsStartIndex, materialsEndIndex);
 
-  console.log('Tüm ürünler:', products?.length || 0);
-  console.log('Deri ürünleri:', filteredProducts?.length || 0);
-  console.log('Malzemeler:', filteredMaterials?.length || 0);
-  console.log('Malzeme örnekleri:', filteredMaterials?.slice(0, 3) || []);
-
   const getStockStatus = (currentStock: number) => {
     if (currentStock === 0) return { label: 'Tükendi', color: 'error' };
     if (currentStock < 5) return { label: 'Kritik', color: 'error' };
@@ -619,10 +599,6 @@ const ProductManagement: React.FC = () => {
     const color = colors.find(c => c.name === colorName);
     return color?.hex_code || '#F5F5DC';
   };
-
-  // --- DEBUG LOGLARI ---
-  console.log('filteredProducts:', filteredProducts);
-  console.log('colors:', colors);
 
   return (
     <Box>
@@ -918,7 +894,7 @@ const ProductManagement: React.FC = () => {
                       <TableCell align="center">
                         <IconButton
                           size="small"
-                          onClick={() => { console.log('Stok geçmişi butonu:', product); handleOpenModal(product); }}
+                          onClick={() => handleOpenModal(product)}
                           title="Stok Geçmişi"
                         >
                           <HistoryIcon />
@@ -927,7 +903,7 @@ const ProductManagement: React.FC = () => {
                           size="small"
                           color="primary"
                           title="Düzenle"
-                          onClick={() => { console.log('Düzenle butonu:', product); setSelectedProduct(product); setEditDialogOpen(true); }}
+                          onClick={() => { setSelectedProduct(product); setEditDialogOpen(true); }}
                         >
                           <EditIcon />
                         </IconButton>
@@ -935,7 +911,7 @@ const ProductManagement: React.FC = () => {
                           size="small"
                           color="error"
                           title="Sil"
-                          onClick={() => { console.log('Sil butonu:', product); setSelectedProduct(product); setDeleteDialogOpen(true); }}
+                          onClick={() => { setSelectedProduct(product); setDeleteDialogOpen(true); }}
                         >
                           <DeleteIcon />
                         </IconButton>

@@ -101,6 +101,10 @@ class DatabaseAPI {
   }
 
   // Payment operations
+  async getAllCustomerPayments(): Promise<ApiResponse<CustomerPayment[]>> {
+    return window.require("electron").ipcRenderer.invoke('customer-payments:get-all');
+  }
+
   async getCustomerPayments(customerId: number): Promise<ApiResponse<CustomerPayment[]>> {
     return window.require("electron").ipcRenderer.invoke('customer-payments:get-by-customer', customerId);
   }

@@ -58,7 +58,7 @@ interface CashTransaction {
   currency?: string;
   category: string;
   description: string;
-  reference_type?: 'sale' | 'payment' | 'expense' | 'other';
+  reference_type?: 'sale' | 'payment' | 'supplier_payment' | 'expense' | 'other';
   reference_id?: number;
   customer_id?: number;
   customer_name?: string;
@@ -113,6 +113,10 @@ const CashManagement: React.FC = () => {
   });
   const [loading, setLoading] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
+  
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
 
   // Dialog states
   const [addTransactionDialogOpen, setAddTransactionDialogOpen] = useState(false);
@@ -239,22 +243,6 @@ const CashManagement: React.FC = () => {
 
   // Özet hesapla
   const calculateSummary = async (transactions: CashTransaction[]) => {
-    console.log('calculateSummary çağrıldı, işlem sayısı:', transactions.length);
-
-    // İlk işlemi kontrol et
-    if (transactions.length > 0) {
-      const testAmount = Number(transactions[0].amount);
-      console.log('İlk işlem:', {
-        type: transactions[0].type,
-        amount: transactions[0].amount,
-        currency: transactions[0].currency,
-        amountType: typeof transactions[0].amount,
-        convertedAmount: testAmount,
-        convertedType: typeof testAmount,
-        isNaN: isNaN(testAmount)
-      });
-    }
-
     const today = new Date().toISOString().split('T')[0];
     const currentMonth = new Date().toISOString().substring(0, 7);
 
@@ -370,15 +358,6 @@ const CashManagement: React.FC = () => {
         monthlyExpenseEUR: 0,
       };
     }
-
-    // Debug: Kasa bakiyelerini kontrol et
-    console.log('Kasa Bakiyeleri:', {
-      totalBalanceTRY: cashSummary.totalBalanceTRY,
-      totalBalanceUSD: cashSummary.totalBalanceUSD,
-      totalBalanceEUR: cashSummary.totalBalanceEUR,
-      todayIncomeTRY: cashSummary.todayIncomeTRY,
-      todayExpenseTRY: cashSummary.todayExpenseTRY,
-    });
 
     // Müşteri borçlarını para birimi bazında hesapla
     try {
@@ -562,10 +541,27 @@ const CashManagement: React.FC = () => {
 
     setLoading(true);
     try {
+      // Eğer bu işlem bir ödeme referansı içeriyorsa, ilgili ödemeyi de sil
+      if (selectedTransaction.reference_type === 'supplier_payment' && selectedTransaction.reference_id) {
+        try {
+          await dbAPI.deletePayment(selectedTransaction.reference_id);
+        } catch (error) {
+          console.error('İlgili ödeme silinirken hata:', error);
+        }
+      } else if (selectedTransaction.reference_type === 'payment' && selectedTransaction.reference_id) {
+        // Müşteri ödemesi ise
+        try {
+          await dbAPI.deletePayment(selectedTransaction.reference_id);
+        } catch (error) {
+          console.error('İlgili ödeme silinirken hata:', error);
+        }
+      }
+
+      // Kasa işlemini sil
       const response = await dbAPI.deleteCashTransaction(selectedTransaction.id);
       if (response.success) {
         await loadTransactions();
-        setSnackbar({ open: true, message: 'İşlem başarıyla silindi', severity: 'success' });
+        setSnackbar({ open: true, message: 'İşlem ve ilgili kayıtlar başarıyla silindi', severity: 'success' });
         setDeleteDialogOpen(false);
         setSelectedTransaction(null);
       } else {
@@ -862,21 +858,25 @@ const CashManagement: React.FC = () => {
             </Typography>
           </Box>
           <TableContainer>
-            <Table>
+            <Table sx={{ tableLayout: 'fixed' }}>
               <TableHead>
                 <TableRow>
-                  <TableCell>Tarih</TableCell>
-                  <TableCell>Tip</TableCell>
-                  <TableCell>Kategori</TableCell>
-                  <TableCell>Açıklama</TableCell>
-                  <TableCell align="right">Önceki Bakiye</TableCell>
-                  <TableCell align="right">Tutar</TableCell>
-                  <TableCell align="right">Yeni Bakiye</TableCell>
-                  <TableCell align="center">İşlemler</TableCell>
+                  <TableCell sx={{ width: '10%' }}>Tarih</TableCell>
+                  <TableCell sx={{ width: '10%' }}>Tip</TableCell>
+                  <TableCell sx={{ width: '12%' }}>Kategori</TableCell>
+                  <TableCell sx={{ width: '20%' }}>Açıklama</TableCell>
+                  <TableCell align="right" sx={{ width: '13%' }}>Önceki Bakiye</TableCell>
+                  <TableCell align="right" sx={{ width: '13%' }}>Tutar</TableCell>
+                  <TableCell align="right" sx={{ width: '13%' }}>Yeni Bakiye</TableCell>
+                  <TableCell align="center" sx={{ width: '9%' }}>İşlemler</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {transactions.map((transaction) => (
+                {(() => {
+                  const startIndex = (currentPage - 1) * itemsPerPage;
+                  const endIndex = startIndex + itemsPerPage;
+                  const paginatedTransactions = transactions.slice(startIndex, endIndex);
+                  return paginatedTransactions.map((transaction) => (
                   <TableRow key={transaction.id} hover>
                     <TableCell>
                       {new Date(transaction.created_at).toLocaleDateString('tr-TR')}
@@ -947,7 +947,8 @@ const CashManagement: React.FC = () => {
                       </IconButton>
                     </TableCell>
                   </TableRow>
-                ))}
+                  ));
+                })()}
                 {transactions.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={6} align="center">
@@ -958,6 +959,18 @@ const CashManagement: React.FC = () => {
               </TableBody>
             </Table>
           </TableContainer>
+          
+          {/* Pagination */}
+          {transactions.length > 0 && (
+            <Pagination
+              currentPage={currentPage}
+              totalPages={Math.ceil(transactions.length / itemsPerPage)}
+              totalItems={transactions.length}
+              itemsPerPage={itemsPerPage}
+              onPageChange={setCurrentPage}
+              onItemsPerPageChange={setItemsPerPage}
+            />
+          )}
         </CardContent>
       </Card>
 

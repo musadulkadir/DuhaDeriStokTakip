@@ -135,14 +135,10 @@ const SalesManagement: React.FC = () => {
 
   const loadCustomers = async () => {
     try {
-      console.log('Loading customers...');
       const response = await dbAPI.getCustomers();
-      console.log('Customers response:', response);
       if (response.success) {
         setCustomers(response.data);
-        console.log('Customers loaded:', response.data);
       } else {
-        console.error('Failed to load customers:', response.error);
         setSnackbar({ open: true, message: response.error || 'Müşteriler yüklenemedi', severity: 'error' });
       }
     } catch (error) {
