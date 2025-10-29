@@ -417,7 +417,7 @@ const CustomerManagement: React.FC = () => {
                     <TableCell align="right">
                       <Chip
                         label={`₺${(customer.balanceTRY || 0).toLocaleString('tr-TR')}`}
-                        color={(customer.balanceTRY || 0) > 0 ? 'error' : (customer.balanceTRY || 0) < 0 ? 'success' : 'default'}
+                        color={(customer.balanceTRY || 0) > 0 ? 'success' : (customer.balanceTRY || 0) < 0 ? 'error' : 'default'}
                         size="small"
                         sx={{ fontWeight: 600, minWidth: 100 }}
                       />
@@ -425,7 +425,7 @@ const CustomerManagement: React.FC = () => {
                     <TableCell align="right">
                       <Chip
                         label={`$${(customer.balanceUSD || 0).toLocaleString('tr-TR')}`}
-                        color={(customer.balanceUSD || 0) > 0 ? 'error' : (customer.balanceUSD || 0) < 0 ? 'success' : 'default'}
+                        color={(customer.balanceUSD || 0) > 0 ? 'success' : (customer.balanceUSD || 0) < 0 ? 'error' : 'default'}
                         size="small"
                         sx={{ fontWeight: 600, minWidth: 100 }}
                       />
@@ -433,7 +433,7 @@ const CustomerManagement: React.FC = () => {
                     <TableCell align="right">
                       <Chip
                         label={`€${(customer.balanceEUR || 0).toLocaleString('tr-TR')}`}
-                        color={(customer.balanceEUR || 0) > 0 ? 'error' : (customer.balanceEUR || 0) < 0 ? 'success' : 'default'}
+                        color={(customer.balanceEUR || 0) > 0 ? 'success' : (customer.balanceEUR || 0) < 0 ? 'error' : 'default'}
                         size="small"
                         sx={{ fontWeight: 600, minWidth: 100 }}
                       />

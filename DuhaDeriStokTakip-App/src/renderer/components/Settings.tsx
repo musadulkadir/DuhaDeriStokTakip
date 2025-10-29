@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { dbAPI } from '../services/api';
 import {
   Box,
   Typography,
@@ -53,6 +54,7 @@ const Settings: React.FC = () => {
     lowStockThreshold: 20,
     autoSave: true,
     soundEffects: false,
+    passwordEnabled: localStorage.getItem('passwordEnabled') !== 'false', // Default true
   });
 
   const [backupDialogOpen, setBackupDialogOpen] = useState(false);
@@ -67,16 +69,35 @@ const Settings: React.FC = () => {
   const [passwordError, setPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState(false);
 
-  // Şifre localStorage'da saklanıyor (production'da daha güvenli yöntem kullan!)
+  // Şifre veritabanında saklanıyor
   const RECOVERY_PASSWORD = '6508';
-  const getStoredPassword = () => localStorage.getItem('appPassword') || 'admin123';
-  const setStoredPassword = (password: string) => localStorage.setItem('appPassword', password);
+  const [storedPassword, setStoredPasswordState] = useState('admin123');
+
+  // Şifreyi veritabanından yükle
+  useEffect(() => {
+    const loadPassword = async () => {
+      try {
+        const response = await dbAPI.getPassword();
+        if (response.success && response.data) {
+          setStoredPasswordState(response.data);
+        }
+      } catch (error) {
+        console.error('Şifre yüklenemedi:', error);
+      }
+    };
+    loadPassword();
+  }, []);
 
   const handleSettingChange = (setting: string, value: any) => {
     setSettings(prev => ({
       ...prev,
       [setting]: value
     }));
+
+    // Şifre ayarını localStorage'a kaydet
+    if (setting === 'passwordEnabled') {
+      localStorage.setItem('passwordEnabled', value.toString());
+    }
   };
 
   const handleSaveSettings = () => {
@@ -86,7 +107,7 @@ const Settings: React.FC = () => {
     setTimeout(() => setSaveSuccess(false), 3000);
   };
 
-  const handleChangePassword = () => {
+  const handleChangePassword = async () => {
     setPasswordError('');
 
     // Validasyon
@@ -94,8 +115,6 @@ const Settings: React.FC = () => {
       setPasswordError('Tüm alanları doldurun');
       return;
     }
-
-    const storedPassword = getStoredPassword();
 
     // Mevcut şifre veya kurtarma şifresi kontrolü
     if (currentPassword !== storedPassword && currentPassword !== RECOVERY_PASSWORD) {
@@ -114,17 +133,27 @@ const Settings: React.FC = () => {
       return;
     }
 
-    // Şifreyi kaydet
-    setStoredPassword(newPassword);
-    setPasswordSuccess(true);
-    setPasswordDialogOpen(false);
+    try {
+      // Şifreyi veritabanına kaydet
+      const response = await dbAPI.setPassword(newPassword);
+      if (!response.success) {
+        throw new Error(response.error || 'Şifre kaydedilemedi');
+      }
 
-    // Formu temizle
-    setCurrentPassword('');
-    setNewPassword('');
-    setConfirmPassword('');
+      setStoredPasswordState(newPassword);
+      setPasswordSuccess(true);
+      setPasswordDialogOpen(false);
 
-    setTimeout(() => setPasswordSuccess(false), 3000);
+      // Formu temizle
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+
+      setTimeout(() => setPasswordSuccess(false), 3000);
+    } catch (error) {
+      setPasswordError('Şifre kaydedilirken hata oluştu');
+      console.error('Şifre kaydetme hatası:', error);
+    }
   };
 
   const users = [
@@ -314,6 +343,23 @@ const Settings: React.FC = () => {
                     <Security />
                   </ListItemIcon>
                   <ListItemText
+                    primary="Şifre Koruması"
+                    secondary="Uygulama açılışında şifre iste"
+                  />
+                  <ListItemSecondaryAction>
+                    <Switch
+                      checked={settings.passwordEnabled}
+                      onChange={(e) => handleSettingChange('passwordEnabled', e.target.checked)}
+                      color="error"
+                    />
+                  </ListItemSecondaryAction>
+                </ListItem>
+
+                <ListItem disabled={!settings.passwordEnabled}>
+                  <ListItemIcon>
+                    <Security />
+                  </ListItemIcon>
+                  <ListItemText
                     primary="Şifre Değiştir"
                     secondary="Giriş şifrenizi değiştirin"
                   />
@@ -322,6 +368,7 @@ const Settings: React.FC = () => {
                       variant="outlined"
                       size="small"
                       onClick={() => setPasswordDialogOpen(true)}
+                      disabled={!settings.passwordEnabled}
                     >
                       Değiştir
                     </Button>
@@ -340,6 +387,16 @@ const Settings: React.FC = () => {
                     secondary="Şifrenizi unutursanız bu kodu kullanabilirsiniz"
                   />
                 </ListItem>
+
+                {!settings.passwordEnabled && (
+                  <ListItem>
+                    <Alert severity="warning" sx={{ width: '100%' }}>
+                      <Typography variant="body2">
+                        <strong>Uyarı:</strong> Şifre koruması kapalı. Geliştirme modunda kullanın.
+                      </Typography>
+                    </Alert>
+                  </ListItem>
+                )}
               </List>
             </CardContent>
           </Card>

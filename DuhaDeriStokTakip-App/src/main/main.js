@@ -114,9 +114,17 @@ async function createTables() {
         quantity_desi DECIMAL(10,2) NOT NULL,
         unit_price_per_desi DECIMAL(15,2) NOT NULL,
         total_price DECIMAL(15,2) NOT NULL,
+        unit VARCHAR(10) DEFAULT 'desi',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    // Mevcut tabloya unit kolonunu ekle (eğer yoksa)
+    try {
+      await query(`ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS unit VARCHAR(10) DEFAULT 'desi'`);
+    } catch (err) {
+      // Kolon zaten varsa hata vermez
+    }
 
     // Stock movements table
     await query(`
@@ -201,6 +209,24 @@ async function createTables() {
         hex_code VARCHAR(7),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
+    `);
+
+    // Settings table
+    await query(`
+      CREATE TABLE IF NOT EXISTS settings (
+        id SERIAL PRIMARY KEY,
+        key VARCHAR(100) NOT NULL UNIQUE,
+        value TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Default şifre ekle (eğer yoksa)
+    await query(`
+      INSERT INTO settings (key, value)
+      VALUES ('app_password', 'admin123')
+      ON CONFLICT (key) DO NOTHING
     `);
 
     // Purchases table
@@ -638,10 +664,22 @@ app.whenReady().then(async () => {
   try {
     db = await initializeDatabase();
     await createTables();
-    console.log('Database initialized successfully');
+    console.log('✅ Veritabanı başarıyla başlatıldı');
+    
+    // Başarılı bağlantı bildirimi gönder
+    if (mainWindow) {
+      mainWindow.webContents.send('db-status', { connected: true, message: 'Veritabanı bağlantısı başarılı' });
+    }
   } catch (error) {
-    console.error('Failed to initialize database:', error);
-    // Database hatası olsa bile uygulama kapanmasın
+    console.error('❌ Veritabanı başlatılamadı:', error);
+    
+    // Hata bildirimi gönder
+    if (mainWindow) {
+      mainWindow.webContents.send('db-status', { 
+        connected: false, 
+        message: 'Veritabanı bağlantısı kurulamadı. Lütfen PostgreSQL\'in çalıştığından emin olun.' 
+      });
+    }
   }
 
   app.on('activate', () => {
@@ -759,7 +797,7 @@ ipcMain.handle('sales:get-all', async (_, startDate, endDate) => {
       SELECT 
         currency,
         SUM(total_amount) as total
-      FROM sales
+      FROM sales s
     `;
 
     if (whereClause) {
@@ -805,6 +843,7 @@ ipcMain.handle('sales:getById', async (event, saleId) => {
         si.quantity_desi,
         si.unit_price_per_desi,
         si.total_price,
+        si.unit,
         p.category,
         p.color
       FROM sales s
@@ -840,7 +879,8 @@ ipcMain.handle('sales:getById', async (event, saleId) => {
         quantityPieces: row.quantity_pieces,
         quantityDesi: row.quantity_desi,
         unitPricePerDesi: row.unit_price_per_desi,
-        total: row.total_price
+        total: row.total_price,
+        unit: row.unit || 'desi'
       })).filter(item => item.productId)
     };
 
@@ -1410,16 +1450,17 @@ ipcMain.handle('sales:create', async (_, sale) => {
         await query(`
           INSERT INTO sale_items (
             sale_id, product_id, quantity_pieces, quantity_desi, 
-            unit_price_per_desi, total_price
+            unit_price_per_desi, total_price, unit
           ) 
-          VALUES ($1, $2, $3, $4, $5, $6)
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
         `, [
           saleResult.id,
           item.product_id,
           item.quantity_pieces,
           item.quantity_desi,
           item.unit_price_per_desi,
-          item.total_price
+          item.total_price,
+          item.unit || 'desi'
         ]);
 
         // Get current stock before update
@@ -1831,6 +1872,54 @@ ipcMain.handle('colors:create', async (_, color) => {
     `, [color.name, color.hex_code || null]);
 
     return { success: true, data: result };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// Settings handlers
+ipcMain.handle('settings:get', async (_, key) => {
+  try {
+    const result = await queryOne('SELECT * FROM settings WHERE key = $1', [key]);
+    return { success: true, data: result };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('settings:set', async (_, key, value) => {
+  try {
+    const result = await queryOne(`
+      INSERT INTO settings (key, value, updated_at)
+      VALUES ($1, $2, CURRENT_TIMESTAMP)
+      ON CONFLICT (key) 
+      DO UPDATE SET value = $2, updated_at = CURRENT_TIMESTAMP
+      RETURNING *
+    `, [key, value]);
+    return { success: true, data: result };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('settings:getPassword', async () => {
+  try {
+    const result = await queryOne('SELECT value FROM settings WHERE key = $1', ['app_password']);
+    return { success: true, data: result?.value || 'admin123' };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('settings:setPassword', async (_, password) => {
+  try {
+    await queryOne(`
+      INSERT INTO settings (key, value, updated_at)
+      VALUES ('app_password', $1, CURRENT_TIMESTAMP)
+      ON CONFLICT (key) 
+      DO UPDATE SET value = $1, updated_at = CURRENT_TIMESTAMP
+    `, [password]);
+    return { success: true };
   } catch (error) {
     return { success: false, error: error.message };
   }

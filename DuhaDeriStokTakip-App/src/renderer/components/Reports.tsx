@@ -57,7 +57,7 @@ const Reports: React.FC = () => {
 
   const thisMonth = getThisMonthDates();
 
-  const [reportType, setReportType] = useState('income'); // income, expense, net
+  const [reportType, setReportType] = useState('sales'); // sales, purchases, income, expense, net
   const [startDate, setStartDate] = useState(thisMonth.start);
   const [endDate, setEndDate] = useState(thisMonth.end);
   const [loading, setLoading] = useState(false);
@@ -210,7 +210,39 @@ const Reports: React.FC = () => {
       import('xlsx').then((XLSX) => {
         const wb = XLSX.utils.book_new();
 
-        if (reportType === 'income') {
+        if (reportType === 'sales') {
+          // Satış raporu
+          const data = salesData.map((s: SaleReport) => ({
+            'Tarih': new Date(s.date).toLocaleDateString('tr-TR'),
+            'Müşteri': s.customerName,
+            'Ürün': s.productName,
+            'Miktar': s.quantityInDesi,
+            'Birim': s.unit,
+            'Birim Fiyat': s.unitPrice,
+            'Para Birimi': s.currency,
+            'Toplam': s.total,
+          }));
+
+          const ws = XLSX.utils.json_to_sheet(data);
+          XLSX.utils.book_append_sheet(wb, ws, 'Satış Raporu');
+
+        } else if (reportType === 'purchases') {
+          // Alım raporu
+          const data = purchasesData.map((p: any) => ({
+            'Tarih': new Date(p.purchase_date || p.created_at).toLocaleDateString('tr-TR'),
+            'Tedarikçi': p.supplier_name || 'Bilinmeyen',
+            'Malzeme': p.material_name || 'Malzeme',
+            'Miktar': p.quantity || 0,
+            'Birim': p.unit || 'kg',
+            'Birim Fiyat': p.unit_price || 0,
+            'Para Birimi': p.currency || 'TRY',
+            'Toplam': p.total_amount || 0,
+          }));
+
+          const ws = XLSX.utils.json_to_sheet(data);
+          XLSX.utils.book_append_sheet(wb, ws, 'Alım Raporu');
+
+        } else if (reportType === 'income') {
           // Gelir raporu
           const data = cashIncomeData.map((t: any) => ({
             'Tarih': t.created_at ? new Date(t.created_at).toLocaleDateString('tr-TR') : '-',
@@ -264,7 +296,14 @@ const Reports: React.FC = () => {
         }
 
         // Dosyayı indir
-        const fileName = `${reportType === 'income' ? 'Gelir' : reportType === 'expense' ? 'Gider' : 'Net_Kar_Zarar'}_Raporu_${startDate}_${endDate}.xlsx`;
+        const reportNames: Record<string, string> = {
+          sales: 'Satış',
+          purchases: 'Alım',
+          income: 'Gelir',
+          expense: 'Gider',
+          net: 'Net_Kar_Zarar'
+        };
+        const fileName = `${reportNames[reportType]}_Raporu_${startDate}_${endDate}.xlsx`;
         XLSX.writeFile(wb, fileName);
       });
     } catch (error) {
@@ -305,9 +344,14 @@ const Reports: React.FC = () => {
       doc.setFontSize(20);
       doc.setFont('helvetica', 'bold');
 
-      const title = reportType === 'income' ? 'GELIR RAPORU' :
-        reportType === 'expense' ? 'GIDER RAPORU' :
-          'NET KAR/ZARAR RAPORU';
+      const titles: Record<string, string> = {
+        sales: 'SATIS RAPORU',
+        purchases: 'ALIM RAPORU',
+        income: 'GELIR RAPORU',
+        expense: 'GIDER RAPORU',
+        net: 'NET KAR/ZARAR RAPORU'
+      };
+      const title = titles[reportType] || 'RAPOR';
       doc.text(toAscii(title), 105, 15, { align: 'center' });
 
       doc.setFontSize(10);
@@ -326,7 +370,43 @@ const Reports: React.FC = () => {
 
       yPos += 15;
 
-      if (reportType === 'income' || reportType === 'expense') {
+      if (reportType === 'sales') {
+        // Satış detay tablosu
+        const tableData = salesData.map((s: SaleReport) => [
+          new Date(s.date).toLocaleDateString('tr-TR'),
+          toAscii(s.customerName),
+          toAscii(s.productName),
+          `${s.quantityInDesi.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ${s.unit}`,
+          `${s.currency} ${s.unitPrice.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`,
+          `${s.currency} ${s.total.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`,
+        ]);
+
+        autoTable(doc, {
+          startY: yPos,
+          head: [['Tarih', 'Musteri', 'Urun', 'Miktar', 'Birim Fiyat', 'Toplam']],
+          body: tableData,
+          theme: 'striped',
+          headStyles: { fillColor: [141, 110, 99] },
+        });
+      } else if (reportType === 'purchases') {
+        // Alım detay tablosu
+        const tableData = purchasesData.map((p: any) => [
+          new Date(p.purchase_date || p.created_at).toLocaleDateString('tr-TR'),
+          toAscii(p.supplier_name || 'Bilinmeyen'),
+          toAscii(p.material_name || 'Malzeme'),
+          `${(p.quantity || 0).toLocaleString('tr-TR')} ${p.unit || 'kg'}`,
+          `${p.currency || 'TRY'} ${(p.unit_price || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`,
+          `${p.currency || 'TRY'} ${(p.total_amount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`,
+        ]);
+
+        autoTable(doc, {
+          startY: yPos,
+          head: [['Tarih', 'Tedarikci', 'Malzeme', 'Miktar', 'Birim Fiyat', 'Toplam']],
+          body: tableData,
+          theme: 'striped',
+          headStyles: { fillColor: [141, 110, 99] },
+        });
+      } else if (reportType === 'income' || reportType === 'expense') {
         // Gelir veya Gider detay tablosu
         const data = reportType === 'income' ? cashIncomeData : supplierPaymentsData;
         const tableData = data.map((t: any) => [
@@ -387,7 +467,14 @@ const Reports: React.FC = () => {
       }
 
       // Dosyayı kaydet
-      const fileName = `${reportType === 'income' ? 'Gelir' : reportType === 'expense' ? 'Gider' : 'Net_Kar_Zarar'}_Raporu_${startDate}_${endDate}.pdf`;
+      const pdfNames: Record<string, string> = {
+        sales: 'Satis',
+        purchases: 'Alim',
+        income: 'Gelir',
+        expense: 'Gider',
+        net: 'Net_Kar_Zarar'
+      };
+      const fileName = `${pdfNames[reportType]}_Raporu_${startDate}_${endDate}.pdf`;
       doc.save(fileName);
 
     } catch (error) {
@@ -404,6 +491,22 @@ const Reports: React.FC = () => {
     loadCashBalance();
     setCurrentPage(1); // Tarih değişince sayfa 1'e dön
   }, [startDate, endDate]);
+
+  // Satış istatistikleri
+  const salesStats = {
+    totalSales: salesData?.length || 0,
+    totalSalesTRY: salesData?.filter((s: any) => (s.currency || 'TRY') === 'TRY').reduce((sum: number, s: any) => sum + (Number(s?.total) || 0), 0) || 0,
+    totalSalesUSD: salesData?.filter((s: any) => (s.currency || 'TRY') === 'USD').reduce((sum: number, s: any) => sum + (Number(s?.total) || 0), 0) || 0,
+    totalSalesEUR: salesData?.filter((s: any) => (s.currency || 'TRY') === 'EUR').reduce((sum: number, s: any) => sum + (Number(s?.total) || 0), 0) || 0,
+  };
+
+  // Alım istatistikleri
+  const purchasesStats = {
+    totalPurchases: purchasesData?.length || 0,
+    totalPurchasesTRY: purchasesData?.filter((p: any) => (p.currency || 'TRY') === 'TRY').reduce((sum: number, p: any) => sum + (Number(p?.total_amount) || 0), 0) || 0,
+    totalPurchasesUSD: purchasesData?.filter((p: any) => (p.currency || 'TRY') === 'USD').reduce((sum: number, p: any) => sum + (Number(p?.total_amount) || 0), 0) || 0,
+    totalPurchasesEUR: purchasesData?.filter((p: any) => (p.currency || 'TRY') === 'EUR').reduce((sum: number, p: any) => sum + (Number(p?.total_amount) || 0), 0) || 0,
+  };
 
   // Gelir istatistikleri (SADECE Kasa Girişleri - Para Çevirme Hariç)
   const incomeStats = {
@@ -452,8 +555,10 @@ const Reports: React.FC = () => {
                   label="Rapor Tipi"
                   onChange={(e) => setReportType(e.target.value)}
                 >
-                  <MenuItem value="income">Gelir Raporu</MenuItem>
-                  <MenuItem value="expense">Gider Raporu</MenuItem>
+                  <MenuItem value="sales">Satış Raporu</MenuItem>
+                  <MenuItem value="purchases">Alım Raporu</MenuItem>
+                  <MenuItem value="income">Gelir Raporu (Kasa)</MenuItem>
+                  <MenuItem value="expense">Gider Raporu (Kasa)</MenuItem>
                   <MenuItem value="net">Net Kar/Zarar</MenuItem>
                 </Select>
               </FormControl>
@@ -502,6 +607,126 @@ const Reports: React.FC = () => {
       </Card>
 
       {/* Stats Cards */}
+      {reportType === 'sales' && (
+        <Grid container spacing={3} sx={{ mb: 3 }}>
+          <Grid xs={12} sm={6} md={3}>
+            <Card>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                  <Assessment sx={{ color: 'primary.main', mr: 1 }} />
+                  <Typography variant="h6">Toplam Satış</Typography>
+                </Box>
+                <Typography variant="h4" sx={{ mb: 1 }}>
+                  {salesStats.totalSales}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  adet işlem
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid xs={12} sm={6} md={3}>
+            <Card>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                  <AttachMoney sx={{ color: 'success.main', mr: 1 }} />
+                  <Typography variant="h6">Satış (TL)</Typography>
+                </Box>
+                <Typography variant="h4" sx={{ mb: 1 }}>
+                  ₺{(salesStats.totalSalesTRY || 0).toLocaleString('tr-TR')}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid xs={12} sm={6} md={3}>
+            <Card>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                  <AttachMoney sx={{ color: 'info.main', mr: 1 }} />
+                  <Typography variant="h6">Satış (USD)</Typography>
+                </Box>
+                <Typography variant="h4" sx={{ mb: 1 }}>
+                  ${(salesStats.totalSalesUSD || 0).toLocaleString('tr-TR')}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid xs={12} sm={6} md={3}>
+            <Card>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                  <AttachMoney sx={{ color: 'warning.main', mr: 1 }} />
+                  <Typography variant="h6">Satış (EUR)</Typography>
+                </Box>
+                <Typography variant="h4" sx={{ mb: 1 }}>
+                  €{(salesStats.totalSalesEUR || 0).toLocaleString('tr-TR')}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      )}
+
+      {reportType === 'purchases' && (
+        <Grid container spacing={3} sx={{ mb: 3 }}>
+          <Grid xs={12} sm={6} md={3}>
+            <Card>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                  <Assessment sx={{ color: 'primary.main', mr: 1 }} />
+                  <Typography variant="h6">Toplam Alım</Typography>
+                </Box>
+                <Typography variant="h4" sx={{ mb: 1 }}>
+                  {purchasesStats.totalPurchases}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  adet işlem
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid xs={12} sm={6} md={3}>
+            <Card>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                  <AttachMoney sx={{ color: 'error.main', mr: 1 }} />
+                  <Typography variant="h6">Alım (TL)</Typography>
+                </Box>
+                <Typography variant="h4" sx={{ mb: 1 }}>
+                  ₺{(purchasesStats.totalPurchasesTRY || 0).toLocaleString('tr-TR')}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid xs={12} sm={6} md={3}>
+            <Card>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                  <AttachMoney sx={{ color: 'info.main', mr: 1 }} />
+                  <Typography variant="h6">Alım (USD)</Typography>
+                </Box>
+                <Typography variant="h4" sx={{ mb: 1 }}>
+                  ${(purchasesStats.totalPurchasesUSD || 0).toLocaleString('tr-TR')}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid xs={12} sm={6} md={3}>
+            <Card>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                  <AttachMoney sx={{ color: 'warning.main', mr: 1 }} />
+                  <Typography variant="h6">Alım (EUR)</Typography>
+                </Box>
+                <Typography variant="h4" sx={{ mb: 1 }}>
+                  €{(purchasesStats.totalPurchasesEUR || 0).toLocaleString('tr-TR')}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      )}
+
       {reportType === 'income' && (
         <Grid container spacing={3} sx={{ mb: 3 }}>
           <Grid xs={12} sm={6} md={3}>
@@ -680,6 +905,146 @@ const Reports: React.FC = () => {
         <Alert severity="error" sx={{ mb: 3 }}>
           {error}
         </Alert>
+      )}
+
+      {/* Sales Table */}
+      {reportType === 'sales' && (
+        <Card>
+          <CardContent>
+            <Typography variant="h6" sx={{ mb: 2 }}>
+              Satış Detayları
+            </Typography>
+            <TableContainer>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Tarih</TableCell>
+                    <TableCell>Müşteri</TableCell>
+                    <TableCell>Ürün</TableCell>
+                    <TableCell align="right">Miktar</TableCell>
+                    <TableCell align="right">Birim Fiyat</TableCell>
+                    <TableCell align="right">Toplam</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {(() => {
+                    const startIndex = (currentPage - 1) * itemsPerPage;
+                    const endIndex = startIndex + itemsPerPage;
+                    const paginatedData = (salesData || []).slice(startIndex, endIndex);
+                    return paginatedData.map((sale: SaleReport, index) => (
+                      <TableRow key={index}>
+                        <TableCell>
+                          {new Date(sale.date).toLocaleDateString('tr-TR')}
+                        </TableCell>
+                        <TableCell>{sale.customerName}</TableCell>
+                        <TableCell>{sale.productName}</TableCell>
+                        <TableCell align="right">
+                          {sale.quantityInDesi.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} {sale.unit}
+                        </TableCell>
+                        <TableCell align="right">
+                          {sale.currency === 'USD' ? '$' : sale.currency === 'EUR' ? '€' : '₺'}
+                          {sale.unitPrice.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                        </TableCell>
+                        <TableCell align="right">
+                          {sale.currency === 'USD' ? '$' : sale.currency === 'EUR' ? '€' : '₺'}
+                          {sale.total.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                        </TableCell>
+                      </TableRow>
+                    ));
+                  })()}
+                  {salesData.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={6} align="center">
+                        {loading ? 'Yükleniyor...' : 'Veri bulunamadı'}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+
+            {salesData.length > 0 && (
+              <Pagination
+                currentPage={currentPage}
+                totalPages={Math.ceil(salesData.length / itemsPerPage)}
+                totalItems={salesData.length}
+                itemsPerPage={itemsPerPage}
+                onPageChange={setCurrentPage}
+                onItemsPerPageChange={setItemsPerPage}
+              />
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Purchases Table */}
+      {reportType === 'purchases' && (
+        <Card>
+          <CardContent>
+            <Typography variant="h6" sx={{ mb: 2 }}>
+              Alım Detayları
+            </Typography>
+            <TableContainer>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Tarih</TableCell>
+                    <TableCell>Tedarikçi</TableCell>
+                    <TableCell>Malzeme</TableCell>
+                    <TableCell align="right">Miktar</TableCell>
+                    <TableCell align="right">Birim Fiyat</TableCell>
+                    <TableCell align="right">Toplam</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {(() => {
+                    const startIndex = (currentPage - 1) * itemsPerPage;
+                    const endIndex = startIndex + itemsPerPage;
+                    const paginatedData = (purchasesData || []).slice(startIndex, endIndex);
+                    return paginatedData.map((purchase: any, index) => (
+                      <TableRow key={index}>
+                        <TableCell>
+                          {new Date(purchase.purchase_date || purchase.created_at).toLocaleDateString('tr-TR')}
+                        </TableCell>
+                        <TableCell>{purchase.supplier_name || 'Bilinmeyen'}</TableCell>
+                        <TableCell>{purchase.material_name || 'Malzeme'}</TableCell>
+                        <TableCell align="right">
+                          {(purchase.quantity || 0).toLocaleString('tr-TR')} {purchase.unit || 'kg'}
+                        </TableCell>
+                        <TableCell align="right">
+                          {purchase.currency === 'USD' ? '$' : purchase.currency === 'EUR' ? '€' : '₺'}
+                          {(purchase.unit_price || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                        </TableCell>
+                        <TableCell align="right">
+                          {purchase.currency === 'USD' ? '$' : purchase.currency === 'EUR' ? '€' : '₺'}
+                          {(purchase.total_amount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                        </TableCell>
+                      </TableRow>
+                    ));
+                  })()}
+                  {purchasesData.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={6} align="center">
+                        {loading ? 'Yükleniyor...' : 'Veri bulunamadı'}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+
+            {purchasesData.length > 0 && (
+              <Pagination
+                currentPage={currentPage}
+                totalPages={Math.ceil(purchasesData.length / itemsPerPage)}
+                totalItems={purchasesData.length}
+                itemsPerPage={itemsPerPage}
+                onPageChange={setCurrentPage}
+                onItemsPerPageChange={setItemsPerPage}
+              />
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {/* Income Table */}

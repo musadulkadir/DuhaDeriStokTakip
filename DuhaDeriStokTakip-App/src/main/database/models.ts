@@ -78,19 +78,22 @@ export interface ColorResponse {
 export interface Sale extends BaseEntity {
   customer_id?: number;
   total_amount: number;
+  currency?: string;
   payment_status?: string;
   sale_date?: string;
   notes?: string;
+  items?: SaleItem[];
 }
 
 // Sale item interface - matches sale_items table schema
 export interface SaleItem extends BaseEntity {
-  sale_id: number;
+  sale_id?: number;
   product_id: number;
   quantity_pieces: number;
   quantity_desi: number;
   unit_price_per_desi: number;
   total_price: number;
+  unit?: 'desi' | 'ayak';
 }
 
 // Stock movement interface - matches stock_movements table schema

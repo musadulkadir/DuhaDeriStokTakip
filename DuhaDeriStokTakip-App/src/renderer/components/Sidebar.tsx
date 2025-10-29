@@ -39,7 +39,7 @@ const Sidebar: React.FC<SidebarProps> = ({ open, toggleSidebar }) => {
   const location = useLocation();
 
   const menuItems = [
-    { path: '/', label: 'Dashboard', icon: <DashboardIcon /> },
+    { path: '/', label: 'Kontrol Paneli', icon: <DashboardIcon /> },
     { path: '/products', label: 'Ürünler', icon: <CategoryIcon /> },
     { path: '/customers', label: 'Müşteri Yönetimi', icon: <ShoppingCartIcon /> },
     { path: '/suppliers', label: 'Tedarikçi Yönetimi', icon: <WorkIcon /> },

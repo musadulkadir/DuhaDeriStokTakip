@@ -19,21 +19,39 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  // Şifre localStorage'dan okunuyor
+  // Şifre veritabanından okunuyor
   const RECOVERY_PASSWORD = '6508';
-  const getStoredPassword = () => localStorage.getItem('appPassword') || 'admin123';
 
-  const handleLogin = () => {
-    const correctPassword = getStoredPassword();
-    
-    // Normal şifre veya kurtarma şifresi ile giriş
-    if (password === correctPassword || password === RECOVERY_PASSWORD) {
-      setError('');
-      onLogin();
-    } else {
-      setError('Hatalı şifre! Lütfen tekrar deneyin.');
-      setPassword('');
+  const handleLogin = async () => {
+    setLoading(true);
+    setError('');
+
+    try {
+      // Şifreyi veritabanından al
+      const { dbAPI } = await import('../services/api');
+      const response = await dbAPI.getPassword();
+      
+      if (!response.success) {
+        throw new Error('Şifre kontrol edilemedi');
+      }
+
+      const correctPassword = response.data || 'admin123';
+      
+      // Normal şifre veya kurtarma şifresi ile giriş
+      if (password === correctPassword || password === RECOVERY_PASSWORD) {
+        setError('');
+        onLogin();
+      } else {
+        setError('Hatalı şifre! Lütfen tekrar deneyin.');
+        setPassword('');
+      }
+    } catch (err) {
+      setError('Giriş yapılırken hata oluştu');
+      console.error('Login error:', err);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -180,6 +198,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
           variant="contained"
           size="large"
           onClick={handleLogin}
+          disabled={loading}
           sx={{
             py: 1.5,
             borderRadius: 2,
@@ -191,7 +210,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
             },
           }}
         >
-          Giriş Yap
+          {loading ? 'Kontrol ediliyor...' : 'Giriş Yap'}
         </Button>
 
         {/* İpucu */}

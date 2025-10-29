@@ -601,7 +601,7 @@ const ProductManagement: React.FC = () => {
   };
 
   return (
-    <Box>
+    <Box sx={{mt:2, mr:2}}>
       {/* Header */}
       <Box sx={{ mb: 4 }}>
         <Typography variant="h3" sx={{ fontWeight: 700, mb: 1 }}>

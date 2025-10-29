@@ -260,6 +260,23 @@ class DatabaseAPI {
   async deletePurchase(id: number): Promise<ApiResponse<boolean>> {
     return window.require("electron").ipcRenderer.invoke('purchases:delete', id);
   }
+
+  // Settings operations
+  async getSetting(key: string): Promise<ApiResponse<any>> {
+    return window.require("electron").ipcRenderer.invoke('settings:get', key);
+  }
+
+  async setSetting(key: string, value: string): Promise<ApiResponse<any>> {
+    return window.require("electron").ipcRenderer.invoke('settings:set', key, value);
+  }
+
+  async getPassword(): Promise<ApiResponse<string>> {
+    return window.require("electron").ipcRenderer.invoke('settings:getPassword');
+  }
+
+  async setPassword(password: string): Promise<ApiResponse<boolean>> {
+    return window.require("electron").ipcRenderer.invoke('settings:setPassword', password);
+  }
 }
 
 export const dbAPI = new DatabaseAPI();

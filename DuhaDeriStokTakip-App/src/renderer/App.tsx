@@ -206,6 +206,12 @@ export default function App() {
     // Uygulama başlangıcında kısa bir yükleme süresi
     const timer = setTimeout(() => {
       setIsLoading(false);
+      
+      // Şifre koruması kapalıysa otomatik giriş yap
+      const passwordEnabled = localStorage.getItem('passwordEnabled');
+      if (passwordEnabled === 'false') {
+        setIsAuthenticated(true);
+      }
     }, 1500); // 1.5 saniye yükleme ekranı
 
     return () => clearTimeout(timer);
@@ -230,8 +236,9 @@ export default function App() {
     );
   }
 
-  // Şifre ekranı
-  if (!isAuthenticated) {
+  // Şifre ekranı (sadece şifre koruması açıksa)
+  const passwordEnabled = localStorage.getItem('passwordEnabled') !== 'false';
+  if (!isAuthenticated && passwordEnabled) {
     return (
       <ThemeProvider theme={leatherTheme}>
         <CssBaseline />

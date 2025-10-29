@@ -1,4 +1,7 @@
 const { Pool } = require('pg');
+const { exec } = require('child_process');
+const util = require('util');
+const execPromise = util.promisify(exec);
 
 // PostgreSQL connection configuration
 const dbConfig = {
@@ -13,32 +16,122 @@ const dbConfig = {
 };
 
 let pool;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 3;
+
+// PostgreSQL'i başlat
+async function startPostgreSQL() {
+  try {
+    console.log('PostgreSQL başlatılıyor...');
+    await execPromise('brew services restart postgresql@14');
+    console.log('PostgreSQL başlatıldı');
+    // Başlaması için biraz bekle
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    return true;
+  } catch (error) {
+    console.error('PostgreSQL başlatılamadı:', error.message);
+    return false;
+  }
+}
 
 // Initialize database connection
 async function initializeDatabase() {
   try {
     pool = new Pool(dbConfig);
     
+    // Bağlantı hatalarını dinle
+    pool.on('error', async (err) => {
+      console.error('Beklenmeyen veritabanı hatası:', err);
+      if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND') {
+        console.log('Veritabanı bağlantısı kesildi, yeniden bağlanılıyor...');
+        await attemptReconnect();
+      }
+    });
+    
     // Test connection
     const client = await pool.connect();
-    console.log('Connected to PostgreSQL database');
+    console.log('✅ PostgreSQL veritabanına bağlanıldı');
     client.release();
+    reconnectAttempts = 0; // Başarılı bağlantıda sayacı sıfırla
     
     return pool;
   } catch (err) {
-    console.error('Database connection error:', err);
+    console.error('❌ Veritabanı bağlantı hatası:', err.message);
+    
+    // PostgreSQL çalışmıyorsa başlatmayı dene
+    if (err.code === 'ECONNREFUSED') {
+      console.log('PostgreSQL çalışmıyor, başlatılıyor...');
+      const started = await startPostgreSQL();
+      
+      if (started) {
+        // Tekrar bağlanmayı dene
+        return initializeDatabase();
+      }
+    }
+    
     throw err;
+  }
+}
+
+// Yeniden bağlanma denemesi
+async function attemptReconnect() {
+  if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+    console.error('Maksimum yeniden bağlanma denemesi aşıldı');
+    return false;
+  }
+  
+  reconnectAttempts++;
+  console.log(`Yeniden bağlanma denemesi ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}...`);
+  
+  try {
+    // PostgreSQL'i başlat
+    await startPostgreSQL();
+    
+    // Eski pool'u kapat
+    if (pool) {
+      await pool.end();
+    }
+    
+    // Yeni pool oluştur
+    await initializeDatabase();
+    return true;
+  } catch (error) {
+    console.error('Yeniden bağlanma başarısız:', error.message);
+    
+    // Biraz bekle ve tekrar dene
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    return attemptReconnect();
   }
 }
 
 // Helper function to execute queries
 async function query(text, params = []) {
-  const client = await pool.connect();
   try {
-    const result = await client.query(text, params);
-    return result;
-  } finally {
-    client.release();
+    const client = await pool.connect();
+    try {
+      const result = await client.query(text, params);
+      return result;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    // Bağlantı hatası varsa yeniden bağlanmayı dene
+    if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
+      console.log('Sorgu sırasında bağlantı hatası, yeniden bağlanılıyor...');
+      const reconnected = await attemptReconnect();
+      
+      if (reconnected) {
+        // Sorguyu tekrar dene
+        const client = await pool.connect();
+        try {
+          const result = await client.query(text, params);
+          return result;
+        } finally {
+          client.release();
+        }
+      }
+    }
+    throw error;
   }
 }
 

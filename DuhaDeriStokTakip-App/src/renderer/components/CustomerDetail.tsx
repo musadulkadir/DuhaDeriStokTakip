@@ -64,6 +64,7 @@ interface SaleItem {
   quantityDesi: number;
   unitPricePerDesi: number;
   total: number;
+  unit: 'desi' | 'ayak';
 }
 
 interface CustomerSale {
@@ -74,6 +75,7 @@ interface CustomerSale {
     quantity: number;
     unitPrice: number;
     total: number;
+    unit?: 'desi' | 'ayak';
   }>;
   totalAmount: number;
   currency?: string;
@@ -130,6 +132,8 @@ const CustomerDetail: React.FC = () => {
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [deletePaymentDialogOpen, setDeletePaymentDialogOpen] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<CustomerPayment | null>(null);
+  const [deleteSaleDialogOpen, setDeleteSaleDialogOpen] = useState(false);
+  const [selectedSale, setSelectedSale] = useState<CustomerSale | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentType, setPaymentType] = useState('cash');
   const [paymentCurrency, setPaymentCurrency] = useState('TRY');
@@ -145,6 +149,7 @@ const CustomerDetail: React.FC = () => {
   const [unitPricePerDesi, setUnitPricePerDesi] = useState<string>('');
   const [saleCurrency, setSaleCurrency] = useState(DEFAULT_CURRENCIES.SALES);
   const [saleErrors, setSaleErrors] = useState<string[]>([]);
+  const [saleUnit, setSaleUnit] = useState<'desi' | 'ayak'>('desi');
 
   // Tarih filtresi state'leri - Default olarak son 1 ay
   const getDefaultStartDate = () => {
@@ -237,13 +242,20 @@ const CustomerDetail: React.FC = () => {
             // Her satış için detayları çek
             const saleDetailResponse = await dbAPI.getSaleById(sale.id);
 
-            let items = [];
+            let items: Array<{
+              productName: string;
+              quantity: number;
+              unitPrice: number;
+              total: number;
+              unit?: 'desi' | 'ayak';
+            }> = [];
             if (saleDetailResponse.success && saleDetailResponse.data) {
               items = (saleDetailResponse.data.items || []).map((item: any) => ({
                 productName: item.productName,
-                quantity: item.quantityDesi, // Desi olarak göster
+                quantity: item.quantityDesi,
                 unitPrice: item.unitPricePerDesi,
-                total: item.total
+                total: item.total,
+                unit: item.unit || 'desi'
               }));
             }
 
@@ -621,7 +633,8 @@ const CustomerDetail: React.FC = () => {
     const salesTableData = filteredSales.slice(0, 15).map(sale => {
       const itemsText = sale.items.map(item => {
         const currencySymbol = sale.currency === 'TRY' ? 'TL' : sale.currency === 'USD' ? 'USD' : 'EUR';
-        return `${toAscii(item.productName)} (${formatNumber(item.quantity)} desi x ${formatNumber(item.unitPrice)} ${currencySymbol}/desi)`;
+        const unit = item.unit || 'desi';
+        return `${toAscii(item.productName)} (${formatNumber(item.quantity)} ${unit} x ${formatNumber(item.unitPrice)} ${currencySymbol}/${unit})`;
       }).join(', ');
 
       const currencySymbol = sale.currency === 'TRY' ? 'TL' : sale.currency === 'USD' ? 'USD' : 'EUR';
@@ -765,6 +778,7 @@ const CustomerDetail: React.FC = () => {
       quantityDesi: parseFormattedNumber(quantityDesi),
       unitPricePerDesi: parseFormattedNumber(unitPricePerDesi),
       total: parseFormattedNumber(quantityDesi) * parseFormattedNumber(unitPricePerDesi),
+      unit: saleUnit,
     };
 
     setSaleItems([...saleItems, item]);
@@ -810,7 +824,8 @@ const CustomerDetail: React.FC = () => {
           quantity_pieces: item.quantityPieces,
           quantity_desi: item.quantityDesi,
           unit_price_per_desi: item.unitPricePerDesi,
-          total_price: item.total
+          total_price: item.total,
+          unit: item.unit
         }))
       };
 
@@ -853,7 +868,7 @@ const CustomerDetail: React.FC = () => {
 
   // Ödeme sil
   const handleDeletePayment = async () => {
-    if (!selectedPayment || !customer) return;
+    if (!selectedPayment || !customer || !selectedPayment.id) return;
 
     try {
       // Önce ilgili kasa işlemini bul ve sil
@@ -863,7 +878,7 @@ const CustomerDetail: React.FC = () => {
           const relatedCashTransaction = cashResponse.data.find(
             (t: any) => t.reference_type === 'payment' && t.reference_id === selectedPayment.id
           );
-          if (relatedCashTransaction) {
+          if (relatedCashTransaction && relatedCashTransaction.id) {
             await dbAPI.deleteCashTransaction(relatedCashTransaction.id);
           }
         }
@@ -891,6 +906,38 @@ const CustomerDetail: React.FC = () => {
         message: error instanceof Error ? error.message : 'Ödeme silinirken hata oluştu',
         severity: 'error'
       });
+    }
+  };
+
+  // Satış sil
+  const handleDeleteSale = async () => {
+    if (!selectedSale || !customer || !selectedSale.id) return;
+
+    try {
+      setLoading(true);
+
+      // Satışı sil (backend'de bakiye otomatik güncellenir)
+      const deleteResponse = await dbAPI.deleteSale(selectedSale.id);
+      if (!deleteResponse.success) {
+        throw new Error(deleteResponse.error || 'Satış silinemedi');
+      }
+
+      setSnackbar({ open: true, message: 'Satış başarıyla silindi ve bakiye güncellendi', severity: 'success' });
+      setDeleteSaleDialogOpen(false);
+      setSelectedSale(null);
+
+      // Verileri yeniden yükle
+      await loadCustomerData();
+
+    } catch (error) {
+      console.error('Delete sale error:', error);
+      setSnackbar({
+        open: true,
+        message: error instanceof Error ? error.message : 'Satış silinirken hata oluştu',
+        severity: 'error'
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -1169,6 +1216,7 @@ const CustomerDetail: React.FC = () => {
                       <TableCell>Tarih</TableCell>
                       <TableCell>Ürünler</TableCell>
                       <TableCell align="right">Tutar</TableCell>
+                      <TableCell align="center">İşlem</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -1188,7 +1236,7 @@ const CustomerDetail: React.FC = () => {
                                       {item.productName}
                                     </Typography>
                                     <Typography variant="caption" color="text.secondary">
-                                      {item.quantity} desi × {sale.currency === 'TRY' ? '₺' : sale.currency === 'EUR' ? '€' : '$'}{item.unitPrice.toLocaleString('tr-TR')}/desi = {sale.currency === 'TRY' ? '₺' : sale.currency === 'EUR' ? '€' : '$'}{item.total.toLocaleString('tr-TR')}
+                                      {item.quantity} {item.unit || 'desi'} × {sale.currency === 'TRY' ? '₺' : sale.currency === 'EUR' ? '€' : '$'}{item.unitPrice.toLocaleString('tr-TR')}/{item.unit || 'desi'} = {sale.currency === 'TRY' ? '₺' : sale.currency === 'EUR' ? '€' : '$'}{item.total.toLocaleString('tr-TR')}
                                     </Typography>
                                   </Box>
                                 ))}
@@ -1202,11 +1250,23 @@ const CustomerDetail: React.FC = () => {
                           <TableCell align="right" sx={{ verticalAlign: 'top', fontWeight: 600 }}>
                             {sale.currency === 'TRY' ? '₺' : sale.currency === 'EUR' ? '€' : '$'}{(sale.totalAmount || 0).toLocaleString('tr-TR')}
                           </TableCell>
+                          <TableCell align="center" sx={{ verticalAlign: 'top' }}>
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={() => {
+                                setSelectedSale(sale);
+                                setDeleteSaleDialogOpen(true);
+                              }}
+                            >
+                              <Delete />
+                            </IconButton>
+                          </TableCell>
                         </TableRow>
                       ))}
                     {filteredSales.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={3} align="center">
+                        <TableCell colSpan={4} align="center">
                           {startDate || endDate ? 'Bu tarih aralığında satış kaydı bulunmuyor' : 'Henüz satış kaydı bulunmuyor'}
                         </TableCell>
                       </TableRow>
@@ -1216,10 +1276,10 @@ const CustomerDetail: React.FC = () => {
                     {startDate && (
                       <>
                         <TableRow>
-                          <TableCell colSpan={3} sx={{ py: 1 }} />
+                          <TableCell colSpan={4} sx={{ py: 1 }} />
                         </TableRow>
                         <TableRow sx={{ bgcolor: 'action.hover' }}>
-                          <TableCell colSpan={2} sx={{ fontWeight: 600 }}>
+                          <TableCell colSpan={3} sx={{ fontWeight: 600 }}>
                             Önceki Bakiye
                           </TableCell>
                           <TableCell align="right" sx={{ fontWeight: 700 }}>
@@ -1468,6 +1528,49 @@ const CustomerDetail: React.FC = () => {
         </DialogActions>
       </Dialog>
 
+      {/* Delete Sale Dialog */}
+      <Dialog open={deleteSaleDialogOpen} onClose={() => setDeleteSaleDialogOpen(false)}>
+        <DialogTitle>Satışı Sil</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Bu satışı silmek istediğinizden emin misiniz? Bu işlem geri alınamaz ve müşteri bakiyesi otomatik olarak güncellenecektir.
+          </Typography>
+          {selectedSale && (
+            <Box sx={{ mt: 2, p: 2, bgcolor: 'background.paper', borderRadius: 1 }}>
+              <Typography variant="body2">
+                <strong>Tarih:</strong> {new Date(selectedSale.date).toLocaleDateString('tr-TR')}
+              </Typography>
+              <Typography variant="body2">
+                <strong>Tutar:</strong> {selectedSale.currency === 'TRY' ? '₺' : selectedSale.currency === 'EUR' ? '€' : '$'}{selectedSale.totalAmount.toLocaleString('tr-TR')}
+              </Typography>
+              {selectedSale.items && selectedSale.items.length > 0 && (
+                <Box sx={{ mt: 1 }}>
+                  <Typography variant="body2">
+                    <strong>Ürünler:</strong>
+                  </Typography>
+                  {selectedSale.items.map((item, idx) => (
+                    <Typography key={idx} variant="caption" display="block" sx={{ ml: 2 }}>
+                      • {item.productName} ({item.quantity} {item.unit || 'desi'})
+                    </Typography>
+                  ))}
+                </Box>
+              )}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteSaleDialogOpen(false)}>İptal</Button>
+          <Button
+            onClick={handleDeleteSale}
+            color="error"
+            variant="contained"
+            disabled={loading}
+          >
+            Sil
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Sale Dialog */}
       <Dialog
         open={saleDialogOpen}
@@ -1558,9 +1661,26 @@ const CustomerDetail: React.FC = () => {
                 </Typography>
               </Box>
 
+              <Box sx={{ flex: '1 1 100px' }}>
+                <FormControl fullWidth size="medium">
+                  <InputLabel>Birim</InputLabel>
+                  <Select
+                    value={saleUnit}
+                    label="Birim"
+                    onChange={(e) => setSaleUnit(e.target.value as 'desi' | 'ayak')}
+                  >
+                    <MenuItem value="desi">Desi</MenuItem>
+                    <MenuItem value="ayak">Ayak</MenuItem>
+                  </Select>
+                </FormControl>
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                  Satış birimi
+                </Typography>
+              </Box>
+
               <Box sx={{ flex: '1 1 120px' }}>
                 <TextField
-                  label="Desi"
+                  label={saleUnit === 'desi' ? 'Desi' : 'Ayak'}
                   value={quantityDesi}
                   onChange={(e) => setQuantityDesi(formatNumberWithCommas(e.target.value))}
                   fullWidth
@@ -1573,7 +1693,7 @@ const CustomerDetail: React.FC = () => {
 
               <Box sx={{ flex: '1 1 120px' }}>
                 <TextField
-                  label={`Desi Fiyatı (${saleCurrency === 'USD' ? '$' : saleCurrency === 'TRY' ? '₺' : '€'})`}
+                  label={`${saleUnit === 'desi' ? 'Desi' : 'Ayak'} Fiyatı (${saleCurrency === 'USD' ? '$' : saleCurrency === 'TRY' ? '₺' : '€'})`}
                   value={unitPricePerDesi}
                   onChange={(e) => setUnitPricePerDesi(formatNumberWithCommas(e.target.value))}
                   fullWidth
@@ -1623,8 +1743,9 @@ const CustomerDetail: React.FC = () => {
                             <TableRow>
                               <TableCell>Ürün</TableCell>
                               <TableCell align="right">Adet</TableCell>
-                              <TableCell align="right">Desi</TableCell>
-                              <TableCell align="right">Desi Fiyatı</TableCell>
+                              <TableCell align="center">Birim</TableCell>
+                              <TableCell align="right">Miktar</TableCell>
+                              <TableCell align="right">Birim Fiyat</TableCell>
                               <TableCell align="right">Toplam</TableCell>
                               <TableCell align="center">İşlem</TableCell>
                             </TableRow>
@@ -1634,8 +1755,15 @@ const CustomerDetail: React.FC = () => {
                               <TableRow key={index}>
                                 <TableCell>{item.productName}</TableCell>
                                 <TableCell align="right">{Number(item.quantityPieces).toLocaleString('tr-TR')} adet</TableCell>
-                                <TableCell align="right">{Number(item.quantityDesi).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} desi</TableCell>
-                                <TableCell align="right">{saleCurrency === 'USD' ? '$' : saleCurrency === 'TRY' ? '₺' : '€'}{Number(item.unitPricePerDesi).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/desi</TableCell>
+                                <TableCell align="center">
+                                  <Chip 
+                                    label={item.unit === 'desi' ? 'Desi' : 'Ayak'} 
+                                    size="small" 
+                                    color={item.unit === 'desi' ? 'primary' : 'secondary'}
+                                  />
+                                </TableCell>
+                                <TableCell align="right">{Number(item.quantityDesi).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {item.unit}</TableCell>
+                                <TableCell align="right">{saleCurrency === 'USD' ? '$' : saleCurrency === 'TRY' ? '₺' : '€'}{Number(item.unitPricePerDesi).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/{item.unit}</TableCell>
                                 <TableCell align="right">{saleCurrency === 'USD' ? '$' : saleCurrency === 'TRY' ? '₺' : '€'}{Number(item.total).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
                                 <TableCell align="center">
                                   <IconButton
