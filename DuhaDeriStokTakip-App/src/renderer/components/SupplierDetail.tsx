@@ -78,6 +78,7 @@ interface NewPayment {
   currency: string;
   payment_method: string;
   description: string;
+  payment_date: string;
 }
 
 interface PurchaseItem {
@@ -93,6 +94,7 @@ interface NewPurchase {
   currency: string;
   notes: string;
   items: PurchaseItem[];
+  purchase_date: string;
 }
 
 const SupplierDetail: React.FC = () => {
@@ -118,6 +120,7 @@ const SupplierDetail: React.FC = () => {
     currency: 'TRY',
     notes: '',
     items: [],
+    purchase_date: new Date().toISOString().split('T')[0],
   });
 
   const [currentItem, setCurrentItem] = useState({
@@ -135,6 +138,7 @@ const SupplierDetail: React.FC = () => {
     currency: 'TRY',
     payment_method: 'cash',
     description: '',
+    payment_date: new Date().toISOString().split('T')[0],
   });
 
   // Tarih filtresi - Default: Bugünden 1 ay öncesi ile bugün
@@ -322,11 +326,25 @@ const SupplierDetail: React.FC = () => {
     try {
       const response = await dbAPI.getCustomerPayments(parseInt(id));
       if (response.success) {
-        const payments = (response.data || []).map((payment: any) => ({
+        let allPayments = (response.data || []).map((payment: any) => ({
           ...payment,
           currency: payment.currency || 'TRY'
         }));
-        setPayments(payments);
+
+        // Tarih filtresini uygula
+        if (startDate && endDate) {
+          const start = new Date(startDate);
+          start.setHours(0, 0, 0, 0);
+          const end = new Date(endDate);
+          end.setHours(23, 59, 59, 999);
+
+          allPayments = allPayments.filter((payment: any) => {
+            const paymentDate = new Date(payment.payment_date || payment.date || payment.created_at);
+            return paymentDate >= start && paymentDate <= end;
+          });
+        }
+
+        setPayments(allPayments);
       }
     } catch (error) {
       console.error('Ödeme geçmişi yüklenirken hata:', error);
@@ -372,7 +390,7 @@ const SupplierDetail: React.FC = () => {
         currency: newPayment.currency,
         payment_method: newPayment.payment_method,
         description: newPayment.description || undefined,
-        date: new Date().toISOString(),
+        date: new Date(newPayment.payment_date).toISOString(),
       };
 
       const response = await dbAPI.createPayment(paymentData);
@@ -388,6 +406,7 @@ const SupplierDetail: React.FC = () => {
           reference_id: response.data?.id,
           customer_id: supplier.id,
           user: 'Sistem Kullanıcısı',
+          date: new Date(newPayment.payment_date).toISOString(),
         };
 
         try {
@@ -403,6 +422,7 @@ const SupplierDetail: React.FC = () => {
           currency: 'TRY',
           payment_method: 'cash',
           description: '',
+          payment_date: new Date().toISOString().split('T')[0],
         });
         await loadSupplier(); // Bakiyeyi güncelle
         await loadPayments();
@@ -648,6 +668,7 @@ const SupplierDetail: React.FC = () => {
         currency: newPurchase.currency,
         notes: newPurchase.notes,
         items: newPurchase.items,
+        purchase_date: new Date(newPurchase.purchase_date).toISOString(),
       };
 
       const purchaseResponse = await dbAPI.createPurchase(purchaseData);
@@ -682,6 +703,7 @@ const SupplierDetail: React.FC = () => {
         currency: 'TRY',
         notes: '',
         items: [],
+        purchase_date: new Date().toISOString().split('T')[0],
       });
 
       await loadMaterials();
@@ -891,9 +913,17 @@ const SupplierDetail: React.FC = () => {
     doc.setFont('helvetica', 'bold');
     doc.text('Odeme Gecmisi', 20, finalY + 10);
 
-    // Ödeme toplamlarını hesapla
+    // Bu ayki ödemeleri filtrele
+    const currentMonth = new Date().toISOString().substring(0, 7); // YYYY-MM formatı
+    const thisMonthPayments = payments.filter(payment => {
+      const paymentDate = new Date(payment.payment_date || payment.date || payment.created_at || '');
+      const paymentMonth = paymentDate.toISOString().substring(0, 7);
+      return paymentMonth === currentMonth;
+    });
+
+    // Ödeme toplamlarını hesapla (bu ay)
     const paymentTotals = { TRY: 0, USD: 0, EUR: 0 };
-    payments.slice(0, 10).forEach(payment => {
+    thisMonthPayments.forEach(payment => {
       const amount = Number(payment.amount) || 0;
       if (payment.currency === 'USD') {
         paymentTotals.USD += amount;
@@ -904,7 +934,7 @@ const SupplierDetail: React.FC = () => {
       }
     });
 
-    const paymentsTableData = payments.slice(0, 10).map(payment => {
+    const paymentsTableData = thisMonthPayments.slice(0, 10).map(payment => {
       const paymentTypeText = payment.payment_type === 'cash' ? 'Nakit' :
         payment.payment_type === 'card' ? 'Kart' :
           payment.payment_type === 'transfer' ? 'Havale' :
@@ -1383,6 +1413,18 @@ const SupplierDetail: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Ödeme Tarihi"
+                type="date"
+                value={newPayment.payment_date}
+                onChange={(e) => setNewPayment({ ...newPayment, payment_date: e.target.value })}
+                slotProps={{
+                  inputLabel: { shrink: true }
+                }}
+              />
+            </Grid>
             <Grid item xs={12}>
               <TextField
                 fullWidth
@@ -1471,6 +1513,25 @@ const SupplierDetail: React.FC = () => {
         <DialogTitle>Yeni Alım Ekle</DialogTitle>
         <DialogContent>
           <Grid container spacing={3} sx={{ mt: 1 }}>
+            {/* Alım Tarihi */}
+            <Grid size={{ xs: 12, md: 3 }}>
+              <TextField
+                fullWidth
+                label="Alım Tarihi"
+                type="date"
+                value={newPurchase.purchase_date}
+                onChange={(e) => setNewPurchase({ ...newPurchase, purchase_date: e.target.value })}
+                slotProps={{
+                  inputLabel: { shrink: true }
+                }}
+                sx={{
+                  '& .MuiInputBase-root': {
+                    fontSize: '1rem',
+                    minHeight: '56px'
+                  }
+                }}
+              />
+            </Grid>
             {/* Para Birimi */}
             {/* Malzeme Ekleme */}
             <Grid size={{ xs: 12 }} >

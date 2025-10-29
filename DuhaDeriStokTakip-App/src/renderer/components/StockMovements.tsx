@@ -660,7 +660,7 @@ const StockMovements: React.FC = () => {
                   <MenuItem value="">Ürün seçin...</MenuItem>
                   {products.map(product => (
                     <MenuItem key={product.id} value={product.id?.toString()}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
                         <Box
                           sx={{
                             width: 12,
@@ -670,9 +670,19 @@ const StockMovements: React.FC = () => {
                             border: product.color === 'Beyaz' ? '1px solid #ccc' : 'none',
                           }}
                         />
-                        {product.category} - {product.color}
+                        <Box sx={{ flex: 1 }}>
+                          <Typography variant="body2">
+                            {product.category} - {product.color}
+                            {(product as any).brand && ` (${(product as any).brand})`}
+                          </Typography>
+                          {(product as any).code && (
+                            <Typography variant="caption" color="text.secondary">
+                              Kod: {(product as any).code}
+                            </Typography>
+                          )}
+                        </Box>
                         <Chip
-                          label={`${(product.stock_quantity || 0).toLocaleString('tr-TR')} adet`}
+                          label={`${(product.stock_quantity || 0).toLocaleString('tr-TR')} ${product.unit || 'adet'}`}
                           size="small"
                           variant="outlined"
                           sx={{ ml: 'auto' }}

@@ -107,6 +107,7 @@ const EmployeeDetail: React.FC = () => {
   const [paymentType, setPaymentType] = useState('salary');
   const [paymentCurrency, setPaymentCurrency] = useState(DEFAULT_CURRENCIES.EMPLOYEE_PAYMENT);
   const [paymentNotes, setPaymentNotes] = useState('');
+  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
 
   // Çalışan verilerini yükle
   const loadEmployeeData = async () => {
@@ -250,7 +251,7 @@ const EmployeeDetail: React.FC = () => {
         amount,
         currency: paymentCurrency,
         payment_type: paymentType,
-        payment_date: new Date().toISOString(),
+        payment_date: new Date(paymentDate).toISOString(),
         notes: paymentNotes || `Çalışan ödemesi - ${employee.name}`,
       };
 
@@ -273,6 +274,7 @@ const EmployeeDetail: React.FC = () => {
         reference_type: 'employee_payment',
         reference_id: paymentResponse.data.id,
         user: 'İK Kullanıcısı',
+        date: new Date(paymentDate).toISOString(),
       };
 
       await dbAPI.createCashTransaction(cashTransactionData);
@@ -284,6 +286,7 @@ const EmployeeDetail: React.FC = () => {
       setPaymentType('salary');
       setPaymentCurrency(DEFAULT_CURRENCIES.EMPLOYEE_PAYMENT);
       setPaymentNotes('');
+      setPaymentDate(new Date().toISOString().split('T')[0]);
       setPaymentDialogOpen(false);
 
       // Verileri yeniden yükle
@@ -637,7 +640,20 @@ const EmployeeDetail: React.FC = () => {
                 size="large"
               />
             </Grid>
-            <Grid size={{ xs: 12 }}>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <TextField
+                fullWidth
+                size="medium"
+                label="Ödeme Tarihi"
+                type="date"
+                value={paymentDate}
+                onChange={(e) => setPaymentDate(e.target.value)}
+                slotProps={{
+                  inputLabel: { shrink: true }
+                }}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <FormControl fullWidth size="medium">
                 <InputLabel>Ödeme Tipi</InputLabel>
                 <Select

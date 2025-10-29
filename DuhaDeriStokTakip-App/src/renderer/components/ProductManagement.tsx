@@ -51,7 +51,7 @@ interface NewProduct {
 }
 
 interface NewMaterial {
-  category: 'Boya' | 'Cila' | 'Binder' | '';
+  category: 'Boya' | 'Cila' | 'Binder' | 'Kimyasal' | '';
   color_shade?: string;
   brand?: string;
   code?: string;
@@ -71,6 +71,7 @@ const ProductManagement: React.FC = () => {
   const [filterColor, setFilterColor] = useState('');
   const [loading, setLoading] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
+  const [materials, setMaterials] = useState<Product[]>([]);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
 
   // Pagination states for Products (Deri Ürünleri)
@@ -146,39 +147,19 @@ const ProductManagement: React.FC = () => {
     }
   };
 
-  // Ürünleri ve malzemeleri yükle
+  // Ürünleri yükle
   const loadProducts = async (page = productsCurrentPage, limit = productsItemsPerPage) => {
     setLoading(true);
     try {
-      // Hem products hem materials'ı yükle
-      const [productsResponse, materialsResponse] = await Promise.all([
-        dbAPI.getProducts(page, limit),
-        dbAPI.getMaterials()
-      ]);
+      const productsResponse = await dbAPI.getProducts(page, limit);
 
-      const allProducts = [];
-
-      // Products'ı ekle
       if (productsResponse.success && productsResponse.data) {
         const processedProducts = productsResponse.data.map((product: Product) => ({
           ...product,
           type: 'product' as const
         }));
-        allProducts.push(...processedProducts);
-      }
-
-      // Materials'ı ekle
-      if (materialsResponse.success && materialsResponse.data) {
-        const processedMaterials = materialsResponse.data.map((material: Product) => ({
-          ...material,
-          type: 'material' as const
-        }));
-        allProducts.push(...processedMaterials);
-      }
-
-      setProducts(allProducts);
-
-      if (!productsResponse.success && !materialsResponse.success) {
+        setProducts(processedProducts);
+      } else {
         setSnackbar({ open: true, message: 'Ürünler yüklenemedi', severity: 'error' });
       }
     } catch (error) {
@@ -188,8 +169,31 @@ const ProductManagement: React.FC = () => {
     }
   };
 
+  // Malzemeleri yükle
+  const loadMaterials = async () => {
+    setLoading(true);
+    try {
+      const materialsResponse = await dbAPI.getMaterials();
+
+      if (materialsResponse.success && materialsResponse.data) {
+        const processedMaterials = materialsResponse.data.map((material: Product) => ({
+          ...material,
+          type: 'material' as const
+        }));
+        setMaterials(processedMaterials);
+      } else {
+        setSnackbar({ open: true, message: 'Malzemeler yüklenemedi', severity: 'error' });
+      }
+    } catch (error) {
+      setSnackbar({ open: true, message: 'Malzemeler yüklenirken hata oluştu', severity: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadProducts();
+    loadMaterials();
     loadCategories();
     loadColors();
   }, []);
@@ -236,9 +240,9 @@ const ProductManagement: React.FC = () => {
     setLoading(true);
     try {
       const productData = {
-        name: `${newProduct.category || 'Deri'} - ${newProduct.color || 'Renksiz'}`,
+        name: newProduct.category || 'Deri',
         category: newProduct.category,
-        color: newProduct.color,
+        color: undefined, // Renk artık yok
         stock_quantity: newProduct.stock_quantity ? parseFormattedNumber(newProduct.stock_quantity) : 0,
         description: newProduct.description || undefined
       };
@@ -249,17 +253,22 @@ const ProductManagement: React.FC = () => {
         // Yeni ürün başarıyla eklendi, şimdi stok hareketi oluştur
         const productId = response.data?.id;
         const stockQuantity = parseFormattedNumber(newProduct.stock_quantity) || 0;
+        const merged = (response as any).merged || false;
+        const currentStock = response.data?.stock_quantity || 0;
 
         if (stockQuantity > 0 && productId) {
           // Stok hareketi kaydı oluştur
+          const previousStock = merged ? (currentStock - stockQuantity) : 0;
           const movementData = {
             product_id: productId,
             movement_type: 'in',
             quantity: stockQuantity,
-            previous_stock: 0,
-            new_stock: stockQuantity,
-            reference_type: 'initial_stock',
-            notes: `İlk stok girişi - ${productData.category} ${productData.color}`,
+            previous_stock: previousStock,
+            new_stock: currentStock,
+            reference_type: merged ? 'stock_addition' : 'initial_stock',
+            notes: merged
+              ? `Stok ekleme - ${productData.category}`
+              : `İlk stok girişi - ${productData.category}`,
             user: 'Sistem Kullanıcısı',
           };
 
@@ -275,7 +284,7 @@ const ProductManagement: React.FC = () => {
         // Form temizle
         setNewProduct({
           category: '',
-          color: '',
+          color: '', // Artık kullanılmıyor ama interface'de var
           stock_quantity: '',
           description: '',
         });
@@ -326,39 +335,49 @@ const ProductManagement: React.FC = () => {
         setLoading(false);
         return;
       }
+      // Kimyasal için zorunlu alan yok, opsiyonel
 
       // Malzeme adını oluştur
       const materialName = `${newMaterial.category}${newMaterial.color_shade ? ` - ${newMaterial.color_shade}` : ''}${newMaterial.code ? ` - ${newMaterial.code}` : ''}`;
 
       // Önce aynı malzeme var mı kontrol et
-      const allMaterials = products.filter(p => p.type === 'material');
-      let existingMaterial = allMaterials.find(m => {
+      const allMaterials = materials;
+      let existingMaterial = allMaterials.find((m: Product) => {
         if (newMaterial.category === 'Boya') {
           return m.category === newMaterial.category && m.color_shade === newMaterial.color_shade;
         } else if (newMaterial.category === 'Cila') {
           return m.category === newMaterial.category && m.brand === newMaterial.brand;
         } else if (newMaterial.category === 'Binder') {
           return m.category === newMaterial.category && m.code === newMaterial.code && m.brand === newMaterial.brand;
+        } else if (newMaterial.category === 'Kimyasal') {
+          // Kimyasal için kod ve firma varsa kontrol et, yoksa sadece kategori
+          if (newMaterial.code && newMaterial.brand) {
+            return m.category === newMaterial.category && m.code === newMaterial.code && m.brand === newMaterial.brand;
+          } else if (newMaterial.code) {
+            return m.category === newMaterial.category && m.code === newMaterial.code;
+          } else if (newMaterial.brand) {
+            return m.category === newMaterial.category && m.brand === newMaterial.brand;
+          }
         }
         return false;
       });
 
-      if (existingMaterial) {
+      if (existingMaterial && existingMaterial.id) {
         // Mevcut malzemenin stoğunu güncelle
         const newStock = (existingMaterial.stock_quantity || 0) + stockQuantity;
         const updateResponse = await dbAPI.updateMaterial(existingMaterial.id, {
           stock_quantity: newStock
         });
 
-        if (updateResponse.success) {
+        if (updateResponse.success && existingMaterial.id) {
           // Stok hareketi oluştur
           const movementData = {
             product_id: existingMaterial.id,
-            movement_type: 'in',
+            movement_type: 'in' as const,
             quantity: stockQuantity,
             previous_stock: existingMaterial.stock_quantity || 0,
             new_stock: newStock,
-            reference_type: 'manual_adjustment',
+            reference_type: 'manual_adjustment' as const,
             notes: `Stok ekleme - ${materialName}`,
             user: 'Sistem Kullanıcısı',
           };
@@ -371,7 +390,9 @@ const ProductManagement: React.FC = () => {
 
           setSnackbar({ open: true, message: 'Mevcut malzemenin stoğu güncellendi', severity: 'success' });
         } else {
-          throw new Error('Stok güncellenemedi');
+          const errorMsg = updateResponse.error || 'Stok güncellenemedi';
+          console.error('Güncelleme hatası:', JSON.stringify(updateResponse, null, 2));
+          throw new Error(errorMsg);
         }
       } else {
         // Yeni malzeme oluştur
@@ -397,11 +418,11 @@ const ProductManagement: React.FC = () => {
           if (stockQuantity > 0 && productId) {
             const movementData = {
               product_id: productId,
-              movement_type: 'in',
+              movement_type: 'in' as const,
               quantity: stockQuantity,
               previous_stock: 0,
               new_stock: stockQuantity,
-              reference_type: 'initial_stock',
+              reference_type: 'initial_stock' as const,
               notes: `İlk stok girişi - ${materialName}`,
               user: 'Sistem Kullanıcısı',
             };
@@ -432,6 +453,7 @@ const ProductManagement: React.FC = () => {
       // Kısa bir bekleme sonrası yeniden yükle
       setTimeout(async () => {
         await loadProducts();
+        await loadMaterials();
       }, 500);
     } catch (error) {
       // Güvenli hata mesajı oluşturma
@@ -452,13 +474,21 @@ const ProductManagement: React.FC = () => {
 
     setLoading(true);
     try {
-      // Mevcut ürün bilgilerini al
-      const originalProduct = products.find(p => p.id === selectedProduct.id);
+      const isMaterial = (selectedProduct as any)?.type === 'material';
+
+      // Mevcut ürün/malzeme bilgilerini al
+      const originalProduct = isMaterial
+        ? materials.find(m => m.id === selectedProduct.id)
+        : products.find(p => p.id === selectedProduct.id);
       const originalStock = originalProduct?.stock_quantity || 0;
       const newStock = selectedProduct.stock_quantity || 0;
       const stockDifference = newStock - originalStock;
 
-      const response = await dbAPI.updateProduct(selectedProduct.id!, selectedProduct);
+      // Ürün veya malzeme güncelle
+      const response = isMaterial
+        ? await dbAPI.updateMaterial(selectedProduct.id!, selectedProduct)
+        : await dbAPI.updateProduct(selectedProduct.id!, selectedProduct);
+
       if (response.success) {
         // Eğer stok miktarı değiştiyse, stok hareketi oluştur
         if (stockDifference !== 0) {
@@ -469,7 +499,7 @@ const ProductManagement: React.FC = () => {
             previous_stock: originalStock,
             new_stock: newStock,
             reference_type: 'adjustment',
-            notes: `Stok düzeltmesi - ${selectedProduct.category} ${selectedProduct.color} (${stockDifference > 0 ? '+' : ''}${stockDifference})`,
+            notes: `Stok düzeltmesi - ${selectedProduct.category} ${selectedProduct.color || ''} (${stockDifference > 0 ? '+' : ''}${stockDifference})`,
             user: 'Sistem Kullanıcısı',
           };
 
@@ -480,15 +510,30 @@ const ProductManagement: React.FC = () => {
           }
         }
 
-        setSnackbar({ open: true, message: 'Ürün başarıyla güncellendi', severity: 'success' });
+        setSnackbar({
+          open: true,
+          message: isMaterial ? 'Malzeme başarıyla güncellendi' : 'Ürün başarıyla güncellendi',
+          severity: 'success'
+        });
         setEditDialogOpen(false);
         setSelectedProduct(null);
+
+        // Hem ürünleri hem malzemeleri yeniden yükle
         await loadProducts();
+        await loadMaterials();
       } else {
-        setSnackbar({ open: true, message: response.error || 'Ürün güncellenemedi', severity: 'error' });
+        setSnackbar({
+          open: true,
+          message: response.error || (isMaterial ? 'Malzeme güncellenemedi' : 'Ürün güncellenemedi'),
+          severity: 'error'
+        });
       }
     } catch (error) {
-      setSnackbar({ open: true, message: 'Ürün güncellenirken hata oluştu', severity: 'error' });
+      setSnackbar({
+        open: true,
+        message: 'Güncelleme sırasında hata oluştu',
+        severity: 'error'
+      });
     } finally {
       setLoading(false);
     }
@@ -520,7 +565,10 @@ const ProductManagement: React.FC = () => {
         });
         setDeleteDialogOpen(false);
         setSelectedProduct(null);
+
+        // Hem ürünleri hem malzemeleri yeniden yükle
         await loadProducts();
+        await loadMaterials();
       } else {
         setSnackbar({
           open: true,
@@ -557,9 +605,8 @@ const ProductManagement: React.FC = () => {
       (product.color || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = filterCategory === '' || product.category === filterCategory;
     const matchesColor = filterColor === '' || product.color === filterColor;
-    const isLeatherProduct = !product.type || product.type === 'product';
 
-    return matchesSearch && matchesCategory && matchesColor && isLeatherProduct;
+    return matchesSearch && matchesCategory && matchesColor;
   });
 
   const productsStartIndex = (productsCurrentPage - 1) * productsItemsPerPage;
@@ -567,14 +614,13 @@ const ProductManagement: React.FC = () => {
   const filteredProducts = allFilteredProducts.slice(productsStartIndex, productsEndIndex);
 
   // Malzemeleri filtrele ve paginate et
-  const allFilteredMaterials = (products || []).filter(product => {
-    if (!product) return false;
+  const allFilteredMaterials = (materials || []).filter(material => {
+    if (!material) return false;
     const matchesSearch = searchTerm === '' ||
-      (product.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (product.category || '').toLowerCase().includes(searchTerm.toLowerCase());
-    const isMaterial = product.type === 'material';
+      (material.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (material.category || '').toLowerCase().includes(searchTerm.toLowerCase());
 
-    return matchesSearch && isMaterial;
+    return matchesSearch;
   });
 
   const materialsStartIndex = (materialsCurrentPage - 1) * materialsItemsPerPage;
@@ -601,7 +647,7 @@ const ProductManagement: React.FC = () => {
   };
 
   return (
-    <Box sx={{mt:2, mr:2}}>
+    <Box sx={{ mt: 2, mr: 2 }}>
       {/* Header */}
       <Box sx={{ mb: 4 }}>
         <Typography variant="h3" sx={{ fontWeight: 700, mb: 1 }}>
@@ -639,7 +685,8 @@ const ProductManagement: React.FC = () => {
                 {(() => {
                   try {
                     const total = (products || []).reduce((sum, p) => sum + (Number(p?.stock_quantity) || 0), 0) || 0;
-                    return safeToLocaleString(total) + ' adet';
+                    const materialTotal = (materials || []).reduce((sum, m) => sum + (Number(m?.stock_quantity) || 0), 0) || 0;
+                    return safeToLocaleString(total + materialTotal) + ' adet';
                   } catch (e) {
                     return '0 adet';
                   }
@@ -673,7 +720,8 @@ const ProductManagement: React.FC = () => {
             </Avatar>
             <Box>
               <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                {(products || []).filter(p => (Number(p.stock_quantity) || 0) < 5).length}
+                {(products || []).filter(p => (Number(p.stock_quantity) || 0) < 5).length +
+                  (materials || []).filter(m => (Number(m.stock_quantity) || 0) < 5).length}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Düşük Stok
@@ -848,7 +896,6 @@ const ProductManagement: React.FC = () => {
               <TableHead>
                 <TableRow>
                   <TableCell>Deri Türü</TableCell>
-                  <TableCell>Deri Rengi</TableCell>
                   <TableCell align="right">Stok (Adet)</TableCell>
                   <TableCell>Durum</TableCell>
                   <TableCell align="center">İşlemler</TableCell>
@@ -861,20 +908,6 @@ const ProductManagement: React.FC = () => {
                   return (
                     <TableRow key={product.id} hover>
                       <TableCell sx={{ fontWeight: 600 }}>{product.category}</TableCell>
-                      <TableCell>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Box
-                            sx={{
-                              width: 20,
-                              height: 20,
-                              borderRadius: '50%',
-                              bgcolor: getColorDisplay(product.color || ''),
-                              border: '1px solid rgba(0,0,0,0.2)',
-                            }}
-                          />
-                          {product.color || 'Belirtilmemiş'}
-                        </Box>
-                      </TableCell>
                       <TableCell align="right" sx={{ fontWeight: 600 }}>
                         {(() => {
                           try {
@@ -1067,36 +1100,11 @@ const ProductManagement: React.FC = () => {
                     label="Deri Türü"
                     onChange={(e) => setNewProduct({ ...newProduct, category: e.target.value })}
                   >
-                    {categories.map(category => (
-                      <MenuItem key={category.id} value={category.name}>{category.name}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Box>
-              <Box sx={{ flex: '1 1 200px', minWidth: '200px' }}>
-                <FormControl fullWidth>
-                  <InputLabel>Deri Rengi</InputLabel>
-                  <Select
-                    value={newProduct.color}
-                    label="Deri Rengi"
-                    onChange={(e) => setNewProduct({ ...newProduct, color: e.target.value })}
-                  >
-                    {colors.map(color => (
-                      <MenuItem key={color.id} value={color.name}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Box
-                            sx={{
-                              width: 16,
-                              height: 16,
-                              borderRadius: '50%',
-                              bgcolor: color.hex_code || '#F5F5DC',
-                              border: '1px solid rgba(0,0,0,0.2)',
-                            }}
-                          />
-                          {color.name}
-                        </Box>
-                      </MenuItem>
-                    ))}
+                    {categories
+                      .filter(cat => ['Keçi', 'Koyun'].includes(cat.name))
+                      .map(category => (
+                        <MenuItem key={category.id} value={category.name}>{category.name}</MenuItem>
+                      ))}
                   </Select>
                 </FormControl>
               </Box>
@@ -1152,65 +1160,165 @@ const ProductManagement: React.FC = () => {
         fullWidth
         disableEnforceFocus
       >
-        <DialogTitle>Ürünü Düzenle</DialogTitle>
+        <DialogTitle>{(selectedProduct as any)?.type === 'material' ? 'Malzemeyi Düzenle' : 'Ürünü Düzenle'}</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
-            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-              <Box sx={{ flex: '1 1 200px', minWidth: '200px' }}>
+            {(selectedProduct as any)?.type === 'material' ? (
+              /* Malzeme Düzenleme */
+              <>
                 <FormControl fullWidth>
-                  <InputLabel>Deri Türü</InputLabel>
+                  <InputLabel>Kategori</InputLabel>
                   <Select
                     value={selectedProduct?.category || ''}
-                    label="Deri Türü"
+                    label="Kategori"
                     onChange={(e) => setSelectedProduct(prev => prev ? { ...prev, category: e.target.value as any } : null)}
                   >
-                    {categories.map(cat => (
-                      <MenuItem key={cat.id} value={cat.name}>{cat.name}</MenuItem>
-                    ))}
+                    <MenuItem value="Boya">Boya</MenuItem>
+                    <MenuItem value="Cila">Cila</MenuItem>
+                    <MenuItem value="Binder">Binder</MenuItem>
+                    <MenuItem value="Kimyasal">Kimyasal</MenuItem>
                   </Select>
                 </FormControl>
-              </Box>
-              <Box sx={{ flex: '1 1 200px', minWidth: '200px' }}>
-                <FormControl fullWidth>
-                  <InputLabel>Deri Rengi</InputLabel>
-                  <Select
-                    value={selectedProduct?.color || ''}
-                    label="Deri Rengi"
-                    onChange={(e) => setSelectedProduct(prev => prev ? { ...prev, color: e.target.value } : null)}
-                  >
-                    {colors.map(color => (
-                      <MenuItem key={color.id} value={color.name}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Box
-                            sx={{
-                              width: 16,
-                              height: 16,
-                              borderRadius: '50%',
-                              bgcolor: color.hex_code || '#F5F5DC',
-                              border: '1px solid rgba(0,0,0,0.2)',
-                            }}
-                          />
-                          {color.name}
-                        </Box>
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Box>
-            </Box>
-            <TextField
-              fullWidth
-              label="Stok Miktarı (Adet)"
-              type="text"
-              value={selectedProduct?.stock_quantity != null ? formatNumberWithCommas(selectedProduct.stock_quantity.toString()) : ''}
-              onChange={(e) => {
-                const formatted = formatNumberWithCommas(e.target.value);
-                const numericValue = parseFormattedNumber(formatted);
-                setSelectedProduct(prev => prev ? { ...prev, stock_quantity: numericValue } : null);
-              }}
-              helperText="Stok miktarını adet cinsinden giriniz"
-              slotProps={{ htmlInput: { min: 0, step: 1 } }}
-            />
+
+                {/* Boya için Renk Tonu */}
+                {selectedProduct?.category === 'Boya' && (
+                  <TextField
+                    fullWidth
+                    label="Renk Tonu"
+                    value={(selectedProduct as any)?.color_shade || ''}
+                    onChange={(e) => setSelectedProduct(prev => prev ? { ...prev, color_shade: e.target.value } as any : null)}
+                    placeholder="Örn: Açık Kahverengi"
+                  />
+                )}
+
+                {/* Cila için Firma */}
+                {selectedProduct?.category === 'Cila' && (
+                  <TextField
+                    fullWidth
+                    label="Firma"
+                    value={(selectedProduct as any)?.brand || ''}
+                    onChange={(e) => setSelectedProduct(prev => prev ? { ...prev, brand: e.target.value } as any : null)}
+                    placeholder="Örn: Sayerlack"
+                  />
+                )}
+
+                {/* Binder için Kod ve Firma */}
+                {selectedProduct?.category === 'Binder' && (
+                  <>
+                    <TextField
+                      fullWidth
+                      label="Kod"
+                      value={(selectedProduct as any)?.code || ''}
+                      onChange={(e) => setSelectedProduct(prev => prev ? { ...prev, code: e.target.value } as any : null)}
+                      placeholder="Örn: B-100"
+                    />
+                    <TextField
+                      fullWidth
+                      label="Firma"
+                      value={(selectedProduct as any)?.brand || ''}
+                      onChange={(e) => setSelectedProduct(prev => prev ? { ...prev, brand: e.target.value } as any : null)}
+                      placeholder="Örn: BASF"
+                    />
+                  </>
+                )}
+
+                {/* Kimyasal için Kod ve Firma */}
+                {selectedProduct?.category === 'Kimyasal' && (
+                  <>
+                    <TextField
+                      fullWidth
+                      label="Kod"
+                      value={(selectedProduct as any)?.code || ''}
+                      onChange={(e) => setSelectedProduct(prev => prev ? { ...prev, code: e.target.value } as any : null)}
+                      placeholder="Örn: K-200"
+                    />
+                    <TextField
+                      fullWidth
+                      label="Firma"
+                      value={(selectedProduct as any)?.brand || ''}
+                      onChange={(e) => setSelectedProduct(prev => prev ? { ...prev, brand: e.target.value } as any : null)}
+                      placeholder="Örn: Clariant"
+                    />
+                  </>
+                )}
+
+                <TextField
+                  fullWidth
+                  label="Stok Miktarı (kg)"
+                  type="text"
+                  value={selectedProduct?.stock_quantity != null ? formatNumberWithCommas(selectedProduct.stock_quantity.toString()) : ''}
+                  onChange={(e) => {
+                    const formatted = formatNumberWithCommas(e.target.value);
+                    const numericValue = parseFormattedNumber(formatted);
+                    setSelectedProduct(prev => prev ? { ...prev, stock_quantity: numericValue } : null);
+                  }}
+                  helperText="Stok miktarını kg cinsinden giriniz"
+                  slotProps={{ htmlInput: { min: 0, step: 1 } }}
+                />
+              </>
+            ) : (
+              /* Ürün Düzenleme */
+              <>
+                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                  <Box sx={{ flex: '1 1 200px', minWidth: '200px' }}>
+                    <FormControl fullWidth>
+                      <InputLabel>Deri Türü</InputLabel>
+                      <Select
+                        value={selectedProduct?.category || ''}
+                        label="Deri Türü"
+                        onChange={(e) => setSelectedProduct(prev => prev ? { ...prev, category: e.target.value as any } : null)}
+                      >
+                        {categories
+                          .filter(cat => ['Keçi', 'Koyun'].includes(cat.name))
+                          .map(cat => (
+                            <MenuItem key={cat.id} value={cat.name}>{cat.name}</MenuItem>
+                          ))}
+                      </Select>
+                    </FormControl>
+                  </Box>
+                  <Box sx={{ flex: '1 1 200px', minWidth: '200px' }}>
+                    <FormControl fullWidth>
+                      <InputLabel>Deri Rengi</InputLabel>
+                      <Select
+                        value={selectedProduct?.color || ''}
+                        label="Deri Rengi"
+                        onChange={(e) => setSelectedProduct(prev => prev ? { ...prev, color: e.target.value } : null)}
+                      >
+                        {colors.map(color => (
+                          <MenuItem key={color.id} value={color.name}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Box
+                                sx={{
+                                  width: 16,
+                                  height: 16,
+                                  borderRadius: '50%',
+                                  bgcolor: color.hex_code || '#F5F5DC',
+                                  border: '1px solid rgba(0,0,0,0.2)',
+                                }}
+                              />
+                              {color.name}
+                            </Box>
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Box>
+                </Box>
+                <TextField
+                  fullWidth
+                  label="Stok Miktarı (Adet)"
+                  type="text"
+                  value={selectedProduct?.stock_quantity != null ? formatNumberWithCommas(selectedProduct.stock_quantity.toString()) : ''}
+                  onChange={(e) => {
+                    const formatted = formatNumberWithCommas(e.target.value);
+                    const numericValue = parseFormattedNumber(formatted);
+                    setSelectedProduct(prev => prev ? { ...prev, stock_quantity: numericValue } : null);
+                  }}
+                  helperText="Stok miktarını adet cinsinden giriniz"
+                  slotProps={{ htmlInput: { min: 0, step: 1 } }}
+                />
+              </>
+            )}
           </Box>
         </DialogContent>
         <DialogActions>
@@ -1280,7 +1388,7 @@ const ProductManagement: React.FC = () => {
                 label="Kategori"
                 onChange={(e) => setNewMaterial({
                   ...newMaterial,
-                  category: e.target.value as 'Boya' | 'Cila' | 'Binder',
+                  category: e.target.value as 'Boya' | 'Cila' | 'Binder' | 'Kimyasal',
                   color_shade: '',
                   brand: '',
                   code: ''
@@ -1289,6 +1397,7 @@ const ProductManagement: React.FC = () => {
                 <MenuItem value="Boya">Boya</MenuItem>
                 <MenuItem value="Cila">Cila</MenuItem>
                 <MenuItem value="Binder">Binder</MenuItem>
+                <MenuItem value="Kimyasal">Kimyasal</MenuItem>
               </Select>
             </FormControl>
 
@@ -1334,6 +1443,26 @@ const ProductManagement: React.FC = () => {
                   onChange={(e) => setNewMaterial({ ...newMaterial, brand: e.target.value })}
                   placeholder="Örn: BASF"
                   required
+                />
+              </>
+            )}
+
+            {/* Kimyasal için Kod ve Firma */}
+            {newMaterial.category === 'Kimyasal' && (
+              <>
+                <TextField
+                  fullWidth
+                  label="Kod"
+                  value={newMaterial.code || ''}
+                  onChange={(e) => setNewMaterial({ ...newMaterial, code: e.target.value })}
+                  placeholder="Örn: K-200"
+                />
+                <TextField
+                  fullWidth
+                  label="Firma"
+                  value={newMaterial.brand || ''}
+                  onChange={(e) => setNewMaterial({ ...newMaterial, brand: e.target.value })}
+                  placeholder="Örn: Clariant"
                 />
               </>
             )}

@@ -60,6 +60,7 @@ import autoTable from 'jspdf-autotable';
 interface SaleItem {
   productId: number;
   productName: string;
+  color: string; // Yeni: Renk bilgisi
   quantityPieces: number;
   quantityDesi: number;
   unitPricePerDesi: number;
@@ -138,12 +139,15 @@ const CustomerDetail: React.FC = () => {
   const [paymentType, setPaymentType] = useState('cash');
   const [paymentCurrency, setPaymentCurrency] = useState('TRY');
   const [paymentNotes, setPaymentNotes] = useState('');
+  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
 
   // Sale dialog states
   const [saleDialogOpen, setSaleDialogOpen] = useState(false);
+  const [saleDate, setSaleDate] = useState(new Date().toISOString().split('T')[0]);
   const [products, setProducts] = useState<Product[]>([]);
   const [saleItems, setSaleItems] = useState<SaleItem[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [saleColor, setSaleColor] = useState<string>(''); // Yeni: Satış rengi
   const [quantityPieces, setQuantityPieces] = useState<string>('');
   const [quantityDesi, setQuantityDesi] = useState<string>('');
   const [unitPricePerDesi, setUnitPricePerDesi] = useState<string>('');
@@ -215,13 +219,37 @@ const CustomerDetail: React.FC = () => {
       // Ürünleri yükle (satış için)
       const productsResponse = await dbAPI.getProducts();
       if (productsResponse.success && productsResponse.data) {
-        setProducts(productsResponse.data);
+        const baseProducts = productsResponse.data;
+        const expandedProducts: any[] = [];
+
+        // Keçi alt kategorileri
+        const keciSubCategories = ['Keçi-Oğlak', 'Keçi-Palto', 'Çoraplık', 'Baskılık'];
+
+        baseProducts.forEach((product: any) => {
+          // Orijinal ürünü ekle
+          expandedProducts.push(product);
+
+          // Eğer Keçi ise, alt kategorileri de ekle
+          if (product.category === 'Keçi') {
+            keciSubCategories.forEach(subCategory => {
+              expandedProducts.push({
+                ...product,
+                id: `${product.id}_${subCategory}`, // Benzersiz ID
+                category: subCategory,
+                original_id: product.id, // Orijinal Keçi ürün ID'si
+                stock_quantity: product.stock_quantity // Aynı stok
+              });
+            });
+          }
+        });
+
+        setProducts(expandedProducts);
       }
 
       // Müşteri ödemelerini yükle
       const paymentsResponse = await dbAPI.getCustomerPayments(customerId);
       if (paymentsResponse.success && paymentsResponse.data) {
-        const formattedPayments = paymentsResponse.data.map((payment: any) => ({
+        let formattedPayments = paymentsResponse.data.map((payment: any) => ({
           id: payment.id,
           amount: payment.amount,
           paymentType: payment.payment_type,
@@ -229,15 +257,44 @@ const CustomerDetail: React.FC = () => {
           currency: payment.currency || 'TRY',
           notes: payment.notes,
         }));
+
+        // Tarih filtresini uygula
+        if (startDate && endDate) {
+          const start = new Date(startDate);
+          start.setHours(0, 0, 0, 0);
+          const end = new Date(endDate);
+          end.setHours(23, 59, 59, 999);
+
+          formattedPayments = formattedPayments.filter((payment: any) => {
+            const paymentDate = new Date(payment.paymentDate);
+            return paymentDate >= start && paymentDate <= end;
+          });
+        }
+
         setPayments(formattedPayments);
       }
 
       // Satış verilerini yükle (bu müşteriye ait)
       const salesResponse = await dbAPI.getSales();
       if (salesResponse.success && salesResponse.data) {
+        // Tarih filtresi için start ve end date
+        const start = startDate ? new Date(startDate) : null;
+        const end = endDate ? new Date(endDate) : null;
+        if (start) start.setHours(0, 0, 0, 0);
+        if (end) end.setHours(23, 59, 59, 999);
+
         // Bu müşteriye ait satışları filtrele ve detaylarını çek
         const customerSalesPromises = salesResponse.data
-          .filter((sale: any) => sale.customer_id === customerId)
+          .filter((sale: any) => {
+            if (sale.customer_id !== customerId) return false;
+            
+            // Tarih filtresi
+            if (start && end) {
+              const saleDate = new Date(sale.sale_date);
+              return saleDate >= start && saleDate <= end;
+            }
+            return true;
+          })
           .map(async (sale: any) => {
             // Her satış için detayları çek
             const saleDetailResponse = await dbAPI.getSaleById(sale.id);
@@ -251,7 +308,7 @@ const CustomerDetail: React.FC = () => {
             }> = [];
             if (saleDetailResponse.success && saleDetailResponse.data) {
               items = (saleDetailResponse.data.items || []).map((item: any) => ({
-                productName: item.productName,
+                productName: item.color ? `${item.productName} - ${item.color}` : item.productName,
                 quantity: item.quantityDesi,
                 unitPrice: item.unitPricePerDesi,
                 total: item.total,
@@ -479,7 +536,7 @@ const CustomerDetail: React.FC = () => {
         amount,
         currency: paymentCurrency,
         payment_type: paymentType,
-        payment_date: new Date().toISOString(),
+        payment_date: new Date(paymentDate).toISOString(),
         notes: paymentNotes || `Müşteri ödemesi - ${customer.name}`,
       };
 
@@ -501,6 +558,7 @@ const CustomerDetail: React.FC = () => {
         reference_id: paymentResponse.data.id,
         customer_id: customerId,
         user: 'Kasa Kullanıcısı',
+        date: new Date(paymentDate).toISOString(),
       };
 
       await dbAPI.createCashTransaction(cashTransactionData);
@@ -512,6 +570,7 @@ const CustomerDetail: React.FC = () => {
       setPaymentType('cash');
       setPaymentCurrency('TRY');
       setPaymentNotes('');
+      setPaymentDate(new Date().toISOString().split('T')[0]);
       setPaymentDialogOpen(false);
 
       // Verileri yeniden yükle
@@ -678,9 +737,17 @@ const CustomerDetail: React.FC = () => {
 
     doc.setFontSize(12);
     doc.setFont('helvetica', 'bold');
-    doc.text('Odeme Gecmisi', 20, finalY + 10);
+    doc.text('Odeme Gecmisi (Bu Ay)', 20, finalY + 10);
 
-    const paymentsTableData = filteredPayments.slice(0, 10).map(payment => {
+    // Bu ayki ödemeleri filtrele
+    const currentMonth = new Date().toISOString().substring(0, 7); // YYYY-MM formatı
+    const thisMonthPayments = filteredPayments.filter(payment => {
+      const paymentDate = new Date(payment.paymentDate);
+      const paymentMonth = paymentDate.toISOString().substring(0, 7);
+      return paymentMonth === currentMonth;
+    });
+
+    const paymentsTableData = thisMonthPayments.slice(0, 10).map(payment => {
       const paymentTypeText = payment.paymentType === 'cash' ? 'Nakit' :
         payment.paymentType === 'bank_transfer' ? 'Havale' :
           payment.paymentType === 'check' ? 'Cek' : 'Diger';
@@ -747,6 +814,10 @@ const CustomerDetail: React.FC = () => {
       newErrors.push('Lütfen bir ürün seçin');
     }
 
+    if (!saleColor || !saleColor.trim()) {
+      newErrors.push('Lütfen renk girin');
+    }
+
     if (!quantityPieces || parseInt(quantityPieces) <= 0) {
       newErrors.push('Geçerli bir adet miktarı girin');
     }
@@ -759,7 +830,7 @@ const CustomerDetail: React.FC = () => {
       newErrors.push('Geçerli bir desi başına fiyat girin');
     }
 
-    const piecesToSell = parseInt(quantityPieces);
+    const piecesToSell = parseFormattedNumber(quantityPieces);
     const availableStock = selectedProduct?.stock_quantity || 0;
 
     if (selectedProduct && quantityPieces && piecesToSell > availableStock) {
@@ -771,18 +842,25 @@ const CustomerDetail: React.FC = () => {
       return;
     }
 
+    // Keçi alt kategorileri için original_id kullan
+    const productId = (selectedProduct as any).original_id || selectedProduct!.id!;
+    
     const item: SaleItem = {
-      productId: selectedProduct!.id!,
-      productName: `${selectedProduct!.category} - ${selectedProduct!.color}`,
+      productId: productId,
+      productName: selectedProduct!.category, // Kategori adı (Keçi, Koyun, Keçi-Oğlak, vb.)
+      color: saleColor.trim(),
       quantityPieces: piecesToSell,
       quantityDesi: parseFormattedNumber(quantityDesi),
       unitPricePerDesi: parseFormattedNumber(unitPricePerDesi),
       total: parseFormattedNumber(quantityDesi) * parseFormattedNumber(unitPricePerDesi),
       unit: saleUnit,
     };
+    
+    console.log('🛒 Satış kalemi eklendi:', item);
 
     setSaleItems([...saleItems, item]);
     setSelectedProduct(null);
+    setSaleColor('');
     setQuantityPieces('');
     setQuantityDesi('');
     setUnitPricePerDesi('');
@@ -817,10 +895,12 @@ const CustomerDetail: React.FC = () => {
         total_amount: totalAmount,
         currency: saleCurrency,
         payment_status: 'pending',
-        sale_date: new Date().toISOString(),
+        sale_date: new Date(saleDate).toISOString(),
         notes: `Satış - ${saleItems.length} ürün`,
         items: saleItems.map(item => ({
           product_id: item.productId,
+          product_name: item.productName,
+          color: item.color,
           quantity_pieces: item.quantityPieces,
           quantity_desi: item.quantityDesi,
           unit_price_per_desi: item.unitPricePerDesi,
@@ -828,6 +908,8 @@ const CustomerDetail: React.FC = () => {
           unit: item.unit
         }))
       };
+      
+      console.log('📤 Backend\'e gönderilen satış verisi:', JSON.stringify(saleData, null, 2));
 
       const saleResponse = await dbAPI.createSale(saleData);
       if (!saleResponse.success) {
@@ -839,6 +921,7 @@ const CustomerDetail: React.FC = () => {
       // Reset form
       setSaleItems([]);
       setSaleCurrency(DEFAULT_CURRENCIES.SALES);
+      setSaleDate(new Date().toISOString().split('T')[0]);
       setSaleErrors([]);
       setSaleDialogOpen(false);
 
@@ -944,6 +1027,13 @@ const CustomerDetail: React.FC = () => {
   useEffect(() => {
     loadCustomerData();
   }, [customerId]);
+
+  // Tarih filtresi değiştiğinde verileri yeniden yükle
+  useEffect(() => {
+    if (customerId) {
+      loadCustomerData();
+    }
+  }, [startDate, endDate]);
 
   if (loading) {
     return (
@@ -1468,6 +1558,16 @@ const CustomerDetail: React.FC = () => {
             </FormControl>
             <TextField
               fullWidth
+              label="Ödeme Tarihi"
+              type="date"
+              value={paymentDate}
+              onChange={(e) => setPaymentDate(e.target.value)}
+              slotProps={{
+                inputLabel: { shrink: true }
+              }}
+            />
+            <TextField
+              fullWidth
               label="Notlar (Opsiyonel)"
               multiline
               rows={3}
@@ -1598,6 +1698,20 @@ const CustomerDetail: React.FC = () => {
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
             <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
               <Box sx={{ flex: '1 1 200px' }}>
+                <TextField
+                  fullWidth
+                  label="Satış Tarihi"
+                  type="date"
+                  value={saleDate}
+                  onChange={(e) => setSaleDate(e.target.value)}
+                  size="medium"
+                  slotProps={{
+                    inputLabel: { shrink: true }
+                  }}
+                />
+              </Box>
+
+              <Box sx={{ flex: '1 1 200px' }}>
                 <CurrencySelect
                   value={saleCurrency}
                   onChange={setSaleCurrency}
@@ -1624,7 +1738,7 @@ const CustomerDetail: React.FC = () => {
               <Box sx={{ flex: '1 1 300px' }}>
                 <Autocomplete
                   options={products}
-                  getOptionLabel={(option) => `${option.category} - ${option.color}`}
+                  getOptionLabel={(option) => option.category}
                   value={selectedProduct}
                   onChange={(_, newValue) => setSelectedProduct(newValue)}
                   renderInput={(params) => (
@@ -1634,7 +1748,7 @@ const CustomerDetail: React.FC = () => {
                     <Box component="li" {...props}>
                       <Box>
                         <Typography variant="body1">
-                          {option.category} - {option.color}
+                          {option.category}
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
                           Stok: {option.stock_quantity || 0} adet
@@ -1645,6 +1759,20 @@ const CustomerDetail: React.FC = () => {
                 />
                 <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
                   Satılacak ürünü seçin
+                </Typography>
+              </Box>
+
+              <Box sx={{ flex: '1 1 150px' }}>
+                <TextField
+                  label="Renk"
+                  value={saleColor}
+                  onChange={(e) => setSaleColor(e.target.value)}
+                  fullWidth
+                  size="medium"
+                  placeholder="Örn: Siyah"
+                />
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                  Deri rengini girin
                 </Typography>
               </Box>
 
@@ -1753,7 +1881,7 @@ const CustomerDetail: React.FC = () => {
                           <TableBody>
                             {saleItems.map((item, index) => (
                               <TableRow key={index}>
-                                <TableCell>{item.productName}</TableCell>
+                                <TableCell>{item.productName} - {item.color}</TableCell>
                                 <TableCell align="right">{Number(item.quantityPieces).toLocaleString('tr-TR')} adet</TableCell>
                                 <TableCell align="center">
                                   <Chip 

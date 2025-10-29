@@ -131,6 +131,7 @@ const CashManagement: React.FC = () => {
   const [currency, setCurrency] = useState(DEFAULT_CURRENCIES.CASH_TRANSACTION);
   const [category, setCategory] = useState('');
   const [description, setDescription] = useState('');
+  const [transactionDate, setTransactionDate] = useState(new Date().toISOString().split('T')[0]);
   const [errors, setErrors] = useState<string[]>([]);
 
   // Para çevirme form states
@@ -444,6 +445,7 @@ const CashManagement: React.FC = () => {
         description: description.trim(),
         reference_type: 'other',
         user: 'Kasa Kullanıcısı',
+        date: new Date(transactionDate).toISOString(),
       };
 
       const response = await dbAPI.createCashTransaction(transactionData);
@@ -585,6 +587,7 @@ const CashManagement: React.FC = () => {
     setCurrency(DEFAULT_CURRENCIES.CASH_TRANSACTION);
     setCategory('');
     setDescription('');
+    setTransactionDate(new Date().toISOString().split('T')[0]);
     setErrors([]);
   };
 
@@ -595,6 +598,7 @@ const CashManagement: React.FC = () => {
     setCurrency(transaction.currency || 'USD');
     setCategory(transaction.category);
     setDescription(transaction.description);
+    setTransactionDate(new Date(transaction.created_at).toISOString().split('T')[0]);
     setEditTransactionDialogOpen(true);
   };
 
@@ -634,6 +638,7 @@ const CashManagement: React.FC = () => {
         currency,
         category,
         description: description.trim(),
+        date: new Date(transactionDate).toISOString(),
       };
 
       const response = await dbAPI.updateCashTransaction(selectedTransaction.id, transactionData);
@@ -659,6 +664,7 @@ const CashManagement: React.FC = () => {
     setCurrency(DEFAULT_CURRENCIES.CASH_TRANSACTION);
     setCategory('');
     setDescription('');
+    setTransactionDate(new Date().toISOString().split('T')[0]);
     setErrors([]);
   };
 
@@ -955,7 +961,20 @@ const CashManagement: React.FC = () => {
                 size="large"
               />
             </Grid>
-            <Grid item xs={12}>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                size="large"
+                label="İşlem Tarihi"
+                type="date"
+                value={transactionDate}
+                onChange={(e) => setTransactionDate(e.target.value)}
+                slotProps={{
+                  inputLabel: { shrink: true }
+                }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
               <FormControl fullWidth>
                 <InputLabel>Kategori</InputLabel>
                 <Select
@@ -1048,7 +1067,20 @@ const CashManagement: React.FC = () => {
                 size="large"
               />
             </Grid>
-            <Grid item xs={12}>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                size="large"
+                label="İşlem Tarihi"
+                type="date"
+                value={transactionDate}
+                onChange={(e) => setTransactionDate(e.target.value)}
+                slotProps={{
+                  inputLabel: { shrink: true }
+                }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
               <FormControl fullWidth size="large">
                 <InputLabel>Kategori</InputLabel>
                 <Select

@@ -722,6 +722,26 @@ ipcMain.handle('products:get-all', async (_, page = 1, limit = 50) => {
 
 ipcMain.handle('products:create', async (_, product) => {
   try {
+    // Aynı kategori ve renkte ürün var mı kontrol et
+    const existing = await queryOne(`
+      SELECT * FROM products 
+      WHERE category = $1 AND color = $2
+    `, [product.category, product.color || null]);
+
+    if (existing) {
+      // Varsa stok üstüne ekle
+      const updated = await queryOne(`
+        UPDATE products 
+        SET stock_quantity = stock_quantity + $1, 
+            updated_at = CURRENT_TIMESTAMP 
+        WHERE id = $2
+        RETURNING *
+      `, [product.stock_quantity || 0, existing.id]);
+
+      return { success: true, data: updated, merged: true };
+    }
+
+    // Yoksa yeni ürün oluştur
     const result = await queryOne(`
       INSERT INTO products (name, category, color, stock_quantity, unit, description) 
       VALUES ($1, $2, $3, $4, $5, $6)
@@ -735,7 +755,7 @@ ipcMain.handle('products:create', async (_, product) => {
       product.description || null
     ]);
 
-    return { success: true, data: result };
+    return { success: true, data: result, merged: false };
   } catch (error) {
     return { success: false, error: error.message };
   }
@@ -764,17 +784,21 @@ ipcMain.handle('colors:get-all', async () => {
 // Sales handlers
 ipcMain.handle('sales:get-all', async (_, startDate, endDate) => {
   try {
+    console.log('📊 sales:get-all çağrıldı, tarih aralığı:', { startDate, endDate });
+    
     let queryText = `
       SELECT 
         s.*,
         c.name as customer_name,
         si.product_id,
+        si.product_name,
+        si.color,
         si.quantity_pieces,
         si.quantity_desi,
         si.unit_price_per_desi,
         si.total_price,
-        p.category,
-        p.color
+        si.unit,
+        p.category
       FROM sales s
       LEFT JOIN customers c ON s.customer_id = c.id
       LEFT JOIN sale_items si ON s.id = si.sale_id
@@ -791,6 +815,13 @@ ipcMain.handle('sales:get-all', async (_, startDate, endDate) => {
     queryText += whereClause + ' ORDER BY s.created_at DESC';
 
     const result = await queryAll(queryText, params);
+    
+    console.log('📊 İlk 3 satış kaydı:', result.slice(0, 3).map(r => ({
+      id: r.id,
+      product_name: r.product_name,
+      color: r.color,
+      category: r.category
+    })));
 
     // Toplam tutarları hesapla
     let totalsQuery = `
@@ -839,13 +870,14 @@ ipcMain.handle('sales:getById', async (event, saleId) => {
         s.*,
         c.name as customer_name,
         si.product_id,
+        si.product_name,
+        si.color,
         si.quantity_pieces,
         si.quantity_desi,
         si.unit_price_per_desi,
         si.total_price,
         si.unit,
-        p.category,
-        p.color
+        p.category
       FROM sales s
       LEFT JOIN customers c ON s.customer_id = c.id
       LEFT JOIN sale_items si ON s.id = si.sale_id
@@ -875,7 +907,8 @@ ipcMain.handle('sales:getById', async (event, saleId) => {
 
       items: saleDetailsRows.map(row => ({
         productId: row.product_id,
-        productName: `${row.category || 'Bilinmiyor'} - ${row.color || 'Bilinmiyor'}`,
+        productName: row.product_name || row.category || 'Bilinmiyor',
+        color: row.color || 'Belirtilmemiş',
         quantityPieces: row.quantity_pieces,
         quantityDesi: row.quantity_desi,
         unitPricePerDesi: row.unit_price_per_desi,
@@ -1104,23 +1137,57 @@ ipcMain.handle('materials:create', async (_, material) => {
 
 ipcMain.handle('materials:update', async (_, id, material) => {
   try {
+    // Dinamik olarak güncellenecek alanları belirle
+    const updates = [];
+    const values = [];
+    let paramIndex = 1;
+
+    if (material.name !== undefined) {
+      updates.push(`name = $${paramIndex++}`);
+      values.push(material.name);
+    }
+    if (material.category !== undefined) {
+      updates.push(`category = $${paramIndex++}`);
+      values.push(material.category);
+    }
+    if (material.color_shade !== undefined) {
+      updates.push(`color_shade = $${paramIndex++}`);
+      values.push(material.color_shade || null);
+    }
+    if (material.brand !== undefined) {
+      updates.push(`brand = $${paramIndex++}`);
+      values.push(material.brand || null);
+    }
+    if (material.code !== undefined) {
+      updates.push(`code = $${paramIndex++}`);
+      values.push(material.code || null);
+    }
+    if (material.stock_quantity !== undefined) {
+      updates.push(`stock_quantity = $${paramIndex++}`);
+      values.push(material.stock_quantity || 0);
+    }
+    if (material.unit !== undefined) {
+      updates.push(`unit = $${paramIndex++}`);
+      values.push(material.unit || 'kg');
+    }
+    if (material.description !== undefined) {
+      updates.push(`description = $${paramIndex++}`);
+      values.push(material.description || null);
+    }
+
+    if (updates.length === 0) {
+      return { success: false, error: 'Güncellenecek alan bulunamadı' };
+    }
+
+    updates.push(`updated_at = CURRENT_TIMESTAMP`);
+    values.push(id);
+
     const result = await queryOne(`
       UPDATE materials 
-      SET name = $1, category = $2, color_shade = $3, brand = $4, code = $5, 
-          stock_quantity = $6, unit = $7, description = $8, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $9
+      SET ${updates.join(', ')}
+      WHERE id = $${paramIndex}
       RETURNING *
-    `, [
-      material.name,
-      material.category,
-      material.color_shade || null,
-      material.brand || null,
-      material.code || null,
-      material.stock_quantity || 0,
-      material.unit || 'kg',
-      material.description || null,
-      id
-    ]);
+    `, values);
 
     if (!result) {
       return { success: false, error: 'Malzeme bulunamadı' };
@@ -1128,6 +1195,7 @@ ipcMain.handle('materials:update', async (_, id, material) => {
 
     return { success: true, data: result };
   } catch (error) {
+    console.error('materials:update error:', error);
     return { success: false, error: error.message };
   }
 });
@@ -1427,6 +1495,8 @@ ipcMain.handle('stock-movements:create', async (_, movement) => {
 // Sales create handler
 ipcMain.handle('sales:create', async (_, sale) => {
   try {
+    console.log('📥 Backend - Gelen satış verisi:', JSON.stringify(sale, null, 2));
+    
     // Start transaction
     await query('BEGIN');
 
@@ -1444,38 +1514,90 @@ ipcMain.handle('sales:create', async (_, sale) => {
       sale.notes || null
     ]);
 
+    console.log('✅ Satış kaydı oluşturuldu, ID:', saleResult.id);
+
     // Create sale items
     if (sale.items && sale.items.length > 0) {
       for (const item of sale.items) {
+        console.log('📦 Satış kalemi ekleniyor:', {
+          sale_id: saleResult.id,
+          product_id: item.product_id,
+          product_name: item.product_name,
+          color: item.color,
+          quantity_pieces: item.quantity_pieces
+        });
+        
         await query(`
           INSERT INTO sale_items (
-            sale_id, product_id, quantity_pieces, quantity_desi, 
+            sale_id, product_id, product_name, color, quantity_pieces, quantity_desi, 
             unit_price_per_desi, total_price, unit
           ) 
-          VALUES ($1, $2, $3, $4, $5, $6, $7)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         `, [
           saleResult.id,
           item.product_id,
+          item.product_name || 'Deri',
+          item.color || 'Belirtilmemiş',
           item.quantity_pieces,
           item.quantity_desi,
           item.unit_price_per_desi,
           item.total_price,
           item.unit || 'desi'
         ]);
+        
+        console.log('✅ Satış kalemi eklendi');
+
+        // Get product info including category
+        const productInfo = await queryOne('SELECT id, category, color, stock_quantity FROM products WHERE id = $1', [item.product_id]);
+        
+        // Keçi alt kategorileri için Keçi stoğundan düşülecek
+        const keciSubCategories = ['Keçi-Oğlak', 'Keçi-Palto', 'Çoraplık', 'Baskılık'];
+        let stockProductId = item.product_id;
+        let stockCategory = productInfo.category;
+        
+        // Eğer Keçi alt kategorisiyse, Keçi stoğunu bul (renk olmadan)
+        if (keciSubCategories.includes(productInfo.category)) {
+          const keciProduct = await queryOne(
+            'SELECT id, stock_quantity FROM products WHERE category = $1 LIMIT 1',
+            ['Keçi']
+          );
+          
+          if (keciProduct) {
+            stockProductId = keciProduct.id;
+            stockCategory = 'Keçi';
+            console.log(`${productInfo.category} satışı için Keçi stoğu kullanılıyor:`, {
+              original_product: item.product_id,
+              keci_product: keciProduct.id,
+              sale_color: item.color
+            });
+          } else {
+            throw new Error(`${productInfo.category} için Keçi stoğu bulunamadı!`);
+          }
+        }
 
         // Get current stock before update
-        const currentProduct = await queryOne('SELECT stock_quantity FROM products WHERE id = $1', [item.product_id]);
+        const currentProduct = await queryOne('SELECT stock_quantity FROM products WHERE id = $1', [stockProductId]);
         const previousStock = currentProduct ? currentProduct.stock_quantity : 0;
         const newStock = previousStock - item.quantity_pieces;
+
+        console.log('Satış stok düşme:', {
+          sale_category: productInfo.category,
+          stock_category: stockCategory,
+          product_id: item.product_id,
+          stock_product_id: stockProductId,
+          quantity_pieces: item.quantity_pieces,
+          previousStock,
+          newStock
+        });
 
         // Update product stock
         await query(`
           UPDATE products 
           SET stock_quantity = stock_quantity - $1, updated_at = CURRENT_TIMESTAMP 
           WHERE id = $2
-        `, [item.quantity_pieces, item.product_id]);
+        `, [item.quantity_pieces, stockProductId]);
 
-        // Create stock movement record
+        // Create stock movement record (stok düşen ürün için)
         await query(`
           INSERT INTO stock_movements (
             product_id, movement_type, quantity, previous_stock, new_stock, 
@@ -1484,9 +1606,9 @@ ipcMain.handle('sales:create', async (_, sale) => {
           ) 
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         `, [
-          item.product_id,
+          stockProductId, // Stok düşen ürün (Keçi veya Koyun)
           'out', // Satış çıkış hareketi
-          -item.quantity_pieces, // Negatif çünkü çıkış
+          item.quantity_pieces, // Pozitif değer - movement_type zaten 'out'
           previousStock,
           newStock,
           'sale',
@@ -1494,7 +1616,7 @@ ipcMain.handle('sales:create', async (_, sale) => {
           sale.customer_id,
           item.unit_price_per_desi,
           item.total_price,
-          `Satış - ${item.quantity_pieces} adet`,
+          `Satış - ${item.product_name || productInfo.category} ${item.color || ''} - ${item.quantity_pieces} adet`,
           'system'
         ]);
       }

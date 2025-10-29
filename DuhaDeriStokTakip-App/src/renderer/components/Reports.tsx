@@ -78,19 +78,35 @@ const Reports: React.FC = () => {
     setError(null);
     try {
       const response = await dbAPI.getSales(startDate, endDate);
+      console.log('📊 Frontend - Backend\'den gelen ilk 3 satış:', response.data?.slice(0, 3).map((r: any) => ({
+        product_name: r.product_name,
+        color: r.color,
+        category: r.category
+      })));
+      
       if (response.success && response.data) {
         // Veriyi uygun formata dönüştür
-        const formattedData: SaleReport[] = response.data.map((row: any) => ({
-          date: row.sale_date || new Date().toISOString(),
-          customerName: row.customer_name || row.name || 'Bilinmeyen Müşteri',
-          productName: `${row.category || 'Ürün'} - ${row.color || 'Renk'}`,
-          quantity: Number(row.quantity_pieces || row.quantity || 0), // Adet cinsinden
-          unit: 'desi' as const,
-          quantityInDesi: Number(row.quantity_desi || row.quantity || 0), // Desi cinsinden
-          unitPrice: Number(row.unit_price_per_desi || row.unit_price || 0),
-          total: Number(row.total_price || row.total_amount || 0),
-          currency: row.currency || 'TRY',
-        }));
+        const formattedData: SaleReport[] = response.data.map((row: any) => {
+          const productName = row.color ? `${row.product_name || row.category || 'Ürün'} - ${row.color}` : (row.product_name || row.category || 'Ürün');
+          console.log('🔄 Satış formatlanıyor:', {
+            raw_product_name: row.product_name,
+            raw_color: row.color,
+            raw_category: row.category,
+            formatted_productName: productName
+          });
+          
+          return {
+            date: row.sale_date || new Date().toISOString(),
+            customerName: row.customer_name || row.name || 'Bilinmeyen Müşteri',
+            productName: productName,
+            quantity: Number(row.quantity_pieces || row.quantity || 0), // Adet cinsinden
+            unit: (row.unit || 'desi') as 'desi' | 'ayak',
+            quantityInDesi: Number(row.quantity_desi || row.quantity || 0), // Desi cinsinden
+            unitPrice: Number(row.unit_price_per_desi || row.unit_price || 0),
+            total: Number(row.total_price || row.total_amount || 0),
+            currency: row.currency || 'TRY',
+          };
+        });
         setSalesData(formattedData);
       } else {
         setSalesData([]);
