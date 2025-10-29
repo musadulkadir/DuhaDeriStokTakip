@@ -48,6 +48,7 @@ interface NewProduct {
   color: string;
   stock_quantity: string;
   description: string;
+  entry_date: string;
 }
 
 interface NewMaterial {
@@ -88,6 +89,7 @@ const ProductManagement: React.FC = () => {
     color: '',
     stock_quantity: '',
     description: '',
+    entry_date: new Date().toISOString().split('T')[0], // Bugünün tarihi
   });
 
   const [newMaterial, setNewMaterial] = useState<NewMaterial>({
@@ -259,8 +261,9 @@ const ProductManagement: React.FC = () => {
             previous_stock: 0,
             new_stock: stockQuantity,
             reference_type: 'initial_stock',
-            notes: `İlk stok girişi - ${productData.category} ${productData.color}`,
+            notes: newProduct.description || `İlk stok girişi - ${productData.category} ${productData.color}`,
             user: 'Sistem Kullanıcısı',
+            created_at: newProduct.entry_date ? new Date(newProduct.entry_date).toISOString() : new Date().toISOString(),
           };
 
           try {
@@ -278,6 +281,7 @@ const ProductManagement: React.FC = () => {
           color: '',
           stock_quantity: '',
           description: '',
+          entry_date: new Date().toISOString().split('T')[0],
         });
         await loadProducts();
       } else {
@@ -343,7 +347,7 @@ const ProductManagement: React.FC = () => {
         return false;
       });
 
-      if (existingMaterial) {
+      if (existingMaterial && existingMaterial.id) {
         // Mevcut malzemenin stoğunu güncelle
         const newStock = (existingMaterial.stock_quantity || 0) + stockQuantity;
         const updateResponse = await dbAPI.updateMaterial(existingMaterial.id, {
@@ -354,7 +358,7 @@ const ProductManagement: React.FC = () => {
           // Stok hareketi oluştur
           const movementData = {
             product_id: existingMaterial.id,
-            movement_type: 'in',
+            movement_type: 'in' as const,
             quantity: stockQuantity,
             previous_stock: existingMaterial.stock_quantity || 0,
             new_stock: newStock,
@@ -601,7 +605,7 @@ const ProductManagement: React.FC = () => {
   };
 
   return (
-    <Box sx={{mt:2, mr:2}}>
+    <Box sx={{ mt: 2, mr: 2 }}>
       {/* Header */}
       <Box sx={{ mb: 4 }}>
         <Typography variant="h3" sx={{ fontWeight: 700, mb: 1 }}>
@@ -1105,6 +1109,17 @@ const ProductManagement: React.FC = () => {
               <Box sx={{ flex: '1 1 200px', minWidth: '200px' }}>
                 <TextField
                   fullWidth
+                  label="Giriş Tarihi"
+                  type="date"
+                  value={newProduct.entry_date}
+                  onChange={(e) => setNewProduct({ ...newProduct, entry_date: e.target.value })}
+                  InputLabelProps={{ shrink: true }}
+                  helperText="Ürünün stoğa giriş tarihi"
+                />
+              </Box>
+              <Box sx={{ flex: '1 1 200px', minWidth: '200px' }}>
+                <TextField
+                  fullWidth
                   label="Başlangıç Stok (Adet)"
                   type="text"
                   value={newProduct.stock_quantity}
@@ -1116,16 +1131,14 @@ const ProductManagement: React.FC = () => {
                   placeholder="Örn: 1,000"
                 />
               </Box>
-              <Box sx={{ flex: '1 1 200px', minWidth: '200px' }}>
-                <TextField
-                  fullWidth
-                  label="Açıklama (Opsiyonel)"
-                  value={newProduct.description}
-                  onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })}
-                  helperText="Ürün hakkında ek bilgiler"
-                />
-              </Box>
             </Box>
+            <TextField
+              fullWidth
+              label="Açıklama (Opsiyonel)"
+              value={newProduct.description}
+              onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })}
+              helperText="Ürün hakkında ek bilgiler"
+            />
           </Box>
         </DialogContent>
         <DialogActions>
@@ -1136,6 +1149,7 @@ const ProductManagement: React.FC = () => {
               color: '',
               stock_quantity: '',
               description: '',
+              entry_date: new Date().toISOString().split('T')[0],
             });
           }}>İptal</Button>
           <Button onClick={handleAddProduct} variant="contained" disabled={loading}>

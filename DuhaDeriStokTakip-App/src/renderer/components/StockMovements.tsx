@@ -123,6 +123,14 @@ const StockMovements: React.FC = () => {
             time: movement.created_at ? new Date(movement.created_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : '',
           };
         });
+
+        // Tarihe göre sırala - en yeni en üstte
+        enrichedMovements.sort((a, b) => {
+          const dateA = new Date(a.created_at || 0).getTime();
+          const dateB = new Date(b.created_at || 0).getTime();
+          return dateB - dateA; // Descending order (en yeni en üstte)
+        });
+
         setMovements(enrichedMovements);
       }
     } catch (error) {
@@ -139,7 +147,7 @@ const StockMovements: React.FC = () => {
         dbAPI.getProducts(),
         dbAPI.getMaterials()
       ]);
-      
+
       const allProducts = [];
       if (productsResponse.success) {
         allProducts.push(...productsResponse.data);
@@ -147,7 +155,7 @@ const StockMovements: React.FC = () => {
       if (materialsResponse.success && materialsResponse.data) {
         allProducts.push(...materialsResponse.data);
       }
-      
+
       setProducts(allProducts);
     } catch (error) {
       console.error('Error loading products:', error);
@@ -236,7 +244,7 @@ const StockMovements: React.FC = () => {
 
   const totalIn = filteredMovements.filter(m => m.movement_type === 'in').reduce((sum, m) => sum + (m.quantity || 0), 0);
   const totalOut = filteredMovements.filter(m => m.movement_type === 'out').reduce((sum, m) => sum + (m.quantity || 0), 0);
-  const netChange = totalIn + totalOut;
+  const netChange = totalIn - totalOut; // Çıkışlar negatif etki yapar
 
   const handleAddMovement = async () => {
     if (!newMovement.productId || !newMovement.quantity) {
@@ -572,7 +580,7 @@ const StockMovements: React.FC = () => {
                     </TableCell>
                     <TableCell align="center">
                       <Chip
-                        label={movement.movement_type === 'out' ? `${(movement.quantity || 0).toLocaleString('tr-TR')}` : `+${(movement.quantity || 0).toLocaleString('tr-TR')}`}
+                        label={movement.movement_type === 'out' ? `-${(movement.quantity || 0).toLocaleString('tr-TR')}` : `+${(movement.quantity || 0).toLocaleString('tr-TR')}`}
                         color={movement.movement_type === 'out' ? 'error' : 'success'}
                         size="small"
                         sx={{ fontWeight: 600 }}
@@ -711,12 +719,14 @@ const StockMovements: React.FC = () => {
               <TextField
                 fullWidth
                 label="Miktar"
-                type="number"
+                type="text"
                 value={newMovement.quantity}
                 onChange={(e) => {
                   const formatted = formatNumberWithCommas(e.target.value);
                   setNewMovement({ ...newMovement, quantity: formatted });
                 }}
+                placeholder="Örn: 1,000"
+                helperText="Stok miktarını giriniz"
               />
             </Grid>
             <Grid size={{ xs: 12, }}>

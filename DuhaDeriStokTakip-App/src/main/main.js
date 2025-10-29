@@ -665,19 +665,19 @@ app.whenReady().then(async () => {
     db = await initializeDatabase();
     await createTables();
     console.log('✅ Veritabanı başarıyla başlatıldı');
-    
+
     // Başarılı bağlantı bildirimi gönder
     if (mainWindow) {
       mainWindow.webContents.send('db-status', { connected: true, message: 'Veritabanı bağlantısı başarılı' });
     }
   } catch (error) {
     console.error('❌ Veritabanı başlatılamadı:', error);
-    
+
     // Hata bildirimi gönder
     if (mainWindow) {
-      mainWindow.webContents.send('db-status', { 
-        connected: false, 
-        message: 'Veritabanı bağlantısı kurulamadı. Lütfen PostgreSQL\'in çalıştığından emin olun.' 
+      mainWindow.webContents.send('db-status', {
+        connected: false,
+        message: 'Veritabanı bağlantısı kurulamadı. Lütfen PostgreSQL\'in çalıştığından emin olun.'
       });
     }
   }
@@ -1399,9 +1399,9 @@ ipcMain.handle('stock-movements:create', async (_, movement) => {
       INSERT INTO stock_movements (
         product_id, movement_type, quantity, previous_stock, new_stock, 
         reference_type, reference_id, customer_id, unit_price, total_amount, 
-        notes, "user"
+        notes, "user", created_at
       ) 
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       RETURNING *
     `, [
       movement.product_id,
@@ -1415,7 +1415,8 @@ ipcMain.handle('stock-movements:create', async (_, movement) => {
       movement.unit_price || null,
       movement.total_amount || null,
       movement.notes || null,
-      movement.user || 'system'
+      movement.user || 'system',
+      movement.created_at || new Date().toISOString()
     ]);
 
     return { success: true, data: result };
