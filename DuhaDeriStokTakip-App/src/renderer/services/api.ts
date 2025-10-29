@@ -127,7 +127,7 @@ class DatabaseAPI {
   }
 
   // Sales operations
-  async getSales(startDate?: string, endDate?: string): Promise<ApiResponse<Sale[]>> {
+  async getSales(startDate?: string, endDate?: string): Promise<ApiResponse<Sale[]> & { totals?: Record<string, number>; dayCount?: number }> {
     return window.require("electron").ipcRenderer.invoke('sales:get-all', startDate, endDate);
   }
 

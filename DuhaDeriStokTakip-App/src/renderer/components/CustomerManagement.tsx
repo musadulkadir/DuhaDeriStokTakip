@@ -59,7 +59,6 @@ const CustomerManagement: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [addDialogOpen, setAddDialogOpen] = useState(false);
-  const [addSupplierDialogOpen, setAddSupplierDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -68,19 +67,8 @@ const CustomerManagement: React.FC = () => {
   // Pagination states for Customers
   const [customersCurrentPage, setCustomersCurrentPage] = useState(1);
   const [customersItemsPerPage, setCustomersItemsPerPage] = useState(10);
-  
-  // Pagination states for Suppliers
-  const [suppliersCurrentPage, setSuppliersCurrentPage] = useState(1);
-  const [suppliersItemsPerPage, setSuppliersItemsPerPage] = useState(10);
 
   const [newCustomer, setNewCustomer] = useState<NewCustomer>({
-    name: '',
-    phone: '',
-    email: '',
-    address: '',
-  });
-
-  const [newSupplier, setNewSupplier] = useState<NewCustomer>({
     name: '',
     phone: '',
     email: '',
@@ -99,7 +87,7 @@ const CustomerManagement: React.FC = () => {
           const balanceTRY = parseFloat(customer.balance) || 0;
           const balanceUSD = parseFloat(customer.balance_usd) || 0;
           const balanceEUR = parseFloat(customer.balance_eur) || 0;
-          
+
           console.log(`Müşteri ${customer.name} (${customer.type}) bakiye:`, {
             balanceTRY,
             balanceUSD,
@@ -110,7 +98,7 @@ const CustomerManagement: React.FC = () => {
               balance_eur: customer.balance_eur
             }
           });
-          
+
           return {
             ...customer,
             balanceTRY,
@@ -118,16 +106,16 @@ const CustomerManagement: React.FC = () => {
             balanceEUR,
           };
         });
-        
+
         // Type alanını veritabanından gelen değere göre ayarla
         const processedCustomers = customersWithBalance.map(customer => {
           // Veritabanından gelen type değerini kullan, yoksa customer yap
-          return { 
-            ...customer, 
+          return {
+            ...customer,
             type: (customer.type || 'customer') as 'customer' | 'supplier'
           };
         });
-        
+
         setCustomers(processedCustomers);
       } else {
         setSnackbar({ open: true, message: response.error || 'Müşteriler yüklenemedi', severity: 'error' });
@@ -153,20 +141,9 @@ const CustomerManagement: React.FC = () => {
     setCustomersCurrentPage(1);
   };
 
-  // Pagination handlers for Suppliers
-  const handleSuppliersPageChange = (page: number) => {
-    setSuppliersCurrentPage(page);
-  };
-
-  const handleSuppliersItemsPerPageChange = (newItemsPerPage: number) => {
-    setSuppliersItemsPerPage(newItemsPerPage);
-    setSuppliersCurrentPage(1);
-  };
-
   // Search değiştiğinde sayfa 1'e dön
   useEffect(() => {
     setCustomersCurrentPage(1);
-    setSuppliersCurrentPage(1);
   }, [searchTerm]);
 
   const handleAddCustomer = async () => {
@@ -205,45 +182,6 @@ const CustomerManagement: React.FC = () => {
       setLoading(false);
     }
   };
-
-  const handleAddSupplier = async () => {
-    setLoading(true);
-    try {
-      const supplierData = {
-        name: newSupplier.name || 'Tedarikçi',
-        phone: newSupplier.phone || undefined,
-        email: newSupplier.email || undefined,
-        address: newSupplier.address || undefined,
-        balance: 0,
-        type: 'supplier' as const, // Tedarikçi olarak işaretle
-      };
-
-      const response = await dbAPI.createCustomer(supplierData);
-      console.log('Tedarikçi ekleme yanıtı:', response);
-      if (response.success) {
-        setSnackbar({ open: true, message: 'Tedarikçi başarıyla eklendi', severity: 'success' });
-        setAddSupplierDialogOpen(false);
-        setNewSupplier({
-          name: '',
-          phone: '',
-          email: '',
-          address: '',
-        });
-        // Kısa bir bekleme sonrası yeniden yükle
-        setTimeout(async () => {
-          await loadCustomers();
-        }, 500);
-      } else {
-        setSnackbar({ open: true, message: response.error || 'Tedarikçi eklenemedi', severity: 'error' });
-      }
-    } catch (error) {
-      setSnackbar({ open: true, message: 'Tedarikçi eklenirken hata oluştu', severity: 'error' });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-
 
   const handleEditCustomer = async () => {
     if (!selectedCustomer) return;
@@ -302,35 +240,13 @@ const CustomerManagement: React.FC = () => {
   const allFilteredCustomers = customers.filter(customer =>
     (!customer.type || customer.type !== 'supplier') && // Tedarikçileri hariç tut (type yoksa müşteri kabul et)
     (customer.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    customer.phone?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    customer.email?.toLowerCase().includes(searchTerm.toLowerCase()))
+      customer.phone?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      customer.email?.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   const customersStartIndex = (customersCurrentPage - 1) * customersItemsPerPage;
   const customersEndIndex = customersStartIndex + customersItemsPerPage;
   const filteredCustomers = allFilteredCustomers.slice(customersStartIndex, customersEndIndex);
-
-  // Tedarikçileri filtrele ve paginate et
-  const allFilteredSuppliers = customers.filter(customer =>
-    (customer.type === 'supplier') && // Sadece tedarikçileri al
-    (customer.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    customer.phone?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    customer.email?.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
-
-  const suppliersStartIndex = (suppliersCurrentPage - 1) * suppliersItemsPerPage;
-  const suppliersEndIndex = suppliersStartIndex + suppliersItemsPerPage;
-  const filteredSuppliers = allFilteredSuppliers.slice(suppliersStartIndex, suppliersEndIndex);
-
-
-
-  // Tedarikçiler için: Borç (artı) = kırmızı, Alacak (eksi) = yeşil
-  const getBalanceColor = (balanceTRY: number, balanceUSD: number, balanceEUR: number) => {
-    const totalBalance = balanceTRY + balanceUSD + balanceEUR;
-    if (totalBalance > 0) return 'error'; // Borç (kırmızı)
-    if (totalBalance < 0) return 'success'; // Alacak (yeşil)
-    return 'default';
-  };
 
   // Müşteriler için: Alacak (artı) = yeşil, Borç (eksi) = kırmızı
   const getCustomerBalanceColor = (balanceTRY: number, balanceUSD: number, balanceEUR: number) => {
@@ -343,9 +259,9 @@ const CustomerManagement: React.FC = () => {
   return (
     <Box>
       {/* Header */}
-      <Box sx={{ mb: 4 }}>
+      <Box sx={{ mb: 4, mt: 2 }}>
         <Typography variant="h3" sx={{ fontWeight: 700, mb: 1 }}>
-          Partner Yönetimi
+          Müşteri Yönetimi
         </Typography>
         <Typography variant="body1" sx={{ color: 'text.secondary' }}>
           Müşterilerinizi yönetin ve takip edin
@@ -353,8 +269,8 @@ const CustomerManagement: React.FC = () => {
       </Box>
 
       {/* Quick Stats */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={6} md={3}>
+      <Grid container spacing={3} sx={{ mb: 4, }}>
+        <Grid size={{ xs: 12, sm: 6, md: 3, }}>
           <Card>
             <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
               <Avatar sx={{ bgcolor: 'primary.main', mr: 2 }}>
@@ -371,7 +287,7 @@ const CustomerManagement: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid size={{ xs: 12, sm: 6, md: 3, }}>
           <Card>
             <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
               <Avatar sx={{ bgcolor: 'success.main', mr: 2 }}>
@@ -379,7 +295,7 @@ const CustomerManagement: React.FC = () => {
               </Avatar>
               <Box>
                 <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                  {customers.filter(c => ((c.balanceTRY || 0) + (c.balanceUSD || 0) + (c.balanceEUR || 0)) > 0).length}
+                  {customers.filter(c => ((c.balanceTRY || 0) + (c.balanceUSD || 0) + (c.balanceEUR || 0)) < 0).length}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   Alacaklı Müşteri
@@ -388,7 +304,7 @@ const CustomerManagement: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid size={{ xs: 12, sm: 6, md: 3, }}>
           <Card>
             <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
               <Avatar sx={{ bgcolor: 'error.main', mr: 2 }}>
@@ -396,7 +312,7 @@ const CustomerManagement: React.FC = () => {
               </Avatar>
               <Box>
                 <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                  {customers.filter(c => ((c.balanceTRY || 0) + (c.balanceUSD || 0) + (c.balanceEUR || 0)) < 0).length}
+                  {customers.filter(c => ((c.balanceTRY || 0) + (c.balanceUSD || 0) + (c.balanceEUR || 0)) > 0).length}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   Borçlu Müşteri
@@ -405,7 +321,7 @@ const CustomerManagement: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid size={{ xs: 12, sm: 6, md: 3, }}>
           <Card>
             <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
               <Avatar sx={{ bgcolor: 'warning.main', mr: 2 }}>
@@ -413,13 +329,13 @@ const CustomerManagement: React.FC = () => {
               </Avatar>
               <Box>
                 <Typography variant="h6" sx={{ fontWeight: 600, mb: 0.5 }}>
-                  ₺{customers.reduce((sum, c) => sum + (c.balanceTRY || 0), 0).toLocaleString()}
+                  ₺{customers.reduce((sum, c) => sum + (Number(c.balanceTRY) || 0), 0).toLocaleString()}
                 </Typography>
                 <Typography variant="h6" sx={{ fontWeight: 600, mb: 0.5 }}>
-                  ${customers.reduce((sum, c) => sum + (c.balanceUSD || 0), 0).toLocaleString()}
+                  ${customers.reduce((sum, c) => sum + (Number(c.balanceUSD) || 0), 0).toLocaleString()}
                 </Typography>
                 <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                  €{customers.reduce((sum, c) => sum + (c.balanceEUR || 0), 0).toLocaleString()}
+                  €{customers.reduce((sum, c) => sum + (Number(c.balanceEUR) || 0), 0).toLocaleString()}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   Net Bakiye (TL / USD / EUR)
@@ -433,16 +349,16 @@ const CustomerManagement: React.FC = () => {
       {/* Search and Add */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Grid container spacing={3} alignItems="center">
-            <Grid item xs={12} md={6}>
+          <Grid container spacing={3} alignItems="center" justifyContent='space-between'>
+            <Grid size={{ xs: 12, md: 6, }}>
               <TextField
                 fullWidth
-                size="large"
+                size="medium"
                 placeholder="Müşteri adı, telefon veya email ara..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                sx={{ 
-                  '& .MuiOutlinedInput-root': { 
+                sx={{
+                  '& .MuiOutlinedInput-root': {
                     minHeight: '56px',
                     fontSize: '1.1rem',
                   },
@@ -460,7 +376,7 @@ const CustomerManagement: React.FC = () => {
                 }}
               />
             </Grid>
-            <Grid item xs={12} md={3}>
+            <Grid size={{ xs: 12, md: 3, }}>
               <Button
                 fullWidth
                 variant="contained"
@@ -469,17 +385,6 @@ const CustomerManagement: React.FC = () => {
                 size="large"
               >
                 Yeni Müşteri Ekle
-              </Button>
-            </Grid>
-            <Grid item xs={12} md={3}>
-              <Button
-                fullWidth
-                variant="outlined"
-                startIcon={<Add />}
-                onClick={() => setAddSupplierDialogOpen(true)}
-                size="large"
-              >
-                Yeni Tedarikçi Ekle
               </Button>
             </Grid>
           </Grid>
@@ -516,6 +421,7 @@ const CustomerManagement: React.FC = () => {
                         label={`₺${(customer.balanceTRY || 0).toLocaleString('tr-TR')} / $${(customer.balanceUSD || 0).toLocaleString('tr-TR')} / €${(customer.balanceEUR || 0).toLocaleString('tr-TR')}`}
                         color={getCustomerBalanceColor(customer.balanceTRY || 0, customer.balanceUSD || 0, customer.balanceEUR || 0) as any}
                         size="small"
+                        sx={{ color: 'white', fontWeight: 600, fontSize: 16 }}
                       />
                     </TableCell>
                     <TableCell align="center">
@@ -562,7 +468,7 @@ const CustomerManagement: React.FC = () => {
               </TableBody>
             </Table>
           </TableContainer>
-          
+
           {/* Pagination for Customers */}
           <Pagination
             currentPage={customersCurrentPage}
@@ -575,107 +481,18 @@ const CustomerManagement: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* Suppliers Table */}
-      <Card sx={{ mt: 3 }}>
-        <CardContent sx={{ p: 0 }}>
-          <Box sx={{ p: 3, pb: 0 }}>
-            <Typography variant="h6" sx={{ fontWeight: 600 }}>
-              Tedarikçi Listesi ({allFilteredSuppliers.length} tedarikçi)
-            </Typography>
-          </Box>
-          <TableContainer>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Tedarikçi Adı</TableCell>
-                  <TableCell>Telefon</TableCell>
-                  <TableCell>Email</TableCell>
-                  <TableCell align="right">Bakiye</TableCell>
-                  <TableCell align="center">İşlemler</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {filteredSuppliers.map((supplier) => (
-                  <TableRow key={supplier.id} hover>
-                    <TableCell sx={{ fontWeight: 600 }}>{supplier.name}</TableCell>
-                    <TableCell>{supplier.phone || '-'}</TableCell>
-                    <TableCell>{supplier.email || '-'}</TableCell>
-                    <TableCell align="right">
-                      <Chip
-                        label={`₺${(supplier.balanceTRY || 0).toLocaleString('tr-TR')} / $${(supplier.balanceUSD || 0).toLocaleString('tr-TR')} / €${(supplier.balanceEUR || 0).toLocaleString('tr-TR')}`}
-                        color={getBalanceColor(supplier.balanceTRY || 0, supplier.balanceUSD || 0, supplier.balanceEUR || 0) as any}
-                        size="small"
-                      />
-                    </TableCell>
-                    <TableCell align="center">
-                      <IconButton
-                        size="small"
-                        color="info"
-                        title="Detay"
-                        onClick={() => navigate(`/suppliers/${supplier.id}`)}
-                      >
-                        <Visibility />
-                      </IconButton>
-                      <IconButton
-                        size="small"
-                        color="primary"
-                        title="Düzenle"
-                        onClick={() => {
-                          setSelectedCustomer(supplier);
-                          setEditDialogOpen(true);
-                        }}
-                      >
-                        <Edit />
-                      </IconButton>
-                      <IconButton
-                        size="small"
-                        color="error"
-                        title="Sil"
-                        onClick={() => {
-                          setSelectedCustomer(supplier);
-                          setDeleteDialogOpen(true);
-                        }}
-                      >
-                        <Delete />
-                      </IconButton>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {filteredSuppliers.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={5} align="center">
-                      {loading ? 'Yükleniyor...' : 'Tedarikçi bulunamadı'}
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </TableContainer>
-          
-          {/* Pagination for Suppliers */}
-          <Pagination
-            currentPage={suppliersCurrentPage}
-            totalPages={Math.ceil(allFilteredSuppliers.length / suppliersItemsPerPage)}
-            totalItems={allFilteredSuppliers.length}
-            itemsPerPage={suppliersItemsPerPage}
-            onPageChange={handleSuppliersPageChange}
-            onItemsPerPageChange={handleSuppliersItemsPerPageChange}
-          />
-        </CardContent>
-      </Card>
-
       {/* Add Customer Dialog */}
-      <Dialog 
-        open={addDialogOpen} 
-        onClose={() => setAddDialogOpen(false)} 
-        maxWidth="sm" 
+      <Dialog
+        open={addDialogOpen}
+        onClose={() => setAddDialogOpen(false)}
+        maxWidth="sm"
         fullWidth
         disableEnforceFocus
       >
         <DialogTitle>Yeni Müşteri Ekle</DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12}>
+            <Grid size={{ xs: 12 }}>
               <TextField
                 fullWidth
                 label="Müşteri Adı"
@@ -683,7 +500,7 @@ const CustomerManagement: React.FC = () => {
                 onChange={(e) => setNewCustomer({ ...newCustomer, name: e.target.value })}
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <TextField
                 fullWidth
                 label="Telefon"
@@ -691,7 +508,7 @@ const CustomerManagement: React.FC = () => {
                 onChange={(e) => setNewCustomer({ ...newCustomer, phone: e.target.value })}
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <TextField
                 fullWidth
                 label="Email"
@@ -700,7 +517,7 @@ const CustomerManagement: React.FC = () => {
                 onChange={(e) => setNewCustomer({ ...newCustomer, email: e.target.value })}
               />
             </Grid>
-            <Grid item xs={12}>
+            <Grid size={{ xs: 12 }}>
               <TextField
                 fullWidth
                 label="Adres"
@@ -720,74 +537,18 @@ const CustomerManagement: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Add Supplier Dialog */}
-      <Dialog 
-        open={addSupplierDialogOpen} 
-        onClose={() => setAddSupplierDialogOpen(false)} 
-        maxWidth="sm" 
-        fullWidth
-        disableEnforceFocus
-      >
-        <DialogTitle>Yeni Tedarikçi Ekle</DialogTitle>
-        <DialogContent>
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Tedarikçi Adı"
-                value={newSupplier.name}
-                onChange={(e) => setNewSupplier({ ...newSupplier, name: e.target.value })}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Telefon"
-                value={newSupplier.phone}
-                onChange={(e) => setNewSupplier({ ...newSupplier, phone: e.target.value })}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Email"
-                type="email"
-                value={newSupplier.email}
-                onChange={(e) => setNewSupplier({ ...newSupplier, email: e.target.value })}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Adres"
-                multiline
-                rows={2}
-                value={newSupplier.address}
-                onChange={(e) => setNewSupplier({ ...newSupplier, address: e.target.value })}
-              />
-            </Grid>
-          </Grid>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setAddSupplierDialogOpen(false)}>İptal</Button>
-          <Button onClick={handleAddSupplier} variant="contained" disabled={loading}>
-            {loading ? 'Ekleniyor...' : 'Ekle'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
       {/* Edit Customer Dialog */}
-      <Dialog 
-        open={editDialogOpen} 
-        onClose={() => setEditDialogOpen(false)} 
-        maxWidth="sm" 
+      <Dialog
+        open={editDialogOpen}
+        onClose={() => setEditDialogOpen(false)}
+        maxWidth="sm"
         fullWidth
         disableEnforceFocus
       >
         <DialogTitle>Müşteri Düzenle</DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12}>
+            <Grid size={{ xs: 12 }}>
               <TextField
                 fullWidth
                 label="Müşteri Adı"
@@ -795,7 +556,7 @@ const CustomerManagement: React.FC = () => {
                 onChange={(e) => setSelectedCustomer(prev => prev ? { ...prev, name: e.target.value } : null)}
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <TextField
                 fullWidth
                 label="Telefon"
@@ -803,7 +564,7 @@ const CustomerManagement: React.FC = () => {
                 onChange={(e) => setSelectedCustomer(prev => prev ? { ...prev, phone: e.target.value } : null)}
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <TextField
                 fullWidth
                 label="Email"
@@ -812,7 +573,7 @@ const CustomerManagement: React.FC = () => {
                 onChange={(e) => setSelectedCustomer(prev => prev ? { ...prev, email: e.target.value } : null)}
               />
             </Grid>
-            <Grid item xs={12}>
+            <Grid size={{ xs: 12 }}>
               <TextField
                 fullWidth
                 label="Adres"
@@ -833,8 +594,8 @@ const CustomerManagement: React.FC = () => {
       </Dialog>
 
       {/* Delete Confirmation Dialog */}
-      <Dialog 
-        open={deleteDialogOpen} 
+      <Dialog
+        open={deleteDialogOpen}
         onClose={() => {
           setDeleteDialogOpen(false);
           setSelectedCustomer(null);
@@ -898,7 +659,7 @@ const CustomerManagement: React.FC = () => {
           {snackbar.message}
         </Alert>
       </Snackbar>
-    </Box>
+    </Box >
   );
 };
 
