@@ -243,7 +243,7 @@ const StockMovements: React.FC = () => {
   };
 
   const totalIn = filteredMovements.filter(m => m.movement_type === 'in').reduce((sum, m) => sum + (m.quantity || 0), 0);
-  const totalOut = filteredMovements.filter(m => m.movement_type === 'out').reduce((sum, m) => sum + (m.quantity || 0), 0);
+  const totalOut = filteredMovements.filter(m => m.movement_type === 'out').reduce((sum, m) => sum + Math.abs(m.quantity || 0), 0);
   const netChange = totalIn - totalOut; // Çıkışlar negatif etki yapar
 
   const handleAddMovement = async () => {
@@ -269,10 +269,13 @@ const StockMovements: React.FC = () => {
         return;
       }
 
+      // Stok çıkışında quantity negatif olarak kaydedilmeli (satış işlemiyle tutarlı olması için)
+      const savedQuantity = newMovement.type === 'out' ? -quantity : quantity;
+
       const movementData = {
         product_id: parseInt(newMovement.productId),
         movement_type: newMovement.type,
-        quantity: quantity,
+        quantity: savedQuantity,
         previous_stock: previousStock,
         new_stock: newStock,
         reference_type: 'adjustment',
@@ -347,7 +350,7 @@ const StockMovements: React.FC = () => {
               </Avatar>
               <Box>
                 <Typography variant="h6" sx={{ fontWeight: 600, color: '#F44336' }}>
-                  {totalOut.toLocaleString('tr-TR')}
+                  -{totalOut.toLocaleString('tr-TR')}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   Toplam Çıkış
@@ -580,7 +583,7 @@ const StockMovements: React.FC = () => {
                     </TableCell>
                     <TableCell align="center">
                       <Chip
-                        label={movement.movement_type === 'out' ? `-${(movement.quantity || 0).toLocaleString('tr-TR')}` : `+${(movement.quantity || 0).toLocaleString('tr-TR')}`}
+                        label={`${(movement.quantity || 0) >= 0 ? '+' : ''}${(movement.quantity || 0).toLocaleString('tr-TR')}`}
                         color={movement.movement_type === 'out' ? 'error' : 'success'}
                         size="small"
                         sx={{ fontWeight: 600 }}
