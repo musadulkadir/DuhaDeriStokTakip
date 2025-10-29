@@ -1401,7 +1401,7 @@ ipcMain.handle('stock-movements:create', async (_, movement) => {
         reference_type, reference_id, customer_id, unit_price, total_amount, 
         notes, "user", created_at
       ) 
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, COALESCE($13, CURRENT_TIMESTAMP))
       RETURNING *
     `, [
       movement.product_id,
@@ -1416,7 +1416,7 @@ ipcMain.handle('stock-movements:create', async (_, movement) => {
       movement.total_amount || null,
       movement.notes || null,
       movement.user || 'system',
-      movement.created_at || new Date().toISOString()
+      movement.created_at || null
     ]);
 
     return { success: true, data: result };

@@ -281,6 +281,7 @@ const StockMovements: React.FC = () => {
         reference_type: 'adjustment',
         notes: newMovement.description || undefined,
         user: 'Sistem Kullanıcısı',
+        // created_at gönderilmezse backend CURRENT_TIMESTAMP kullanır (sunucu saati)
       };
 
       const response = await dbAPI.createStockMovement(movementData);
