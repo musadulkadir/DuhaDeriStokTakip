@@ -113,7 +113,7 @@ const CashManagement: React.FC = () => {
   });
   const [loading, setLoading] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
-  
+
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
@@ -359,7 +359,7 @@ const CashManagement: React.FC = () => {
       };
     }
 
-    // Müşteri borçlarını para birimi bazında hesapla
+    // Müşteri borçlarını (alacaklar) para birimi bazında hesapla
     try {
       const customersResponse = await dbAPI.getCustomers();
       let totalDebtTRY = 0;
@@ -368,23 +368,26 @@ const CashManagement: React.FC = () => {
 
       if (customersResponse.success && customersResponse.data) {
         customersResponse.data.forEach((customer: any) => {
-          // Müşteri bakiyesi negatifse borç var demektir
-          // TL borcu
-          const balanceTRY = Number(customer.balanceTRY || customer.balance || 0);
-          if (balanceTRY < 0) {
-            totalDebtTRY += Math.abs(balanceTRY);
+          // Sadece müşterileri al (tedarikçileri değil)
+          if (customer.type !== 'customer') return;
+
+          // Müşteri bakiyesi pozitifse bize borçlu demektir (alacak)
+          // TL alacağı
+          const balanceTRY = Number(customer.balance || 0);
+          if (balanceTRY > 0) {
+            totalDebtTRY += balanceTRY;
           }
 
-          // USD borcu  
-          const balanceUSD = Number(customer.balanceUSD || 0);
-          if (balanceUSD < 0) {
-            totalDebtUSD += Math.abs(balanceUSD);
+          // USD alacağı
+          const balanceUSD = Number(customer.balance_usd || 0);
+          if (balanceUSD > 0) {
+            totalDebtUSD += balanceUSD;
           }
 
-          // EUR borcu
-          const balanceEUR = Number(customer.balanceEUR || 0);
-          if (balanceEUR < 0) {
-            totalDebtEUR += Math.abs(balanceEUR);
+          // EUR alacağı
+          const balanceEUR = Number(customer.balance_eur || 0);
+          if (balanceEUR > 0) {
+            totalDebtEUR += balanceEUR;
           }
         });
       }
@@ -674,7 +677,7 @@ const CashManagement: React.FC = () => {
       {/* Summary Cards */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         {/* TL Kasa Bakiyesi */}
-        <Grid size={{ xs: 12, sm: 6, lg: 2 }}>
+        <Grid item xs={12} sm={6} md={3}>
           <Card>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -692,7 +695,7 @@ const CashManagement: React.FC = () => {
         </Grid>
 
         {/* USD Kasa Bakiyesi */}
-        <Grid item xs={12} sm={6} lg={2}>
+        <Grid item xs={12} sm={6} md={3}>
           <Card>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -710,7 +713,7 @@ const CashManagement: React.FC = () => {
         </Grid>
 
         {/* EUR Kasa Bakiyesi */}
-        <Grid item xs={12} sm={6} lg={2}>
+        <Grid item xs={12} sm={6} md={3}>
           <Card>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -727,84 +730,12 @@ const CashManagement: React.FC = () => {
           </Card>
         </Grid>
 
-        {/* Bugünkü Gelir */}
-        <Grid item xs={12} sm={6} lg={2}>
+        {/* Toplam Alacaklar */}
+        <Grid item xs={12} sm={6} md={3}>
           <Card>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                <TrendingUp sx={{ color: 'success.main', mr: 1 }} />
-                <Typography variant="h6">Bugünkü Gelir</Typography>
-              </Box>
-              <Typography variant="h6" sx={{ mb: 0.5, color: 'success.main' }}>
-                ₺{summary.todayIncomeTRY.toLocaleString('tr-TR')}
-              </Typography>
-              <Typography variant="h6" sx={{ mb: 0.5, color: 'success.main' }}>
-                ${summary.todayIncomeUSD.toLocaleString('tr-TR')}
-              </Typography>
-              <Typography variant="h6" sx={{ mb: 1, color: 'success.main' }}>
-                €{summary.todayIncomeEUR.toLocaleString('tr-TR')}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Gider: ₺{summary.todayExpenseTRY.toLocaleString('tr-TR')} / ${summary.todayExpenseUSD.toLocaleString('tr-TR')} / €{summary.todayExpenseEUR.toLocaleString('tr-TR')}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* Aylık Gelir */}
-        <Grid item xs={12} sm={6} lg={2}>
-          <Card>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                <AttachMoney sx={{ color: 'info.main', mr: 1 }} />
-                <Typography variant="h6">Aylık Gelir</Typography>
-              </Box>
-              <Typography variant="h6" sx={{ mb: 0.5, color: 'info.main' }}>
-                ₺{summary.monthlyIncomeTRY.toLocaleString('tr-TR')}
-              </Typography>
-              <Typography variant="h6" sx={{ mb: 0.5, color: 'info.main' }}>
-                ${summary.monthlyIncomeUSD.toLocaleString('tr-TR')}
-              </Typography>
-              <Typography variant="h6" sx={{ mb: 1, color: 'info.main' }}>
-                €{summary.monthlyIncomeEUR.toLocaleString('tr-TR')}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Net: ₺{(summary.monthlyIncomeTRY - summary.monthlyExpenseTRY).toLocaleString('tr-TR')} / ${(summary.monthlyIncomeUSD - summary.monthlyExpenseUSD).toLocaleString('tr-TR')} / €{(summary.monthlyIncomeEUR - summary.monthlyExpenseEUR).toLocaleString('tr-TR')}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* Aylık Gider */}
-        <Grid item xs={12} sm={6} lg={2}>
-          <Card>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                <TrendingDown sx={{ color: 'error.main', mr: 1 }} />
-                <Typography variant="h6">Aylık Gider</Typography>
-              </Box>
-              <Typography variant="h6" sx={{ mb: 0.5, color: 'error.main' }}>
-                ₺{summary.monthlyExpenseTRY.toLocaleString('tr-TR')}
-              </Typography>
-              <Typography variant="h6" sx={{ mb: 0.5, color: 'error.main' }}>
-                ${summary.monthlyExpenseUSD.toLocaleString('tr-TR')}
-              </Typography>
-              <Typography variant="h6" sx={{ mb: 1, color: 'error.main' }}>
-                €{summary.monthlyExpenseEUR.toLocaleString('tr-TR')}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Bu ay toplam
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* Toplam Borç */}
-        <Grid item xs={12} sm={6} lg={2}>
-          <Card>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                <Warning sx={{ color: 'warning.main', mr: 1 }} />
+                <TrendingUp sx={{ color: 'warning.main', mr: 1 }} />
                 <Typography variant="h6">Alacaklar Toplamı</Typography>
               </Box>
               <Typography variant="h6" sx={{ mb: 0.5, color: 'warning.main' }}>
@@ -813,11 +744,8 @@ const CashManagement: React.FC = () => {
               <Typography variant="h6" sx={{ mb: 0.5, color: 'warning.main' }}>
                 ${summary.totalDebtUSD.toLocaleString('tr-TR')}
               </Typography>
-              <Typography variant="h6" sx={{ mb: 1, color: 'warning.main' }}>
+              <Typography variant="h6" sx={{ color: 'warning.main' }}>
                 €{summary.totalDebtEUR.toLocaleString('tr-TR')}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Müşteri borçları
               </Typography>
             </CardContent>
           </Card>
@@ -877,76 +805,76 @@ const CashManagement: React.FC = () => {
                   const endIndex = startIndex + itemsPerPage;
                   const paginatedTransactions = transactions.slice(startIndex, endIndex);
                   return paginatedTransactions.map((transaction) => (
-                  <TableRow key={transaction.id} hover>
-                    <TableCell>
-                      {new Date(transaction.created_at).toLocaleDateString('tr-TR')}
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={transaction.type === 'in' ? 'Giriş' : 'Çıkış'}
-                        color={transaction.type === 'in' ? 'success' : 'error'}
-                        size="small"
-                        icon={transaction.type === 'in' ? <TrendingUp /> : <TrendingDown />}
-                      />
-                    </TableCell>
-                    <TableCell>{transaction.category}</TableCell>
-                    <TableCell>
-                      {transaction.description}
-                      {transaction.customer_name && (
-                        <Typography variant="caption" display="block" color="text.secondary">
-                          Müşteri: {transaction.customer_name}
+                    <TableRow key={transaction.id} hover>
+                      <TableCell>
+                        {new Date(transaction.created_at).toLocaleDateString('tr-TR')}
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={transaction.type === 'in' ? 'Giriş' : 'Çıkış'}
+                          color={transaction.type === 'in' ? 'success' : 'error'}
+                          size="small"
+                          icon={transaction.type === 'in' ? <TrendingUp /> : <TrendingDown />}
+                        />
+                      </TableCell>
+                      <TableCell>{transaction.category}</TableCell>
+                      <TableCell>
+                        {transaction.description}
+                        {transaction.customer_name && (
+                          <Typography variant="caption" display="block" color="text.secondary">
+                            Müşteri: {transaction.customer_name}
+                          </Typography>
+                        )}
+                      </TableCell>
+                      <TableCell align="right">
+                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                          {transaction.currency === 'TRY' ? '₺' : transaction.currency === 'EUR' ? '€' : '$'}
+                          {(transaction.previous_balance || 0).toLocaleString('tr-TR')}
                         </Typography>
-                      )}
-                    </TableCell>
-                    <TableCell align="right">
-                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                        {transaction.currency === 'TRY' ? '₺' : transaction.currency === 'EUR' ? '€' : '$'}
-                        {(transaction.previous_balance || 0).toLocaleString('tr-TR')}
-                      </Typography>
-                    </TableCell>
-                    <TableCell align="right">
-                      <Typography
-                        variant="body2"
-                        sx={{
-                          fontWeight: 600,
-                          color: transaction.type === 'in' ? 'success.main' : 'error.main'
-                        }}
-                      >
-                        {transaction.type === 'in' ? '+' : '-'}
-                        {transaction.currency === 'TRY' ? '₺' : transaction.currency === 'EUR' ? '€' : '$'}
-                        {transaction.amount.toLocaleString('tr-TR')}
-                      </Typography>
-                    </TableCell>
-                    <TableCell align="right">
-                      <Typography
-                        variant="body2"
-                        sx={{
-                          fontWeight: 600,
-                          color: (transaction.new_balance || 0) >= 0 ? 'success.main' : 'error.main'
-                        }}
-                      >
-                        {transaction.currency === 'TRY' ? '₺' : transaction.currency === 'EUR' ? '€' : '$'}
-                        {(transaction.new_balance || 0).toLocaleString('tr-TR')}
-                      </Typography>
-                    </TableCell>
-                    <TableCell align="center">
-                      <IconButton
-                        size="small"
-                        onClick={() => handleOpenEditDialog(transaction)}
-                        disabled={transaction.reference_type === 'sale'}
-                      >
-                        <Edit />
-                      </IconButton>
-                      <IconButton
-                        size="small"
-                        color="error"
-                        onClick={() => handleOpenDeleteDialog(transaction)}
-                        disabled={transaction.reference_type === 'sale'}
-                      >
-                        <Delete />
-                      </IconButton>
-                    </TableCell>
-                  </TableRow>
+                      </TableCell>
+                      <TableCell align="right">
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            fontWeight: 600,
+                            color: transaction.type === 'in' ? 'success.main' : 'error.main'
+                          }}
+                        >
+                          {transaction.type === 'in' ? '+' : '-'}
+                          {transaction.currency === 'TRY' ? '₺' : transaction.currency === 'EUR' ? '€' : '$'}
+                          {transaction.amount.toLocaleString('tr-TR')}
+                        </Typography>
+                      </TableCell>
+                      <TableCell align="right">
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            fontWeight: 600,
+                            color: (transaction.new_balance || 0) >= 0 ? 'success.main' : 'error.main'
+                          }}
+                        >
+                          {transaction.currency === 'TRY' ? '₺' : transaction.currency === 'EUR' ? '€' : '$'}
+                          {(transaction.new_balance || 0).toLocaleString('tr-TR')}
+                        </Typography>
+                      </TableCell>
+                      <TableCell align="center">
+                        <IconButton
+                          size="small"
+                          onClick={() => handleOpenEditDialog(transaction)}
+                          disabled={transaction.reference_type === 'sale'}
+                        >
+                          <Edit />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() => handleOpenDeleteDialog(transaction)}
+                          disabled={transaction.reference_type === 'sale'}
+                        >
+                          <Delete />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
                   ));
                 })()}
                 {transactions.length === 0 && (
@@ -959,7 +887,7 @@ const CashManagement: React.FC = () => {
               </TableBody>
             </Table>
           </TableContainer>
-          
+
           {/* Pagination */}
           {transactions.length > 0 && (
             <Pagination
@@ -1162,8 +1090,8 @@ const CashManagement: React.FC = () => {
       </Dialog>
 
       {/* Currency Exchange Dialog */}
-      <Dialog 
-        open={currencyExchangeDialogOpen} 
+      <Dialog
+        open={currencyExchangeDialogOpen}
         onClose={handleCloseCurrencyExchangeDialog}
         maxWidth="md"
         fullWidth
@@ -1180,14 +1108,14 @@ const CashManagement: React.FC = () => {
             )}
 
             <Grid container spacing={2}>
-              <Grid size={{ xs:12}}>
+              <Grid size={{ xs: 12 }}>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                   Bir para biriminden diğerine çevirme işlemi yapın
                 </Typography>
               </Grid>
 
               {/* Çıkış Para Birimi */}
-              <Grid size={{ xs:2 }}>
+              <Grid size={{ xs: 2 }}>
                 <FormControl fullWidth>
                   <InputLabel>Çıkış Para Birimi</InputLabel>
                   <Select
@@ -1203,7 +1131,7 @@ const CashManagement: React.FC = () => {
               </Grid>
 
               {/* Çıkış Tutarı */}
-              <Grid size={{xs:3}}>
+              <Grid size={{ xs: 3 }}>
                 <TextField
                   fullWidth
                   label="Çıkış Tutarı"
@@ -1219,7 +1147,7 @@ const CashManagement: React.FC = () => {
               </Grid>
 
               {/* Giriş Para Birimi */}
-              <Grid size={{ xs:2}}>
+              <Grid size={{ xs: 2 }}>
                 <FormControl fullWidth>
                   <InputLabel>Giriş Para Birimi</InputLabel>
                   <Select
@@ -1235,7 +1163,7 @@ const CashManagement: React.FC = () => {
               </Grid>
 
               {/* Giriş Tutarı */}
-              <Grid size={{ xs:3 }}>
+              <Grid size={{ xs: 3 }}>
                 <TextField
                   fullWidth
                   label="Giriş Tutarı"

@@ -22,12 +22,14 @@ import {
 import {
   Assessment,
   Download,
-  Print,
+  PictureAsPdf,
   AttachMoney,
   AccountBalanceWallet,
 } from '@mui/icons-material';
 import { dbAPI } from '../services/api';
 import Pagination from './common/Pagination';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface SaleReport {
   date: string;
@@ -65,7 +67,7 @@ const Reports: React.FC = () => {
   const [supplierPaymentsData, setSupplierPaymentsData] = useState<any[]>([]);
   const [cashIncomeData, setCashIncomeData] = useState<any[]>([]); // Kasa girişleri
   const [cashBalance, setCashBalance] = useState({ TRY: 0, USD: 0, EUR: 0 });
-  
+
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
@@ -144,9 +146,9 @@ const Reports: React.FC = () => {
           const transactionDate = new Date(transaction.created_at);
           const start = new Date(startDate);
           const end = new Date(endDate);
-          return transaction.type === 'out' && 
-                 transactionDate >= start && 
-                 transactionDate <= end;
+          return transaction.type === 'out' &&
+            transactionDate >= start &&
+            transactionDate <= end;
         });
         setSupplierPaymentsData(filtered);
       } else {
@@ -168,9 +170,9 @@ const Reports: React.FC = () => {
           const transactionDate = new Date(t.created_at);
           const start = new Date(startDate);
           const end = new Date(endDate);
-          return t.type === 'in' && 
-                 transactionDate >= start && 
-                 transactionDate <= end;
+          return t.type === 'in' &&
+            transactionDate >= start &&
+            transactionDate <= end;
         });
         setCashIncomeData(filtered);
       }
@@ -198,6 +200,199 @@ const Reports: React.FC = () => {
       }
     } catch (error) {
       console.error('Error loading cash balance:', error);
+    }
+  };
+
+  // Excel export fonksiyonu
+  const handleExportToExcel = () => {
+    try {
+      // Dinamik import ile xlsx kütüphanesini yükle
+      import('xlsx').then((XLSX) => {
+        const wb = XLSX.utils.book_new();
+
+        if (reportType === 'income') {
+          // Gelir raporu
+          const data = cashIncomeData.map((t: any) => ({
+            'Tarih': t.created_at ? new Date(t.created_at).toLocaleDateString('tr-TR') : '-',
+            'Kategori': t.category || '-',
+            'Açıklama': t.description || '-',
+            'Para Birimi': t.currency || 'TRY',
+            'Tutar': Number(t.amount) || 0,
+          }));
+
+          const ws = XLSX.utils.json_to_sheet(data);
+          XLSX.utils.book_append_sheet(wb, ws, 'Gelir Raporu');
+
+        } else if (reportType === 'expense') {
+          // Gider raporu
+          const data = supplierPaymentsData.map((t: any) => ({
+            'Tarih': t.created_at ? new Date(t.created_at).toLocaleDateString('tr-TR') : '-',
+            'Kategori': t.category || '-',
+            'Açıklama': t.description || '-',
+            'Para Birimi': t.currency || 'TRY',
+            'Tutar': Number(t.amount) || 0,
+          }));
+
+          const ws = XLSX.utils.json_to_sheet(data);
+          XLSX.utils.book_append_sheet(wb, ws, 'Gider Raporu');
+
+        } else if (reportType === 'net') {
+          // Net kar/zarar raporu
+          const data = [
+            {
+              'Para Birimi': 'TRY (₺)',
+              'Toplam Gelir': incomeStats.totalRevenueTRY,
+              'Toplam Gider': expenseStats.totalExpenseTRY,
+              'Net Kar/Zarar': incomeStats.totalRevenueTRY - expenseStats.totalExpenseTRY,
+            },
+            {
+              'Para Birimi': 'USD ($)',
+              'Toplam Gelir': incomeStats.totalRevenueUSD,
+              'Toplam Gider': expenseStats.totalExpenseUSD,
+              'Net Kar/Zarar': incomeStats.totalRevenueUSD - expenseStats.totalExpenseUSD,
+            },
+            {
+              'Para Birimi': 'EUR (€)',
+              'Toplam Gelir': incomeStats.totalRevenueEUR,
+              'Toplam Gider': expenseStats.totalExpenseEUR,
+              'Net Kar/Zarar': incomeStats.totalRevenueEUR - expenseStats.totalExpenseEUR,
+            },
+          ];
+
+          const ws = XLSX.utils.json_to_sheet(data);
+          XLSX.utils.book_append_sheet(wb, ws, 'Net Kar Zarar');
+        }
+
+        // Dosyayı indir
+        const fileName = `${reportType === 'income' ? 'Gelir' : reportType === 'expense' ? 'Gider' : 'Net_Kar_Zarar'}_Raporu_${startDate}_${endDate}.xlsx`;
+        XLSX.writeFile(wb, fileName);
+      });
+    } catch (error) {
+      console.error('Excel export error:', error);
+      alert('Excel dosyası oluşturulurken hata oluştu');
+    }
+  };
+
+  // PDF export fonksiyonu
+  const handleExportToPDF = () => {
+    try {
+      // Türkçe ve özel karakterleri ASCII'ye çevir
+      const toAscii = (text: string) => {
+        if (!text) return '';
+        return text
+          .replace(/ğ/g, 'g').replace(/Ğ/g, 'G')
+          .replace(/ü/g, 'u').replace(/Ü/g, 'U')
+          .replace(/ş/g, 's').replace(/Ş/g, 'S')
+          .replace(/ı/g, 'i').replace(/İ/g, 'I')
+          .replace(/ö/g, 'o').replace(/Ö/g, 'O')
+          .replace(/ç/g, 'c').replace(/Ç/g, 'C')
+          .replace(/→/g, '->')
+          .replace(/←/g, '<-')
+          .replace(/€/g, 'EUR')
+          .replace(/₺/g, 'TRY')
+          .replace(/\$/g, 'USD')
+          .replace(/[^\x00-\x7F]/g, ''); // Diğer tüm ASCII olmayan karakterleri kaldır
+      };
+
+      const doc = new jsPDF('p', 'mm', 'a4');
+      doc.setLanguage('tr');
+      let yPos = 20;
+
+      // Başlık
+      doc.setFillColor(141, 110, 99);
+      doc.rect(0, 0, 210, 35, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(20);
+      doc.setFont('helvetica', 'bold');
+
+      const title = reportType === 'income' ? 'GELIR RAPORU' :
+        reportType === 'expense' ? 'GIDER RAPORU' :
+          'NET KAR/ZARAR RAPORU';
+      doc.text(toAscii(title), 105, 15, { align: 'center' });
+
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Tarih: ${new Date().toLocaleDateString('tr-TR')}`, 105, 25, { align: 'center' });
+
+      // Tarih aralığı
+      yPos = 45;
+      doc.setFillColor(255, 245, 240);
+      doc.roundedRect(14, yPos - 3, 182, 12, 2, 2, 'F');
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(141, 110, 99);
+      const dateRange = `${new Date(startDate).toLocaleDateString('tr-TR')} - ${new Date(endDate).toLocaleDateString('tr-TR')}`;
+      doc.text(toAscii(dateRange), 105, yPos + 4, { align: 'center' });
+
+      yPos += 15;
+
+      if (reportType === 'income' || reportType === 'expense') {
+        // Gelir veya Gider detay tablosu
+        const data = reportType === 'income' ? cashIncomeData : supplierPaymentsData;
+        const tableData = data.map((t: any) => [
+          t.created_at ? new Date(t.created_at).toLocaleDateString('tr-TR') : '-',
+          toAscii(t.category || '-'),
+          toAscii(t.description || '-'),
+          t.currency || 'TRY',
+          (Number(t.amount) || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 }),
+        ]);
+
+        autoTable(doc, {
+          startY: yPos,
+          head: [[toAscii('Tarih'), toAscii('Kategori'), toAscii('Aciklama'), 'Para Birimi', 'Tutar']],
+          body: tableData,
+          theme: 'grid',
+          headStyles: { fillColor: [141, 110, 99], textColor: 255 },
+          styles: { fontSize: 9, cellPadding: 3 },
+          columnStyles: {
+            0: { cellWidth: 25 },
+            1: { cellWidth: 30 },
+            2: { cellWidth: 70 },
+            3: { cellWidth: 25 },
+            4: { cellWidth: 30, halign: 'right' },
+          },
+        });
+
+      } else if (reportType === 'net') {
+        // Net kar/zarar özet tablosu
+        const tableData = [
+          ['TRY',
+            incomeStats.totalRevenueTRY.toLocaleString('tr-TR', { minimumFractionDigits: 2 }),
+            expenseStats.totalExpenseTRY.toLocaleString('tr-TR', { minimumFractionDigits: 2 }),
+            (incomeStats.totalRevenueTRY - expenseStats.totalExpenseTRY).toLocaleString('tr-TR', { minimumFractionDigits: 2 })],
+          ['USD',
+            incomeStats.totalRevenueUSD.toLocaleString('tr-TR', { minimumFractionDigits: 2 }),
+            expenseStats.totalExpenseUSD.toLocaleString('tr-TR', { minimumFractionDigits: 2 }),
+            (incomeStats.totalRevenueUSD - expenseStats.totalExpenseUSD).toLocaleString('tr-TR', { minimumFractionDigits: 2 })],
+          ['EUR',
+            incomeStats.totalRevenueEUR.toLocaleString('tr-TR', { minimumFractionDigits: 2 }),
+            expenseStats.totalExpenseEUR.toLocaleString('tr-TR', { minimumFractionDigits: 2 }),
+            (incomeStats.totalRevenueEUR - expenseStats.totalExpenseEUR).toLocaleString('tr-TR', { minimumFractionDigits: 2 })],
+        ];
+
+        autoTable(doc, {
+          startY: yPos,
+          head: [[toAscii('Para Birimi'), toAscii('Toplam Gelir'), toAscii('Toplam Gider'), toAscii('Net Kar/Zarar')]],
+          body: tableData,
+          theme: 'grid',
+          headStyles: { fillColor: [141, 110, 99], textColor: 255 },
+          styles: { fontSize: 11, cellPadding: 5 },
+          columnStyles: {
+            0: { cellWidth: 40, halign: 'center' },
+            1: { cellWidth: 50, halign: 'right' },
+            2: { cellWidth: 50, halign: 'right' },
+            3: { cellWidth: 50, halign: 'right', fontStyle: 'bold' },
+          },
+        });
+      }
+
+      // Dosyayı kaydet
+      const fileName = `${reportType === 'income' ? 'Gelir' : reportType === 'expense' ? 'Gider' : 'Net_Kar_Zarar'}_Raporu_${startDate}_${endDate}.pdf`;
+      doc.save(fileName);
+
+    } catch (error) {
+      console.error('PDF export error:', error);
+      alert('PDF dosyası oluşturulurken hata oluştu');
     }
   };
 
@@ -288,20 +483,17 @@ const Reports: React.FC = () => {
                 <Button
                   variant="outlined"
                   startIcon={<Download />}
-                  onClick={() => {
-                    // TODO: Excel export
-                  }}
+                  onClick={handleExportToExcel}
                 >
                   Excel
                 </Button>
                 <Button
                   variant="outlined"
-                  startIcon={<Print />}
-                  onClick={() => {
-                    window.print();
-                  }}
+                  startIcon={<PictureAsPdf />}
+                  onClick={handleExportToPDF}
+                  color="error"
                 >
-                  Yazdır
+                  PDF
                 </Button>
               </Box>
             </Grid>
@@ -536,7 +728,7 @@ const Reports: React.FC = () => {
                 </TableBody>
               </Table>
             </TableContainer>
-            
+
             {/* Pagination */}
             {cashIncomeData.length > 0 && (
               <Pagination
@@ -598,7 +790,7 @@ const Reports: React.FC = () => {
                 </TableBody>
               </Table>
             </TableContainer>
-            
+
             {/* Pagination */}
             {supplierPaymentsData.length > 0 && (
               <Pagination
