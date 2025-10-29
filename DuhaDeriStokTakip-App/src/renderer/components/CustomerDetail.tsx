@@ -44,11 +44,27 @@ import {
   AttachMoney,
   Delete,
   PictureAsPdf,
+  Add,
+  Clear,
+  CheckCircle,
 } from '@mui/icons-material';
+import TablePagination from '@mui/material/TablePagination';
 import { dbAPI } from '../services/api';
-import { Customer } from '../../main/database/models';
+import { Customer, Product } from '../../main/database/models';
+import { DEFAULT_CURRENCIES } from '../constants/currencies';
+import CurrencySelect from './common/CurrencySelect';
+import { Autocomplete, Divider, Paper } from '@mui/material';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+
+interface SaleItem {
+  productId: number;
+  productName: string;
+  quantityPieces: number;
+  quantityDesi: number;
+  unitPricePerDesi: number;
+  total: number;
+}
 
 interface CustomerSale {
   id: number;
@@ -119,6 +135,17 @@ const CustomerDetail: React.FC = () => {
   const [paymentCurrency, setPaymentCurrency] = useState('TRY');
   const [paymentNotes, setPaymentNotes] = useState('');
 
+  // Sale dialog states
+  const [saleDialogOpen, setSaleDialogOpen] = useState(false);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [saleItems, setSaleItems] = useState<SaleItem[]>([]);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [quantityPieces, setQuantityPieces] = useState<string>('');
+  const [quantityDesi, setQuantityDesi] = useState<string>('');
+  const [unitPricePerDesi, setUnitPricePerDesi] = useState<string>('');
+  const [saleCurrency, setSaleCurrency] = useState(DEFAULT_CURRENCIES.SALES);
+  const [saleErrors, setSaleErrors] = useState<string[]>([]);
+
   // Tarih filtresi state'leri - Default olarak son 1 ay
   const getDefaultStartDate = () => {
     const date = new Date();
@@ -136,6 +163,12 @@ const CustomerDetail: React.FC = () => {
   const [filteredSales, setFilteredSales] = useState<CustomerSale[]>([]);
   const [filteredPayments, setFilteredPayments] = useState<CustomerPayment[]>([]);
   const [previousBalance, setPreviousBalance] = useState({ TRY: 0, USD: 0, EUR: 0 });
+
+  // Pagination states
+  const [salesPage, setSalesPage] = useState(0);
+  const [salesRowsPerPage, setSalesRowsPerPage] = useState(10);
+  const [paymentsPage, setPaymentsPage] = useState(0);
+  const [paymentsRowsPerPage, setPaymentsRowsPerPage] = useState(10);
 
   // Tutar formatlama fonksiyonları
   const formatNumberWithCommas = (value: string): string => {
@@ -172,6 +205,12 @@ const CustomerDetail: React.FC = () => {
       const customerResponse = await dbAPI.getCustomerById(customerId);
       if (customerResponse.success && customerResponse.data) {
         setCustomer(customerResponse.data);
+      }
+
+      // Ürünleri yükle (satış için)
+      const productsResponse = await dbAPI.getProducts();
+      if (productsResponse.success && productsResponse.data) {
+        setProducts(productsResponse.data);
       }
 
       // Müşteri ödemelerini yükle
@@ -687,6 +726,131 @@ const CustomerDetail: React.FC = () => {
     setSnackbar({ open: true, message: 'PDF basariyla indirildi', severity: 'success' });
   };
 
+  // Satış fonksiyonları
+  const addItemToSale = () => {
+    const newErrors: string[] = [];
+
+    if (!selectedProduct) {
+      newErrors.push('Lütfen bir ürün seçin');
+    }
+
+    if (!quantityPieces || parseInt(quantityPieces) <= 0) {
+      newErrors.push('Geçerli bir adet miktarı girin');
+    }
+
+    if (!quantityDesi || parseFormattedNumber(quantityDesi) <= 0) {
+      newErrors.push('Geçerli bir desi miktarı girin');
+    }
+
+    if (!unitPricePerDesi || parseFormattedNumber(unitPricePerDesi) <= 0) {
+      newErrors.push('Geçerli bir desi başına fiyat girin');
+    }
+
+    const piecesToSell = parseInt(quantityPieces);
+    const availableStock = selectedProduct?.stock_quantity || 0;
+
+    if (selectedProduct && quantityPieces && piecesToSell > availableStock) {
+      newErrors.push(`Stok yetersiz! Mevcut stok: ${availableStock} adet`);
+    }
+
+    if (newErrors.length > 0) {
+      setSaleErrors(newErrors);
+      return;
+    }
+
+    const item: SaleItem = {
+      productId: selectedProduct!.id!,
+      productName: `${selectedProduct!.category} - ${selectedProduct!.color}`,
+      quantityPieces: piecesToSell,
+      quantityDesi: parseFormattedNumber(quantityDesi),
+      unitPricePerDesi: parseFormattedNumber(unitPricePerDesi),
+      total: parseFormattedNumber(quantityDesi) * parseFormattedNumber(unitPricePerDesi),
+    };
+
+    setSaleItems([...saleItems, item]);
+    setSelectedProduct(null);
+    setQuantityPieces('');
+    setQuantityDesi('');
+    setUnitPricePerDesi('');
+    setSaleErrors([]);
+  };
+
+  const removeItemFromSale = (index: number) => {
+    setSaleItems(saleItems.filter((_, i) => i !== index));
+  };
+
+  const calculateTotal = () => {
+    return saleItems.reduce((sum, item) => sum + item.total, 0);
+  };
+
+  const completeSale = async () => {
+    if (!customer) {
+      setSaleErrors(['Müşteri bilgisi bulunamadı']);
+      return;
+    }
+
+    if (saleItems.length === 0) {
+      setSaleErrors(['Satışa en az bir ürün ekleyin']);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const totalAmount = calculateTotal();
+
+      const saleData = {
+        customer_id: customerId,
+        total_amount: totalAmount,
+        currency: saleCurrency,
+        payment_status: 'pending',
+        sale_date: new Date().toISOString(),
+        notes: `Satış - ${saleItems.length} ürün`,
+        items: saleItems.map(item => ({
+          product_id: item.productId,
+          quantity_pieces: item.quantityPieces,
+          quantity_desi: item.quantityDesi,
+          unit_price_per_desi: item.unitPricePerDesi,
+          total_price: item.total
+        }))
+      };
+
+      const saleResponse = await dbAPI.createSale(saleData);
+      if (!saleResponse.success) {
+        throw new Error(saleResponse.error || 'Satış kaydedilemedi');
+      }
+
+      setSnackbar({ open: true, message: 'Satış başarıyla tamamlandı', severity: 'success' });
+
+      // Reset form
+      setSaleItems([]);
+      setSaleCurrency(DEFAULT_CURRENCIES.SALES);
+      setSaleErrors([]);
+      setSaleDialogOpen(false);
+
+      // Verileri yeniden yükle
+      await loadCustomerData();
+
+    } catch (error) {
+      console.error('Sale completion error:', error);
+      setSnackbar({
+        open: true,
+        message: error instanceof Error ? error.message : 'Satış tamamlanırken hata oluştu',
+        severity: 'error'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const clearSale = () => {
+    setSaleItems([]);
+    setSelectedProduct(null);
+    setQuantityPieces('');
+    setQuantityDesi('');
+    setUnitPricePerDesi('');
+    setSaleErrors([]);
+  };
+
   // Ödeme sil
   const handleDeletePayment = async () => {
     if (!selectedPayment || !customer) return;
@@ -772,6 +936,15 @@ const CustomerDetail: React.FC = () => {
         </Box>
         <Button
           variant="outlined"
+          startIcon={<ShoppingCart />}
+          onClick={() => setSaleDialogOpen(true)}
+          size="large"
+          color="success"
+        >
+          Satış Yap
+        </Button>
+        <Button
+          variant="outlined"
           startIcon={<PictureAsPdf />}
           onClick={handleDownloadPDF}
           size="large"
@@ -790,150 +963,160 @@ const CustomerDetail: React.FC = () => {
       </Box>
 
       {/* Customer Info & Stats */}
-      <Box sx={{ display: 'flex', gap: 3, mb: 4, flexWrap: 'wrap' }}>
-        {/* Customer Info */}
-        <Box sx={{ flex: '1 1 300px', minWidth: '300px' }}>
-          <Card>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-                <Avatar sx={{ bgcolor: 'primary.main', width: 60, height: 60, mr: 2 }}>
-                  <Person sx={{ fontSize: 30 }} />
+      <Box sx={{ mb: 4 }}>
+        {/* Customer Info - Horizontal */}
+        <Card sx={{ mb: 2 }}>
+          <CardContent sx={{ py: 1.5, px: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <Avatar sx={{ bgcolor: 'primary.main', width: 48, height: 48, mr: 2 }}>
+                  <Person sx={{ fontSize: 24 }} />
                 </Avatar>
                 <Box>
-                  <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 600, fontSize: '1rem' }}>
                     {customer.name}
                   </Typography>
-                  <Typography variant="body2" color="text.secondary">
+                  <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
                     Müşteri #{customer.id}
                   </Typography>
                 </Box>
               </Box>
 
-              <List dense>
-                <ListItem>
-                  <Phone sx={{ mr: 2, color: 'text.secondary' }} />
-                  <ListItemText
-                    primary="Telefon"
-                    secondary={customer.phone || 'Belirtilmemiş'}
-                  />
-                </ListItem>
-                <ListItem>
-                  <Business sx={{ mr: 2, color: 'text.secondary' }} />
-                  <ListItemText
-                    primary="Email"
-                    secondary={customer.email || 'Belirtilmemiş'}
-                  />
-                </ListItem>
-                <ListItem>
-                  <LocationOn sx={{ mr: 2, color: 'text.secondary' }} />
-                  <ListItemText
-                    primary="Adres"
-                    secondary={customer.address || 'Belirtilmemiş'}
-                  />
-                </ListItem>
-              </List>
-            </CardContent>
-          </Card>
-        </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Phone sx={{ color: 'text.secondary', fontSize: 18 }} />
+                <Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem', display: 'block' }}>
+                    Telefon
+                  </Typography>
+                  <Typography variant="body2" sx={{ fontSize: '0.8rem', fontWeight: 500 }}>
+                    {customer.phone || 'Belirtilmemiş'}
+                  </Typography>
+                </Box>
+              </Box>
+
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Business sx={{ color: 'text.secondary', fontSize: 18 }} />
+                <Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem', display: 'block' }}>
+                    Email
+                  </Typography>
+                  <Typography variant="body2" sx={{ fontSize: '0.8rem', fontWeight: 500 }}>
+                    {customer.email || 'Belirtilmemiş'}
+                  </Typography>
+                </Box>
+              </Box>
+
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1, minWidth: '200px' }}>
+                <LocationOn sx={{ color: 'text.secondary', fontSize: 18 }} />
+                <Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem', display: 'block' }}>
+                    Adres
+                  </Typography>
+                  <Typography variant="body2" sx={{ fontSize: '0.8rem', fontWeight: 500 }}>
+                    {customer.address || 'Belirtilmemiş'}
+                  </Typography>
+                </Box>
+              </Box>
+            </Box>
+          </CardContent>
+        </Card>
 
         {/* Stats Cards */}
-        <Box sx={{ flex: '2 1 600px', minWidth: '600px' }}>
-          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 2 }}>
-            <Card>
-              <CardContent sx={{ textAlign: 'center', p: 2 }}>
-                <Avatar sx={{ bgcolor: 'info.main', mx: 'auto', mb: 1 }}>
-                  <ShoppingCart />
-                </Avatar>
-                <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                  {stats.totalSales}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Toplam Satış
-                </Typography>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent sx={{ textAlign: 'center', p: 2 }}>
-                <Avatar sx={{ bgcolor: 'success.main', mx: 'auto', mb: 1 }}>
-                  <TrendingUp />
-                </Avatar>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                  Toplam Alışveriş
-                </Typography>
-                <Typography variant="body1" sx={{ fontWeight: 600, display: 'block' }}>
-                  ₺{(stats.totalPurchasesTRY || 0).toLocaleString('tr-TR')}
-                </Typography>
-                <Typography variant="body1" sx={{ fontWeight: 600, display: 'block' }}>
-                  ${(stats.totalPurchasesUSD || 0).toLocaleString('tr-TR')}
-                </Typography>
-                <Typography variant="body1" sx={{ fontWeight: 600, display: 'block' }}>
-                  €{(stats.totalPurchasesEUR || 0).toLocaleString('tr-TR')}
-                </Typography>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent sx={{ textAlign: 'center', p: 2 }}>
-                <Avatar sx={{ bgcolor: 'warning.main', mx: 'auto', mb: 1 }}>
-                  <AttachMoney />
-                </Avatar>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                  Toplam Ödeme
-                </Typography>
-                <Typography variant="body1" sx={{ fontWeight: 600, display: 'block' }}>
-                  ₺{(stats.totalPaymentsTRY || 0).toLocaleString('tr-TR')}
-                </Typography>
-                <Typography variant="body1" sx={{ fontWeight: 600, display: 'block' }}>
-                  ${(stats.totalPaymentsUSD || 0).toLocaleString('tr-TR')}
-                </Typography>
-                <Typography variant="body1" sx={{ fontWeight: 600, display: 'block' }}>
-                  €{(stats.totalPaymentsEUR || 0).toLocaleString('tr-TR')}
-                </Typography>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent sx={{ textAlign: 'center', p: 2 }}>
-                <Avatar sx={{
-                  bgcolor: stats.currentBalance > 0 ? 'error.main' : 'success.main',
-                  mx: 'auto', mb: 1
-                }}>
-                  <AccountBalance />
-                </Avatar>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                  Güncel Bakiye
-                </Typography>
-                <Typography
-                  variant="body1"
-                  sx={{
-                    fontWeight: 600,
-                    display: 'block',
-                    color: (stats.balanceTRY || 0) > 0 ? 'error.main' : (stats.balanceTRY || 0) < 0 ? 'success.main' : 'text.primary'
-                  }}
-                >
-                  {(stats.balanceTRY || 0) > 0 ? '+' : ''}₺{(stats.balanceTRY || 0).toLocaleString('tr-TR')}
-                </Typography>
-                <Typography
-                  variant="body1"
-                  sx={{
-                    fontWeight: 600,
-                    display: 'block',
-                    color: (stats.balanceUSD || 0) > 0 ? 'error.main' : (stats.balanceUSD || 0) < 0 ? 'success.main' : 'text.primary'
-                  }}
-                >
-                  {(stats.balanceUSD || 0) > 0 ? '+' : ''}${(stats.balanceUSD || 0).toLocaleString('tr-TR')}
-                </Typography>
-                <Typography
-                  variant="body1"
-                  sx={{
-                    fontWeight: 600,
-                    display: 'block',
-                    color: (stats.balanceEUR || 0) > 0 ? 'error.main' : (stats.balanceEUR || 0) < 0 ? 'success.main' : 'text.primary'
-                  }}
-                >
-                  {(stats.balanceEUR || 0) > 0 ? '+' : ''}€{(stats.balanceEUR || 0).toLocaleString('tr-TR')}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Box>
+        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 2 }}>
+          <Card>
+            <CardContent sx={{ textAlign: 'center', py: 1.5, px: 1.5 }}>
+              <Avatar sx={{ bgcolor: 'info.main', mx: 'auto', mb: 0.5, width: 36, height: 36 }}>
+                <ShoppingCart sx={{ fontSize: 20 }} />
+              </Avatar>
+              <Typography variant="h5" sx={{ fontWeight: 700, fontSize: '1.5rem' }}>
+                {stats.totalSales}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                Toplam Satış
+              </Typography>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent sx={{ textAlign: 'center', py: 1.5, px: 1.5 }}>
+              <Avatar sx={{ bgcolor: 'success.main', mx: 'auto', mb: 0.5, width: 36, height: 36 }}>
+                <TrendingUp sx={{ fontSize: 20 }} />
+              </Avatar>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5, fontSize: '0.75rem' }}>
+                Toplam Alışveriş
+              </Typography>
+              <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem' }}>
+                ₺{(stats.totalPurchasesTRY || 0).toLocaleString('tr-TR')}
+              </Typography>
+              <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem' }}>
+                ${(stats.totalPurchasesUSD || 0).toLocaleString('tr-TR')}
+              </Typography>
+              <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem' }}>
+                €{(stats.totalPurchasesEUR || 0).toLocaleString('tr-TR')}
+              </Typography>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent sx={{ textAlign: 'center', py: 1.5, px: 1.5 }}>
+              <Avatar sx={{ bgcolor: 'warning.main', mx: 'auto', mb: 0.5, width: 36, height: 36 }}>
+                <AttachMoney sx={{ fontSize: 20 }} />
+              </Avatar>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5, fontSize: '0.75rem' }}>
+                Toplam Ödeme
+              </Typography>
+              <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem' }}>
+                ₺{(stats.totalPaymentsTRY || 0).toLocaleString('tr-TR')}
+              </Typography>
+              <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem' }}>
+                ${(stats.totalPaymentsUSD || 0).toLocaleString('tr-TR')}
+              </Typography>
+              <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem' }}>
+                €{(stats.totalPaymentsEUR || 0).toLocaleString('tr-TR')}
+              </Typography>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent sx={{ textAlign: 'center', py: 1.5, px: 1.5 }}>
+              <Avatar sx={{
+                bgcolor: stats.currentBalance > 0 ? 'error.main' : 'success.main',
+                mx: 'auto', mb: 0.5, width: 36, height: 36
+              }}>
+                <AccountBalance sx={{ fontSize: 20 }} />
+              </Avatar>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5, fontSize: '0.75rem' }}>
+                Güncel Bakiye
+              </Typography>
+              <Typography
+                variant="body2"
+                sx={{
+                  fontWeight: 600,
+                  fontSize: '0.8rem',
+                  color: (stats.balanceTRY || 0) > 0 ? 'success.main' : 'error.main'
+                }}
+              >
+                {(stats.balanceTRY || 0) > 0 ? '+' : ''}₺{(stats.balanceTRY || 0).toLocaleString('tr-TR')}
+              </Typography>
+              <Typography
+                variant="body2"
+                sx={{
+                  fontWeight: 600,
+                  fontSize: '0.8rem',
+                  color: (stats.balanceUSD || 0) > 0 ? 'success.main' : 'error.main'
+                }}
+              >
+                {(stats.balanceUSD || 0) > 0 ? '+' : ''}${(stats.balanceUSD || 0).toLocaleString('tr-TR')}
+              </Typography>
+              <Typography
+                variant="body2"
+                sx={{
+                  fontWeight: 600,
+                  fontSize: '0.8rem',
+                  color: (stats.balanceEUR || 0) > 0 ? 'success.main' : 'error.main'
+                }}
+              >
+                {(stats.balanceEUR || 0) > 0 ? '+' : ''}€{(stats.balanceEUR || 0).toLocaleString('tr-TR')}
+              </Typography>
+            </CardContent>
+          </Card>
         </Box>
       </Box>
 
@@ -979,8 +1162,8 @@ const CustomerDetail: React.FC = () => {
                 </Button>
               </Box>
 
-              <TableContainer sx={{ maxHeight: 500 }}>
-                <Table size="small" stickyHeader>
+              <TableContainer>
+                <Table size="small">
                   <TableHead>
                     <TableRow>
                       <TableCell>Tarih</TableCell>
@@ -989,36 +1172,38 @@ const CustomerDetail: React.FC = () => {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {filteredSales.map((sale) => (
-                      <TableRow key={sale.id} hover>
-                        <TableCell sx={{ verticalAlign: 'top', minWidth: 100 }}>
-                          {new Date(sale.date).toLocaleDateString('tr-TR')}
-                        </TableCell>
-                        <TableCell sx={{ verticalAlign: 'top' }}>
-                          {sale.items && sale.items.length > 0 ? (
-                            <Box>
-                              {sale.items.map((item, idx) => (
-                                <Box key={idx} sx={{ mb: 0.5 }}>
-                                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                                    {item.productName}
-                                  </Typography>
-                                  <Typography variant="caption" color="text.secondary">
-                                    {item.quantity} desi × {sale.currency === 'TRY' ? '₺' : sale.currency === 'EUR' ? '€' : '$'}{item.unitPrice.toLocaleString('tr-TR')}/desi = {sale.currency === 'TRY' ? '₺' : sale.currency === 'EUR' ? '€' : '$'}{item.total.toLocaleString('tr-TR')}
-                                  </Typography>
-                                </Box>
-                              ))}
-                            </Box>
-                          ) : (
-                            <Typography variant="body2" color="text.secondary">
-                              Detay bilgisi yok
-                            </Typography>
-                          )}
-                        </TableCell>
-                        <TableCell align="right" sx={{ verticalAlign: 'top', fontWeight: 600 }}>
-                          {sale.currency === 'TRY' ? '₺' : sale.currency === 'EUR' ? '€' : '$'}{(sale.totalAmount || 0).toLocaleString('tr-TR')}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {filteredSales
+                      .slice(salesPage * salesRowsPerPage, salesPage * salesRowsPerPage + salesRowsPerPage)
+                      .map((sale, saleIndex) => (
+                        <TableRow key={`sale-${sale.id}-${saleIndex}`} hover>
+                          <TableCell sx={{ verticalAlign: 'top', minWidth: 100 }}>
+                            {new Date(sale.date).toLocaleDateString('tr-TR')}
+                          </TableCell>
+                          <TableCell sx={{ verticalAlign: 'top' }}>
+                            {sale.items && sale.items.length > 0 ? (
+                              <Box>
+                                {sale.items.map((item, idx) => (
+                                  <Box key={idx} sx={{ mb: 0.5 }}>
+                                    <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                      {item.productName}
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary">
+                                      {item.quantity} desi × {sale.currency === 'TRY' ? '₺' : sale.currency === 'EUR' ? '€' : '$'}{item.unitPrice.toLocaleString('tr-TR')}/desi = {sale.currency === 'TRY' ? '₺' : sale.currency === 'EUR' ? '€' : '$'}{item.total.toLocaleString('tr-TR')}
+                                    </Typography>
+                                  </Box>
+                                ))}
+                              </Box>
+                            ) : (
+                              <Typography variant="body2" color="text.secondary">
+                                Detay bilgisi yok
+                              </Typography>
+                            )}
+                          </TableCell>
+                          <TableCell align="right" sx={{ verticalAlign: 'top', fontWeight: 600 }}>
+                            {sale.currency === 'TRY' ? '₺' : sale.currency === 'EUR' ? '€' : '$'}{(sale.totalAmount || 0).toLocaleString('tr-TR')}
+                          </TableCell>
+                        </TableRow>
+                      ))}
                     {filteredSales.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={3} align="center">
@@ -1074,6 +1259,20 @@ const CustomerDetail: React.FC = () => {
                   </TableBody>
                 </Table>
               </TableContainer>
+              <TablePagination
+                component="div"
+                count={filteredSales.length}
+                page={salesPage}
+                onPageChange={(_, newPage) => setSalesPage(newPage)}
+                rowsPerPage={salesRowsPerPage}
+                onRowsPerPageChange={(e) => {
+                  setSalesRowsPerPage(parseInt(e.target.value, 10));
+                  setSalesPage(0);
+                }}
+                rowsPerPageOptions={[5, 10, 25, 50]}
+                labelRowsPerPage="Sayfa başına satır:"
+                labelDisplayedRows={({ from, to, count }) => `${from}-${to} / ${count}`}
+              />
             </CardContent>
           </Card>
         </Box>
@@ -1083,7 +1282,7 @@ const CustomerDetail: React.FC = () => {
           <Card>
             <CardContent>
               <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
-                Ödeme Geçmişi ({payments.length} ödeme)
+                Ödeme Geçmişi ({filteredPayments.length} ödeme)
               </Typography>
               <TableContainer>
                 <Table size="small">
@@ -1096,38 +1295,40 @@ const CustomerDetail: React.FC = () => {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {payments.slice(0, 10).map((payment) => (
-                      <TableRow key={payment.id}>
-                        <TableCell>
-                          {new Date(payment.paymentDate).toLocaleDateString('tr-TR')}
-                        </TableCell>
-                        <TableCell align="right">
-                          <Typography variant="body2" sx={{ color: 'success.main', fontWeight: 600 }}>
-                            +{payment.currency === 'TRY' ? '₺' : payment.currency === 'EUR' ? '€' : '$'}{payment.amount.toLocaleString('tr-TR')}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Chip
-                            label={payment.paymentType === 'cash' ? 'Nakit' : 'Banka'}
-                            variant="outlined"
-                            size="small"
-                          />
-                        </TableCell>
-                        <TableCell align="center">
-                          <IconButton
-                            size="small"
-                            color="error"
-                            onClick={() => {
-                              setSelectedPayment(payment);
-                              setDeletePaymentDialogOpen(true);
-                            }}
-                          >
-                            <Delete />
-                          </IconButton>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {payments.length === 0 && (
+                    {filteredPayments
+                      .slice(paymentsPage * paymentsRowsPerPage, paymentsPage * paymentsRowsPerPage + paymentsRowsPerPage)
+                      .map((payment) => (
+                        <TableRow key={payment.id}>
+                          <TableCell>
+                            {new Date(payment.paymentDate).toLocaleDateString('tr-TR')}
+                          </TableCell>
+                          <TableCell align="right">
+                            <Typography variant="body2" sx={{ color: 'success.main', fontWeight: 600 }}>
+                              +{payment.currency === 'TRY' ? '₺' : payment.currency === 'EUR' ? '€' : '$'}{payment.amount.toLocaleString('tr-TR')}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Chip
+                              label={payment.paymentType === 'cash' ? 'Nakit' : 'Banka'}
+                              variant="outlined"
+                              size="small"
+                            />
+                          </TableCell>
+                          <TableCell align="center">
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={() => {
+                                setSelectedPayment(payment);
+                                setDeletePaymentDialogOpen(true);
+                              }}
+                            >
+                              <Delete />
+                            </IconButton>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    {filteredPayments.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={4} align="center">
                           Henüz ödeme kaydı bulunmuyor
@@ -1137,6 +1338,20 @@ const CustomerDetail: React.FC = () => {
                   </TableBody>
                 </Table>
               </TableContainer>
+              <TablePagination
+                component="div"
+                count={filteredPayments.length}
+                page={paymentsPage}
+                onPageChange={(_, newPage) => setPaymentsPage(newPage)}
+                rowsPerPage={paymentsRowsPerPage}
+                onRowsPerPageChange={(e) => {
+                  setPaymentsRowsPerPage(parseInt(e.target.value, 10));
+                  setPaymentsPage(0);
+                }}
+                rowsPerPageOptions={[5, 10, 25, 50]}
+                labelRowsPerPage="Sayfa başına satır:"
+                labelDisplayedRows={({ from, to, count }) => `${from}-${to} / ${count}`}
+              />
             </CardContent>
           </Card>
         </Box>
@@ -1250,6 +1465,230 @@ const CustomerDetail: React.FC = () => {
           >
             Sil
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Sale Dialog */}
+      <Dialog
+        open={saleDialogOpen}
+        onClose={() => setSaleDialogOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <ShoppingCart />
+            {customer?.name} - Satış Yap
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          {saleErrors.length > 0 && (
+            <Alert severity="error" sx={{ mb: 3 }}>
+              <ul style={{ margin: 0, paddingLeft: 20 }}>
+                {saleErrors.map((error, index) => (
+                  <li key={index}>{error}</li>
+                ))}
+              </ul>
+            </Alert>
+          )}
+
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+              <Box sx={{ flex: '1 1 200px' }}>
+                <CurrencySelect
+                  value={saleCurrency}
+                  onChange={setSaleCurrency}
+                  defaultCurrency={DEFAULT_CURRENCIES.SALES}
+                  label="Para Birimi"
+                  size="medium"
+                />
+              </Box>
+
+              <Box sx={{ flex: '2 1 400px' }}>
+                <TextField
+                  label="Müşteri"
+                  value={customer?.name || ''}
+                  disabled
+                  fullWidth
+                  size="medium"
+                />
+              </Box>
+            </Box>
+
+            <Divider />
+
+            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+              <Box sx={{ flex: '1 1 300px' }}>
+                <Autocomplete
+                  options={products}
+                  getOptionLabel={(option) => `${option.category} - ${option.color}`}
+                  value={selectedProduct}
+                  onChange={(_, newValue) => setSelectedProduct(newValue)}
+                  renderInput={(params) => (
+                    <TextField {...params} label="Ürün Seç" size="medium" fullWidth />
+                  )}
+                  renderOption={(props, option) => (
+                    <Box component="li" {...props}>
+                      <Box>
+                        <Typography variant="body1">
+                          {option.category} - {option.color}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Stok: {option.stock_quantity || 0} adet
+                        </Typography>
+                      </Box>
+                    </Box>
+                  )}
+                />
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                  Satılacak ürünü seçin
+                </Typography>
+              </Box>
+
+              <Box sx={{ flex: '1 1 120px' }}>
+                <TextField
+                  label="Adet"
+                  value={quantityPieces}
+                  onChange={(e) => setQuantityPieces(formatNumberWithCommas(e.target.value))}
+                  fullWidth
+                  size="medium"
+                />
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                  Stoktan düşecek
+                </Typography>
+              </Box>
+
+              <Box sx={{ flex: '1 1 120px' }}>
+                <TextField
+                  label="Desi"
+                  value={quantityDesi}
+                  onChange={(e) => setQuantityDesi(formatNumberWithCommas(e.target.value))}
+                  fullWidth
+                  size="medium"
+                />
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                  Fiyat hesabı için
+                </Typography>
+              </Box>
+
+              <Box sx={{ flex: '1 1 120px' }}>
+                <TextField
+                  label={`Desi Fiyatı (${saleCurrency === 'USD' ? '$' : saleCurrency === 'TRY' ? '₺' : '€'})`}
+                  value={unitPricePerDesi}
+                  onChange={(e) => setUnitPricePerDesi(formatNumberWithCommas(e.target.value))}
+                  fullWidth
+                  size="medium"
+                />
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                  Birim fiyat girin
+                </Typography>
+              </Box>
+
+              <Box sx={{ flex: '1 1 120px' }}>
+                <TextField
+                  label="Toplam"
+                  value={quantityDesi && unitPricePerDesi ?
+                    formatNumberWithCommas((parseFormattedNumber(quantityDesi) * parseFormattedNumber(unitPricePerDesi)).toFixed(2)) : '0'}
+                  disabled
+                  fullWidth
+                  size="medium"
+                />
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                  Otomatik hesaplanan
+                </Typography>
+              </Box>
+            </Box>
+
+            <Button
+              variant="contained"
+              onClick={addItemToSale}
+              startIcon={<Add />}
+              fullWidth
+              size="large"
+            >
+              Ürün Ekle
+            </Button>
+
+            <Box>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" sx={{ mb: 2 }}>
+                    Satış Kalemleri ({saleItems.length} ürün)
+                  </Typography>
+                  {saleItems.length > 0 ? (
+                    <>
+                      <TableContainer component={Paper} variant="outlined">
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>Ürün</TableCell>
+                              <TableCell align="right">Adet</TableCell>
+                              <TableCell align="right">Desi</TableCell>
+                              <TableCell align="right">Desi Fiyatı</TableCell>
+                              <TableCell align="right">Toplam</TableCell>
+                              <TableCell align="center">İşlem</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {saleItems.map((item, index) => (
+                              <TableRow key={index}>
+                                <TableCell>{item.productName}</TableCell>
+                                <TableCell align="right">{Number(item.quantityPieces).toLocaleString('tr-TR')} adet</TableCell>
+                                <TableCell align="right">{Number(item.quantityDesi).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} desi</TableCell>
+                                <TableCell align="right">{saleCurrency === 'USD' ? '$' : saleCurrency === 'TRY' ? '₺' : '€'}{Number(item.unitPricePerDesi).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/desi</TableCell>
+                                <TableCell align="right">{saleCurrency === 'USD' ? '$' : saleCurrency === 'TRY' ? '₺' : '€'}{Number(item.total).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                                <TableCell align="center">
+                                  <IconButton
+                                    size="small"
+                                    color="error"
+                                    onClick={() => removeItemFromSale(index)}
+                                  >
+                                    <Delete />
+                                  </IconButton>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                      <Divider sx={{ my: 2 }} />
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Typography variant="h6">
+                          Genel Toplam: {saleCurrency === 'USD' ? '$' : saleCurrency === 'TRY' ? '₺' : '€'}{calculateTotal().toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </Typography>
+                        <Box sx={{ display: 'flex', gap: 1 }}>
+                          <Button
+                            variant="outlined"
+                            startIcon={<Clear />}
+                            onClick={clearSale}
+                          >
+                            Temizle
+                          </Button>
+                          <Button
+                            variant="contained"
+                            startIcon={<CheckCircle />}
+                            onClick={completeSale}
+                            disabled={loading}
+                          >
+                            {loading ? 'Tamamlanıyor...' : 'Satışı Tamamla'}
+                          </Button>
+                        </Box>
+                      </Box>
+                    </>
+                  ) : (
+                    <Box sx={{ textAlign: 'center', py: 4 }}>
+                      <Typography variant="body1" color="text.secondary">
+                        Henüz ürün eklenmedi
+                      </Typography>
+                    </Box>
+                  )}
+                </CardContent>
+              </Card>
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSaleDialogOpen(false)}>İptal</Button>
         </DialogActions>
       </Dialog>
 

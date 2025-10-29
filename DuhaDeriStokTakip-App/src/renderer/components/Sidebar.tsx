@@ -41,10 +41,9 @@ const Sidebar: React.FC<SidebarProps> = ({ open, toggleSidebar }) => {
   const menuItems = [
     { path: '/', label: 'Dashboard', icon: <DashboardIcon /> },
     { path: '/products', label: 'Ürünler', icon: <CategoryIcon /> },
-    { path: '/customers', label: 'Partner Yönetimi', icon: <PersonIcon /> },
+    { path: '/customers', label: 'Müşteri Yönetimi', icon: <ShoppingCartIcon /> },
     { path: '/suppliers', label: 'Tedarikçi Yönetimi', icon: <WorkIcon /> },
     { path: '/employees', label: 'Çalışan Yönetimi', icon: <GroupIcon /> },
-    { path: '/sales', label: 'Satış İşlemleri', icon: <ShoppingCartIcon /> },
     { path: '/cash', label: 'Kasa Yönetimi', icon: <AccountBalanceWalletIcon /> },
     { path: '/movements', label: 'Stok Hareketleri', icon: <HistoryIcon /> },
     { path: '/reports', label: 'Raporlar', icon: <AssessmentIcon /> },
@@ -108,9 +107,9 @@ const Sidebar: React.FC<SidebarProps> = ({ open, toggleSidebar }) => {
             </Box>
           </Box>
         )}
-        <IconButton 
-          onClick={toggleSidebar} 
-          sx={{ 
+        <IconButton
+          onClick={toggleSidebar}
+          sx={{
             color: 'inherit',
             '&:hover': {
               backgroundColor: 'rgba(141, 110, 99, 0.1)',
@@ -161,15 +160,15 @@ const Sidebar: React.FC<SidebarProps> = ({ open, toggleSidebar }) => {
               >
                 {item.icon}
               </ListItemIcon>
-              <ListItemText 
-                primary={item.label} 
-                sx={{ 
+              <ListItemText
+                primary={item.label}
+                sx={{
                   opacity: open ? 1 : 0,
                   '& .MuiTypography-root': {
                     fontWeight: location.pathname === item.path ? 600 : 400,
                     fontSize: '0.95rem',
                   },
-                }} 
+                }}
               />
             </ListItemButton>
           </ListItem>

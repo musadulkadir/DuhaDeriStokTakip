@@ -744,16 +744,51 @@ ipcMain.handle('sales:get-all', async (_, startDate, endDate) => {
     `;
 
     const params = [];
+    let whereClause = '';
     if (startDate && endDate) {
-      queryText += ' WHERE s.sale_date BETWEEN $1 AND $2';
+      whereClause = ' WHERE DATE(s.sale_date) BETWEEN $1 AND $2';
       params.push(startDate, endDate);
     }
 
-    queryText += ' ORDER BY s.created_at DESC';
+    queryText += whereClause + ' ORDER BY s.created_at DESC';
 
     const result = await queryAll(queryText, params);
-    return { success: true, data: result };
+
+    // Toplam tutarları hesapla
+    let totalsQuery = `
+      SELECT 
+        currency,
+        SUM(total_amount) as total
+      FROM sales
+    `;
+
+    if (whereClause) {
+      totalsQuery += whereClause;
+    }
+
+    totalsQuery += ' GROUP BY currency';
+
+    const totals = await queryAll(totalsQuery, params);
+
+    // Tarih aralığını hesapla
+    let dayCount = 0;
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      dayCount = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+    }
+
+    return {
+      success: true,
+      data: result,
+      totals: totals.reduce((acc, row) => {
+        acc[row.currency] = parseFloat(row.total) || 0;
+        return acc;
+      }, {}),
+      dayCount
+    };
   } catch (error) {
+    console.error('sales:get-all error:', error);
     return { success: false, error: error.message };
   }
 });
