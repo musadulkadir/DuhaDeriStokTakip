@@ -257,9 +257,9 @@ const CustomerManagement: React.FC = () => {
   };
 
   return (
-    <Box>
+    <Box sx={{ mr: 4, mt: 2 }}>
       {/* Header */}
-      <Box sx={{ mb: 4, mt: 2 }}>
+      <Box sx={{ mb: 4 }}>
         <Typography variant="h3" sx={{ fontWeight: 700, mb: 1 }}>
           Müşteri Yönetimi
         </Typography>
@@ -269,82 +269,87 @@ const CustomerManagement: React.FC = () => {
       </Box>
 
       {/* Quick Stats */}
-      <Grid container spacing={3} sx={{ mb: 4, }}>
-        <Grid size={{ xs: 12, sm: 6, md: 3, }}>
-          <Card>
-            <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
-              <Avatar sx={{ bgcolor: 'primary.main', mr: 2 }}>
-                <Person />
+      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 2fr', gap: 2, mb: 4 }}>
+        <Card variant="outlined">
+          <CardContent sx={{ p: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Avatar sx={{ bgcolor: 'primary.main', width: 40, height: 40 }}>
+                <Person sx={{ fontSize: 20 }} />
               </Avatar>
-              <Box>
-                <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                  {customers.length}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem', mb: 0.3 }}>
                   Toplam Müşteri
                 </Typography>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3, }}>
-          <Card>
-            <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
-              <Avatar sx={{ bgcolor: 'success.main', mr: 2 }}>
-                <TrendingUp />
-              </Avatar>
-              <Box>
-                <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                  {customers.filter(c => ((c.balanceTRY || 0) + (c.balanceUSD || 0) + (c.balanceEUR || 0)) < 0).length}
+                <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                  {customers.length}
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
+              </Box>
+            </Box>
+          </CardContent>
+        </Card>
+
+        <Card variant="outlined">
+          <CardContent sx={{ p: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Avatar sx={{ bgcolor: 'success.main', width: 40, height: 40 }}>
+                <TrendingUp sx={{ fontSize: 20 }} />
+              </Avatar>
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem', mb: 0.3 }}>
                   Alacaklı Müşteri
                 </Typography>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3, }}>
-          <Card>
-            <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
-              <Avatar sx={{ bgcolor: 'error.main', mr: 2 }}>
-                <TrendingDown />
-              </Avatar>
-              <Box>
-                <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                  {customers.filter(c => ((c.balanceTRY || 0) + (c.balanceUSD || 0) + (c.balanceEUR || 0)) > 0).length}
+                <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                  {customers.filter(c => ((c.balanceTRY || 0) + (c.balanceUSD || 0) + (c.balanceEUR || 0)) < 0).length}
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
+              </Box>
+            </Box>
+          </CardContent>
+        </Card>
+
+        <Card variant="outlined">
+          <CardContent sx={{ p: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Avatar sx={{ bgcolor: 'error.main', width: 40, height: 40 }}>
+                <TrendingDown sx={{ fontSize: 20 }} />
+              </Avatar>
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem', mb: 0.3 }}>
                   Borçlu Müşteri
                 </Typography>
+                <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                  {customers.filter(c => ((c.balanceTRY || 0) + (c.balanceUSD || 0) + (c.balanceEUR || 0)) > 0).length}
+                </Typography>
               </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3, }}>
-          <Card>
-            <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
-              <Avatar sx={{ bgcolor: 'warning.main', mr: 2 }}>
-                <AccountBalance />
+            </Box>
+          </CardContent>
+        </Card>
+
+        <Card variant="outlined">
+          <CardContent sx={{ p: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Avatar sx={{ bgcolor: 'warning.main', width: 40, height: 40 }}>
+                <AccountBalance sx={{ fontSize: 20 }} />
               </Avatar>
-              <Box>
-                <Typography variant="h6" sx={{ fontWeight: 600, mb: 0.5 }}>
-                  ₺{customers.reduce((sum, c) => sum + (Number(c.balanceTRY) || 0), 0).toLocaleString()}
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem', mb: 0.5 }}>
+                  Net Bakiye
                 </Typography>
-                <Typography variant="h6" sx={{ fontWeight: 600, mb: 0.5 }}>
-                  ${customers.reduce((sum, c) => sum + (Number(c.balanceUSD) || 0), 0).toLocaleString()}
-                </Typography>
-                <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                  €{customers.reduce((sum, c) => sum + (Number(c.balanceEUR) || 0), 0).toLocaleString()}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Net Bakiye (TL / USD / EUR)
-                </Typography>
+                <Box sx={{ display: 'flex', gap: 3, alignItems: 'center' }}>
+                  <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                    ₺{customers.reduce((sum, c) => sum + (Number(c.balanceTRY) || 0), 0).toLocaleString()}
+                  </Typography>
+                  <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                    ${customers.reduce((sum, c) => sum + (Number(c.balanceUSD) || 0), 0).toLocaleString()}
+                  </Typography>
+                  <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                    €{customers.reduce((sum, c) => sum + (Number(c.balanceEUR) || 0), 0).toLocaleString()}
+                  </Typography>
+                </Box>
               </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
+            </Box>
+          </CardContent>
+        </Card>
+      </Box>
 
       {/* Search and Add */}
       <Card sx={{ mb: 3 }}>
@@ -357,16 +362,6 @@ const CustomerManagement: React.FC = () => {
                 placeholder="Müşteri adı, telefon veya email ara..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                sx={{
-                  '& .MuiOutlinedInput-root': {
-                    minHeight: '56px',
-                    fontSize: '1.1rem',
-                  },
-                  '& .MuiOutlinedInput-input': {
-                    fontSize: '1.1rem',
-                    fontWeight: 500,
-                  }
-                }}
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">
@@ -380,11 +375,12 @@ const CustomerManagement: React.FC = () => {
               <Button
                 fullWidth
                 variant="contained"
+                size='large'
                 startIcon={<Add />}
                 onClick={() => setAddDialogOpen(true)}
-                size="large"
+                sx={{ px: 0 }}
               >
-                Yeni Müşteri Ekle
+                Müşteri Ekle
               </Button>
             </Grid>
           </Grid>
@@ -406,7 +402,9 @@ const CustomerManagement: React.FC = () => {
                   <TableCell>Müşteri Adı</TableCell>
                   <TableCell>Telefon</TableCell>
                   <TableCell>Email</TableCell>
-                  <TableCell align="right">Bakiye</TableCell>
+                  <TableCell align="right">Bakiye (₺)</TableCell>
+                  <TableCell align="right">Bakiye ($)</TableCell>
+                  <TableCell align="right">Bakiye (€)</TableCell>
                   <TableCell align="center">İşlemler</TableCell>
                 </TableRow>
               </TableHead>
@@ -418,10 +416,26 @@ const CustomerManagement: React.FC = () => {
                     <TableCell>{customer.email || '-'}</TableCell>
                     <TableCell align="right">
                       <Chip
-                        label={`₺${(customer.balanceTRY || 0).toLocaleString('tr-TR')} / $${(customer.balanceUSD || 0).toLocaleString('tr-TR')} / €${(customer.balanceEUR || 0).toLocaleString('tr-TR')}`}
-                        color={getCustomerBalanceColor(customer.balanceTRY || 0, customer.balanceUSD || 0, customer.balanceEUR || 0) as any}
+                        label={`₺${(customer.balanceTRY || 0).toLocaleString('tr-TR')}`}
+                        color={(customer.balanceTRY || 0) > 0 ? 'error' : (customer.balanceTRY || 0) < 0 ? 'success' : 'default'}
                         size="small"
-                        sx={{ color: 'white', fontWeight: 600, fontSize: 16 }}
+                        sx={{ fontWeight: 600, minWidth: 100 }}
+                      />
+                    </TableCell>
+                    <TableCell align="right">
+                      <Chip
+                        label={`$${(customer.balanceUSD || 0).toLocaleString('tr-TR')}`}
+                        color={(customer.balanceUSD || 0) > 0 ? 'error' : (customer.balanceUSD || 0) < 0 ? 'success' : 'default'}
+                        size="small"
+                        sx={{ fontWeight: 600, minWidth: 100 }}
+                      />
+                    </TableCell>
+                    <TableCell align="right">
+                      <Chip
+                        label={`€${(customer.balanceEUR || 0).toLocaleString('tr-TR')}`}
+                        color={(customer.balanceEUR || 0) > 0 ? 'error' : (customer.balanceEUR || 0) < 0 ? 'success' : 'default'}
+                        size="small"
+                        sx={{ fontWeight: 600, minWidth: 100 }}
                       />
                     </TableCell>
                     <TableCell align="center">
@@ -460,7 +474,7 @@ const CustomerManagement: React.FC = () => {
                 ))}
                 {filteredCustomers.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={5} align="center">
+                    <TableCell colSpan={7} align="center">
                       {loading ? 'Yükleniyor...' : 'Müşteri bulunamadı'}
                     </TableCell>
                   </TableRow>

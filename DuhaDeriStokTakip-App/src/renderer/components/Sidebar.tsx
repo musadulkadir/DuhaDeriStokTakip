@@ -43,7 +43,6 @@ const Sidebar: React.FC<SidebarProps> = ({ open, toggleSidebar }) => {
     { path: '/products', label: 'Ürünler', icon: <CategoryIcon /> },
     { path: '/customers', label: 'Müşteri Yönetimi', icon: <ShoppingCartIcon /> },
     { path: '/employees', label: 'Çalışan Yönetimi', icon: <GroupIcon /> },
-    { path: '/sales', label: 'Satış İşlemleri', icon: <ShoppingCartIcon /> },
     { path: '/purchases', label: 'Alım İşlemleri', icon: <WorkIcon /> },
     { path: '/cash', label: 'Kasa Yönetimi', icon: <AccountBalanceWalletIcon /> },
     { path: '/movements', label: 'Stok Hareketleri', icon: <HistoryIcon /> },
