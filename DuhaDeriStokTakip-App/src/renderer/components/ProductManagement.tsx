@@ -48,6 +48,7 @@ interface NewProduct {
   color: string;
   stock_quantity: string;
   description: string;
+  entry_date: string;
 }
 
 interface NewMaterial {
@@ -89,6 +90,7 @@ const ProductManagement: React.FC = () => {
     color: '',
     stock_quantity: '',
     description: '',
+    entry_date: new Date().toISOString().split('T')[0], // Bugünün tarihi
   });
 
   const [newMaterial, setNewMaterial] = useState<NewMaterial>({
@@ -266,10 +268,12 @@ const ProductManagement: React.FC = () => {
             previous_stock: previousStock,
             new_stock: currentStock,
             reference_type: merged ? 'stock_addition' : 'initial_stock',
-            notes: merged
+
+            notes: newProduct.description || merged
               ? `Stok ekleme - ${productData.category}`
-              : `İlk stok girişi - ${productData.category}`,
+              :`İlk stok girişi - ${productData.category}`,
             user: 'Sistem Kullanıcısı',
+            created_at: newProduct.entry_date ? new Date(newProduct.entry_date).toISOString() : new Date().toISOString(),
           };
 
           try {
@@ -287,6 +291,7 @@ const ProductManagement: React.FC = () => {
           color: '', // Artık kullanılmıyor ama interface'de var
           stock_quantity: '',
           description: '',
+          entry_date: new Date().toISOString().split('T')[0],
         });
         await loadProducts();
       } else {
@@ -1113,6 +1118,17 @@ const ProductManagement: React.FC = () => {
               <Box sx={{ flex: '1 1 200px', minWidth: '200px' }}>
                 <TextField
                   fullWidth
+                  label="Giriş Tarihi"
+                  type="date"
+                  value={newProduct.entry_date}
+                  onChange={(e) => setNewProduct({ ...newProduct, entry_date: e.target.value })}
+                  InputLabelProps={{ shrink: true }}
+                  helperText="Ürünün stoğa giriş tarihi"
+                />
+              </Box>
+              <Box sx={{ flex: '1 1 200px', minWidth: '200px' }}>
+                <TextField
+                  fullWidth
                   label="Başlangıç Stok (Adet)"
                   type="text"
                   value={newProduct.stock_quantity}
@@ -1124,16 +1140,14 @@ const ProductManagement: React.FC = () => {
                   placeholder="Örn: 1,000"
                 />
               </Box>
-              <Box sx={{ flex: '1 1 200px', minWidth: '200px' }}>
-                <TextField
-                  fullWidth
-                  label="Açıklama (Opsiyonel)"
-                  value={newProduct.description}
-                  onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })}
-                  helperText="Ürün hakkında ek bilgiler"
-                />
-              </Box>
             </Box>
+            <TextField
+              fullWidth
+              label="Açıklama (Opsiyonel)"
+              value={newProduct.description}
+              onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })}
+              helperText="Ürün hakkında ek bilgiler"
+            />
           </Box>
         </DialogContent>
         <DialogActions>
@@ -1144,6 +1158,7 @@ const ProductManagement: React.FC = () => {
               color: '',
               stock_quantity: '',
               description: '',
+              entry_date: new Date().toISOString().split('T')[0],
             });
           }}>İptal</Button>
           <Button onClick={handleAddProduct} variant="contained" disabled={loading}>
