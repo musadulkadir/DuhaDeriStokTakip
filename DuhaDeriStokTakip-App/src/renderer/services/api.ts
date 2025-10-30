@@ -8,6 +8,7 @@ import {
   Category,
   Color,
   StockMovement,
+  MaterialMovement,
   Sale,
   CashTransaction,
   Return,
@@ -117,7 +118,7 @@ class DatabaseAPI {
     return window.require("electron").ipcRenderer.invoke('customer-payments:delete', id);
   }
 
-  // Stock movement operations
+  // Stock movement operations (for products only)
   async getStockMovements(page = 1, limit = 50): Promise<PaginatedResponse<StockMovement>> {
     return window.require("electron").ipcRenderer.invoke('stock-movements:get-all', page, limit);
   }
@@ -128,6 +129,19 @@ class DatabaseAPI {
 
   async createStockMovement(movement: Omit<StockMovement, 'id' | 'created_at' | 'updated_at'>): Promise<ApiResponse<StockMovement>> {
     return window.require("electron").ipcRenderer.invoke('stock-movements:create', movement);
+  }
+
+  // Material movement operations (for materials only)
+  async getMaterialMovements(): Promise<ApiResponse<MaterialMovement[]>> {
+    return window.require("electron").ipcRenderer.invoke('material-movements:get-all');
+  }
+
+  async getMaterialMovementsByMaterial(materialId: number): Promise<ApiResponse<MaterialMovement[]>> {
+    return window.require("electron").ipcRenderer.invoke('material-movements:get-by-material', materialId);
+  }
+
+  async createMaterialMovement(movement: Omit<MaterialMovement, 'id' | 'created_at' | 'updated_at'>): Promise<ApiResponse<MaterialMovement>> {
+    return window.require("electron").ipcRenderer.invoke('material-movements:create', movement);
   }
 
   // Sales operations

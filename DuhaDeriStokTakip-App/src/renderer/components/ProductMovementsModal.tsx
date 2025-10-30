@@ -22,11 +22,13 @@ interface ProductMovementsModalProps {
   open: boolean;
   onClose: () => void;
   product: Product | null;
+  type?: 'product' | 'material';
 }
 
-interface StockMovement {
+interface Movement {
   id: number;
-  product_id: number;
+  product_id?: number;
+  material_id?: number;
   movement_type: 'in' | 'out';
   quantity: number;
   previous_stock: number;
@@ -34,6 +36,7 @@ interface StockMovement {
   reference_type?: string;
   reference_id?: number;
   customer_id?: number;
+  supplier_id?: number;
   unit_price?: number;
   total_amount?: number;
   notes?: string;
@@ -42,8 +45,8 @@ interface StockMovement {
 }
 
 
-const ProductMovementsModal: React.FC<ProductMovementsModalProps> = ({ open, onClose, product }) => {
-  const [movements, setMovements] = useState<StockMovement[]>([]);
+const ProductMovementsModal: React.FC<ProductMovementsModalProps> = ({ open, onClose, product, type = 'product' }) => {
+  const [movements, setMovements] = useState<Movement[]>([]);
   const [loading, setLoading] = useState(false);
 
   // Güvenli toLocaleString fonksiyonu
@@ -53,12 +56,18 @@ const ProductMovementsModal: React.FC<ProductMovementsModalProps> = ({ open, onC
     return !isNaN(num) ? num.toLocaleString('tr-TR') : '0';
   };
 
-  const loadMovements = async (productId: number) => {
+  const loadMovements = async (itemId: number, itemType: 'product' | 'material') => {
     setLoading(true);
+    console.log('🔍 Loading movements:', { itemId, itemType });
     try {
-      const response = await dbAPI.getStockMovementsByProduct(productId);
+      const response = itemType === 'material' 
+        ? await dbAPI.getMaterialMovementsByMaterial(itemId)
+        : await dbAPI.getStockMovementsByProduct(itemId);
+      
+      console.log('📦 Movements response:', { itemType, success: response.success, count: response.data?.length });
+      
       if (response.success) {
-        setMovements(response.data);
+        setMovements(response.data || []);
       } else {
         console.error('Failed to load movements:', response.error);
         setMovements([]);
@@ -73,9 +82,9 @@ const ProductMovementsModal: React.FC<ProductMovementsModalProps> = ({ open, onC
 
   useEffect(() => {
     if (product && product.id) {
-      loadMovements(product.id);
+      loadMovements(product.id, type);
     }
-  }, [product]);
+  }, [product, type]);
 
   // Pencereyi ortalamak için stil
   const style = {
@@ -122,7 +131,7 @@ const ProductMovementsModal: React.FC<ProductMovementsModalProps> = ({ open, onC
               <TableRow>
                 <TableCell>Tarih</TableCell>
                 <TableCell>Tip</TableCell>
-                <TableCell align="right">Miktar</TableCell>
+                <TableCell align="right">Miktar ({type === 'material' ? 'kg' : 'adet'})</TableCell>
                 <TableCell>Açıklama</TableCell>
               </TableRow>
             </TableHead>
@@ -169,7 +178,7 @@ const ProductMovementsModal: React.FC<ProductMovementsModalProps> = ({ open, onC
               ) : (
                 <TableRow>
                   <TableCell colSpan={4} align="center">
-                    Bu ürüne ait stok hareketi bulunamadı.
+                    Bu {type === 'material' ? 'malzemeye' : 'ürüne'} ait stok hareketi bulunamadı.
                   </TableCell>
                 </TableRow>
               )}

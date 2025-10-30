@@ -201,8 +201,16 @@ const ProductManagement: React.FC = () => {
   }, []);
 
   const handleOpenModal = (product: Product) => {
+    console.log('🔓 Opening modal for:', { id: product.id, type: (product as any)?.type, category: product.category });
     setSelectedProduct(product);
     setModalOpen(true);
+  };
+
+  // Ürün veya malzeme tipini belirle
+  const getItemType = (item: Product): 'product' | 'material' => {
+    const type = (item as any)?.type === 'material' ? 'material' : 'product';
+    console.log('🎯 getItemType:', { id: item.id, detectedType: type, rawType: (item as any)?.type });
+    return type;
   };
 
   const handleCloseModal = () => {
@@ -375,9 +383,9 @@ const ProductManagement: React.FC = () => {
         });
 
         if (updateResponse.success && existingMaterial.id) {
-          // Stok hareketi oluştur
+          // Malzeme stok hareketi oluştur
           const movementData = {
-            product_id: existingMaterial.id,
+            material_id: existingMaterial.id,
             movement_type: 'in' as const,
             quantity: stockQuantity,
             previous_stock: existingMaterial.stock_quantity || 0,
@@ -388,9 +396,9 @@ const ProductManagement: React.FC = () => {
           };
 
           try {
-            await dbAPI.createStockMovement(movementData);
+            await dbAPI.createMaterialMovement(movementData);
           } catch (error) {
-            console.error('Stok hareketi oluşturulamadı:', error);
+            console.error('Malzeme stok hareketi oluşturulamadı:', error);
           }
 
           setSnackbar({ open: true, message: 'Mevcut malzemenin stoğu güncellendi', severity: 'success' });
@@ -422,7 +430,7 @@ const ProductManagement: React.FC = () => {
 
           if (stockQuantity > 0 && productId) {
             const movementData = {
-              product_id: productId,
+              material_id: productId,
               movement_type: 'in' as const,
               quantity: stockQuantity,
               previous_stock: 0,
@@ -433,9 +441,9 @@ const ProductManagement: React.FC = () => {
             };
 
             try {
-              await dbAPI.createStockMovement(movementData);
+              await dbAPI.createMaterialMovement(movementData);
             } catch (error) {
-              console.error('Stok hareketi oluşturulamadı:', error);
+              console.error('Malzeme stok hareketi oluşturulamadı:', error);
             }
           }
 
@@ -497,21 +505,42 @@ const ProductManagement: React.FC = () => {
       if (response.success) {
         // Eğer stok miktarı değiştiyse, stok hareketi oluştur
         if (stockDifference !== 0) {
-          const movementData = {
-            product_id: selectedProduct.id!,
-            movement_type: stockDifference > 0 ? 'in' : 'out',
-            quantity: Math.abs(stockDifference),
-            previous_stock: originalStock,
-            new_stock: newStock,
-            reference_type: 'adjustment',
-            notes: `Stok düzeltmesi - ${selectedProduct.category} ${selectedProduct.color || ''} (${stockDifference > 0 ? '+' : ''}${stockDifference})`,
-            user: 'Sistem Kullanıcısı',
-          };
+          if (isMaterial) {
+            // Malzeme için material_movements kullan
+            const movementData = {
+              material_id: selectedProduct.id!,
+              movement_type: stockDifference > 0 ? 'in' : 'out',
+              quantity: Math.abs(stockDifference),
+              previous_stock: originalStock,
+              new_stock: newStock,
+              reference_type: 'adjustment',
+              notes: `Stok düzeltmesi - ${selectedProduct.category} ${selectedProduct.color_shade || ''} (${stockDifference > 0 ? '+' : ''}${stockDifference})`,
+              user: 'Sistem Kullanıcısı',
+            };
 
-          try {
-            await dbAPI.createStockMovement(movementData);
-          } catch (error) {
-            console.error('Stok hareketi oluşturulamadı:', error);
+            try {
+              await dbAPI.createMaterialMovement(movementData);
+            } catch (error) {
+              console.error('Malzeme stok hareketi oluşturulamadı:', error);
+            }
+          } else {
+            // Ürün için stock_movements kullan
+            const movementData = {
+              product_id: selectedProduct.id!,
+              movement_type: stockDifference > 0 ? 'in' : 'out',
+              quantity: Math.abs(stockDifference),
+              previous_stock: originalStock,
+              new_stock: newStock,
+              reference_type: 'adjustment',
+              notes: `Stok düzeltmesi - ${selectedProduct.category} ${selectedProduct.color || ''} (${stockDifference > 0 ? '+' : ''}${stockDifference})`,
+              user: 'Sistem Kullanıcısı',
+            };
+
+            try {
+              await dbAPI.createStockMovement(movementData);
+            } catch (error) {
+              console.error('Stok hareketi oluşturulamadı:', error);
+            }
           }
         }
 
@@ -1010,7 +1039,7 @@ const ProductManagement: React.FC = () => {
                         />
                       </TableCell>
                       <TableCell>
-                        {material.brand || '-'}
+                        {(material as any).supplier_name || '-'}
                       </TableCell>
                       <TableCell align="right" sx={{ fontWeight: 600 }}>
                         {(() => {
@@ -1529,6 +1558,7 @@ const ProductManagement: React.FC = () => {
           open={modalOpen}
           onClose={handleCloseModal}
           product={selectedProduct}
+          type={getItemType(selectedProduct)}
         />
       )}
 

@@ -19,6 +19,8 @@ export interface Product extends BaseEntity {
   unit?: string;
   description?: string;
   type?: 'product' | 'material';
+  supplier_id?: number;
+  supplier_name?: string;
 }
 
 // Customer interface - matches customers table schema
@@ -96,7 +98,7 @@ export interface SaleItem extends BaseEntity {
   unit?: 'desi' | 'ayak';
 }
 
-// Stock movement interface - matches stock_movements table schema
+// Stock movement interface - matches stock_movements table schema (for products only)
 export interface StockMovement extends BaseEntity {
   product_id: number;
   movement_type: string;
@@ -106,6 +108,22 @@ export interface StockMovement extends BaseEntity {
   reference_type?: string;
   reference_id?: number;
   customer_id?: number;
+  unit_price?: number;
+  total_amount?: number;
+  notes?: string;
+  user?: string;
+}
+
+// Material movement interface - matches material_movements table schema (for materials only)
+export interface MaterialMovement extends BaseEntity {
+  material_id: number;
+  movement_type: string;
+  quantity: number;
+  previous_stock?: number;
+  new_stock?: number;
+  reference_type?: string;
+  reference_id?: number;
+  supplier_id?: number;
   unit_price?: number;
   total_amount?: number;
   notes?: string;

@@ -550,12 +550,9 @@ const SupplierDetail: React.FC = () => {
       setSnackbar({ open: true, message: 'Boya için renk tonu gerekli', severity: 'error' });
       return;
     }
-    if (currentItem.category === 'Cila' && !currentItem.brand) {
-      setSnackbar({ open: true, message: 'Cila için firma gerekli', severity: 'error' });
-      return;
-    }
-    if (currentItem.category === 'Binder' && (!currentItem.code || !currentItem.brand)) {
-      setSnackbar({ open: true, message: 'Binder için kod ve firma gerekli', severity: 'error' });
+
+    if (currentItem.category === 'Binder' && (!currentItem.code)) {
+      setSnackbar({ open: true, message: 'Binder için kod gerekli', severity: 'error' });
       return;
     }
 
@@ -564,13 +561,18 @@ const SupplierDetail: React.FC = () => {
 
       const materialName = `${currentItem.category}${currentItem.color_shade ? ` - ${currentItem.color_shade}` : ''}${currentItem.code ? ` - ${currentItem.code}` : ''}`;
 
+      // Malzeme kontrolü: Aynı kategori, özellikler VE tedarikçi
       let existingMaterial = materials.find(m => {
+        const sameSupplier = (m as any).supplier_id === supplier?.id;
+
         if (currentItem.category === 'Boya') {
-          return m.category === currentItem.category && m.color_shade === currentItem.color_shade;
+          return m.category === currentItem.category && m.color_shade === currentItem.color_shade && sameSupplier;
         } else if (currentItem.category === 'Cila') {
-          return m.category === currentItem.category && m.brand === currentItem.brand;
+          return m.category === currentItem.category && sameSupplier;
         } else if (currentItem.category === 'Binder') {
-          return m.category === currentItem.category && m.code === currentItem.code && m.brand === currentItem.brand;
+          return m.category === currentItem.category && m.code === currentItem.code && sameSupplier;
+        } else if (currentItem.category === 'Kimyasal') {
+          return m.category === currentItem.category && m.code === currentItem.code && sameSupplier;
         }
         return false;
       });
@@ -580,19 +582,21 @@ const SupplierDetail: React.FC = () => {
 
       if (existingMaterial) {
         materialId = existingMaterial.id!;
-        materialBrand = existingMaterial.brand || undefined;
+        materialBrand = (existingMaterial as any).supplier_name || supplier?.name || undefined;
         setSnackbar({ open: true, message: 'Mevcut malzeme kullanıldı', severity: 'success' });
       } else {
-        const brandValue = currentItem.brand?.trim() || undefined;
+        // Tedarikçi bilgisini kullan (brand yerine)
         const materialData = {
           name: materialName,
           category: currentItem.category,
           color_shade: currentItem.color_shade || undefined,
-          brand: brandValue,
+          brand: undefined, // Brand artık kullanılmıyor
           code: currentItem.code || undefined,
           stock_quantity: 0,
           unit: 'kg',
-          description: `${currentItem.category} malzemesi`
+          description: `${currentItem.category} malzemesi`,
+          supplier_id: supplier?.id,
+          supplier_name: supplier?.name
         };
 
         const materialResponse = await dbAPI.createMaterial(materialData);
@@ -601,7 +605,7 @@ const SupplierDetail: React.FC = () => {
         }
 
         materialId = materialResponse.data.id || 0;
-        materialBrand = brandValue;
+        materialBrand = supplier?.name || undefined;
         setSnackbar({ open: true, message: 'Yeni malzeme oluşturuldu', severity: 'success' });
 
         await loadMaterials();
@@ -1612,14 +1616,17 @@ const SupplierDetail: React.FC = () => {
             )}
 
             {/* Cila için Firma */}
-            {currentItem.category === 'Cila' && (
+            {/* Cila için Firma alanı kaldırıldı - tedarikçiden otomatik alınıyor */}
+
+            {/* Binder için Kod (Firma alanı kaldırıldı - tedarikçiden otomatik alınıyor) */}
+            {currentItem.category === 'Binder' && (
               <Grid size={{ xs: 12, md: 2 }}>
                 <TextField
                   fullWidth
-                  label="Firma"
-                  value={currentItem.brand}
-                  onChange={(e) => setCurrentItem({ ...currentItem, brand: e.target.value })}
-                  placeholder="Örn: Sayerlack"
+                  label="Kod"
+                  value={currentItem.code}
+                  onChange={(e) => setCurrentItem({ ...currentItem, code: e.target.value })}
+                  placeholder="Örn: B-100"
                   InputProps={{
                     sx: { fontSize: '1rem', minHeight: '40px' }
                   }}
@@ -1628,44 +1635,6 @@ const SupplierDetail: React.FC = () => {
                   }}
                 />
               </Grid>
-            )}
-
-            {/* Binder için Kod ve Firma */}
-            {currentItem.category === 'Binder' && (
-              <>
-                <Grid size={{ xs: 12, md: 2 }}>
-
-                  <TextField
-                    fullWidth
-                    label="Kod"
-                    value={currentItem.code}
-                    onChange={(e) => setCurrentItem({ ...currentItem, code: e.target.value })}
-                    placeholder="Örn: B-100"
-                    InputProps={{
-                      sx: { fontSize: '1rem', minHeight: '40px' }
-                    }}
-                    InputLabelProps={{
-                      sx: { fontSize: '1rem' }
-                    }}
-                  />
-                </Grid>
-                <Grid size={{ xs: 12, md: 2 }}>
-
-                  <TextField
-                    fullWidth
-                    label="Firma"
-                    value={currentItem.brand}
-                    onChange={(e) => setCurrentItem({ ...currentItem, brand: e.target.value })}
-                    placeholder="Örn: BASF"
-                    InputProps={{
-                      sx: { fontSize: '1rem', minHeight: '40px' }
-                    }}
-                    InputLabelProps={{
-                      sx: { fontSize: '1rem' }
-                    }}
-                  />
-                </Grid>
-              </>
             )}
 
             {/* Miktar ve Fiyat */}

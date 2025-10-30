@@ -67,10 +67,20 @@ async function createTables() {
         stock_quantity INTEGER DEFAULT 0,
         unit VARCHAR(20) DEFAULT 'kg',
         description TEXT,
+        supplier_id INTEGER REFERENCES customers(id),
+        supplier_name VARCHAR(255),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    // Add supplier columns to materials table if they don't exist
+    try {
+      await query(`ALTER TABLE materials ADD COLUMN IF NOT EXISTS supplier_id INTEGER REFERENCES customers(id)`);
+      await query(`ALTER TABLE materials ADD COLUMN IF NOT EXISTS supplier_name VARCHAR(255)`);
+    } catch (err) {
+      // Columns already exist
+    }
 
     // Employees table
     await query(`
@@ -126,7 +136,7 @@ async function createTables() {
       // Kolon zaten varsa hata vermez
     }
 
-    // Stock movements table
+    // Stock movements table (for products only)
     await query(`
       CREATE TABLE IF NOT EXISTS stock_movements (
         id SERIAL PRIMARY KEY,
@@ -145,6 +155,30 @@ async function createTables() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    // Material movements table (for materials only)
+    await query(`
+      CREATE TABLE IF NOT EXISTS material_movements (
+        id SERIAL PRIMARY KEY,
+        material_id INTEGER NOT NULL,
+        movement_type VARCHAR(50) NOT NULL,
+        quantity INTEGER NOT NULL,
+        previous_stock INTEGER,
+        new_stock INTEGER,
+        reference_type VARCHAR(50),
+        reference_id INTEGER,
+        supplier_id INTEGER REFERENCES customers(id),
+        unit_price DECIMAL(15,2),
+        total_amount DECIMAL(15,2),
+        notes TEXT,
+        "user" VARCHAR(255),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Create indexes for material_movements
+    await query(`CREATE INDEX IF NOT EXISTS idx_material_movements_material_id ON material_movements(material_id)`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_material_movements_created_at ON material_movements(created_at)`);
 
     // Customer payments table
     await query(`
@@ -421,6 +455,79 @@ async function createTables() {
       }
     } catch (migrationError) {
       console.log('Migration 4 skipped or already completed:', migrationError.message);
+    }
+
+    // Migration 5: Move material movements from stock_movements to material_movements
+    try {
+      console.log('Starting material movements migration...');
+      
+      // Check if migration is needed (are there any records in stock_movements that belong to materials ONLY?)
+      // Important: Only migrate if the ID exists in materials but NOT in products
+      const materialMovementsInStock = await query(`
+        SELECT COUNT(*) as count
+        FROM stock_movements sm
+        WHERE EXISTS (
+          SELECT 1 FROM materials m WHERE m.id = sm.product_id
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM products p WHERE p.id = sm.product_id
+        )
+      `);
+
+      if (materialMovementsInStock.rows[0].count > 0) {
+        console.log(`Found ${materialMovementsInStock.rows[0].count} material movements to migrate`);
+
+        // Copy material movements to material_movements table
+        // Only migrate records where ID exists in materials but NOT in products
+        await query(`
+          INSERT INTO material_movements (
+            material_id, movement_type, quantity, previous_stock, new_stock,
+            reference_type, reference_id, supplier_id, unit_price, total_amount,
+            notes, "user", created_at
+          )
+          SELECT 
+            sm.product_id as material_id,
+            sm.movement_type,
+            sm.quantity,
+            sm.previous_stock,
+            sm.new_stock,
+            sm.reference_type,
+            sm.reference_id,
+            sm.customer_id as supplier_id,
+            sm.unit_price,
+            sm.total_amount,
+            sm.notes,
+            sm."user",
+            sm.created_at
+          FROM stock_movements sm
+          WHERE EXISTS (
+            SELECT 1 FROM materials m WHERE m.id = sm.product_id
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM products p WHERE p.id = sm.product_id
+          )
+          ON CONFLICT DO NOTHING
+        `);
+
+        // Delete material movements from stock_movements
+        // Only delete records where ID exists in materials but NOT in products
+        const deleteResult = await query(`
+          DELETE FROM stock_movements
+          WHERE EXISTS (
+            SELECT 1 FROM materials m WHERE m.id = stock_movements.product_id
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM products p WHERE p.id = stock_movements.product_id
+          )
+        `);
+
+        console.log(`Migration completed: Moved ${deleteResult.rowCount} material movements to material_movements table`);
+      } else {
+        console.log('No material movements found in stock_movements, migration skipped');
+      }
+    } catch (migrationError) {
+      console.error('Migration 5 error:', migrationError);
+      console.log('Migration 5 skipped or already completed:', migrationError.message);
     }
 
     console.log('Database tables created successfully');
@@ -722,11 +829,23 @@ ipcMain.handle('products:get-all', async (_, page = 1, limit = 50) => {
 
 ipcMain.handle('products:create', async (_, product) => {
   try {
-    // Aynı kategori ve renkte ürün var mı kontrol et
-    const existing = await queryOne(`
-      SELECT * FROM products 
-      WHERE category = $1 AND color = $2
-    `, [product.category, product.color || null]);
+    // Keçi veya Koyun için sadece kategori kontrolü yap (renk kontrolü yok)
+    // Diğer kategoriler için hem kategori hem renk kontrolü yap
+    let existing = null;
+    
+    if (product.category === 'Keçi' || product.category === 'Koyun') {
+      // Keçi veya Koyun için sadece kategori kontrolü
+      existing = await queryOne(`
+        SELECT * FROM products 
+        WHERE category = $1
+      `, [product.category]);
+    } else {
+      // Diğer kategoriler için kategori ve renk kontrolü
+      existing = await queryOne(`
+        SELECT * FROM products 
+        WHERE category = $1 AND color = $2
+      `, [product.category, product.color || null]);
+    }
 
     if (existing) {
       // Varsa stok üstüne ekle
@@ -1115,8 +1234,8 @@ ipcMain.handle('materials:get-all', async () => {
 ipcMain.handle('materials:create', async (_, material) => {
   try {
     const result = await queryOne(`
-      INSERT INTO materials (name, category, color_shade, brand, code, stock_quantity, unit, description)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      INSERT INTO materials (name, category, color_shade, brand, code, stock_quantity, unit, description, supplier_id, supplier_name)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING *
     `, [
       material.name,
@@ -1126,7 +1245,9 @@ ipcMain.handle('materials:create', async (_, material) => {
       material.code || null,
       material.stock_quantity || 0,
       material.unit || 'kg',
-      material.description || null
+      material.description || null,
+      material.supplier_id || null,
+      material.supplier_name || null
     ]);
 
     return { success: true, data: result };
@@ -1442,7 +1563,7 @@ ipcMain.handle('employees:get-by-status', async (_, status, page = 1, limit = 10
   }
 });
 
-// Stock movements handlers
+// Stock movements handlers (for products only)
 ipcMain.handle('stock-movements:get-all', async () => {
   try {
     const result = await queryAll('SELECT * FROM stock_movements ORDER BY created_at DESC');
@@ -1454,6 +1575,12 @@ ipcMain.handle('stock-movements:get-all', async () => {
 
 ipcMain.handle('stock-movements:get-by-product', async (_, productId) => {
   try {
+    // Validate that this is a product, not a material
+    const productCheck = await queryOne('SELECT id FROM products WHERE id = $1', [productId]);
+    if (!productCheck) {
+      return { success: false, error: 'Ürün bulunamadı' };
+    }
+
     const result = await queryAll('SELECT * FROM stock_movements WHERE product_id = $1 ORDER BY created_at DESC', [productId]);
     return { success: true, data: result };
   } catch (error) {
@@ -1463,6 +1590,12 @@ ipcMain.handle('stock-movements:get-by-product', async (_, productId) => {
 
 ipcMain.handle('stock-movements:create', async (_, movement) => {
   try {
+    // Validate that this is a product, not a material
+    const productCheck = await queryOne('SELECT id FROM products WHERE id = $1', [movement.product_id]);
+    if (!productCheck) {
+      return { success: false, error: 'Ürün bulunamadı. Malzemeler için material-movements kullanın.' };
+    }
+
     const result = await queryOne(`
       INSERT INTO stock_movements (
         product_id, movement_type, quantity, previous_stock, new_stock, 
@@ -1480,6 +1613,63 @@ ipcMain.handle('stock-movements:create', async (_, movement) => {
       movement.reference_type || null,
       movement.reference_id || null,
       movement.customer_id || null,
+      movement.unit_price || null,
+      movement.total_amount || null,
+      movement.notes || null,
+      movement.user || 'system',
+      movement.created_at || null
+    ]);
+
+    return { success: true, data: result };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// Material movements handlers (for materials only)
+ipcMain.handle('material-movements:get-all', async () => {
+  try {
+    const result = await queryAll('SELECT * FROM material_movements ORDER BY created_at DESC');
+    return { success: true, data: result };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('material-movements:get-by-material', async (_, materialId) => {
+  try {
+    const result = await queryAll('SELECT * FROM material_movements WHERE material_id = $1 ORDER BY created_at DESC', [materialId]);
+    return { success: true, data: result };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('material-movements:create', async (_, movement) => {
+  try {
+    // Validate material exists
+    const material = await queryOne('SELECT id FROM materials WHERE id = $1', [movement.material_id]);
+    if (!material) {
+      return { success: false, error: 'Malzeme bulunamadı' };
+    }
+
+    const result = await queryOne(`
+      INSERT INTO material_movements (
+        material_id, movement_type, quantity, previous_stock, new_stock,
+        reference_type, reference_id, supplier_id, unit_price, total_amount,
+        notes, "user", created_at
+      ) 
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, COALESCE($13, CURRENT_TIMESTAMP))
+      RETURNING *
+    `, [
+      movement.material_id,
+      movement.movement_type,
+      movement.quantity,
+      movement.previous_stock || null,
+      movement.new_stock || null,
+      movement.reference_type || null,
+      movement.reference_id || null,
+      movement.supplier_id || null,
       movement.unit_price || null,
       movement.total_amount || null,
       movement.notes || null,
@@ -2247,18 +2437,27 @@ ipcMain.handle('purchases:create', async (_, purchase) => {
         let previousStock = 0;
         let newStock = 0;
         let productName = '';
+        let isMaterial = false;
 
         if (materialCheck.rows.length > 0) {
-          // Update material stock
+          // Update material stock and supplier info
+          isMaterial = true;
           previousStock = materialCheck.rows[0].stock_quantity || 0;
           newStock = previousStock + item.quantity;
           productName = materialCheck.rows[0].name || 'Bilinmeyen Malzeme';
 
+          // Get supplier name
+          const supplier = await queryOne(`SELECT name FROM customers WHERE id = $1`, [purchase.supplier_id]);
+          const supplierName = supplier?.name || 'Bilinmeyen Tedarikçi';
+
           await query(`
             UPDATE materials 
-            SET stock_quantity = stock_quantity + $1, updated_at = CURRENT_TIMESTAMP 
-            WHERE id = $2
-          `, [item.quantity, item.product_id]);
+            SET stock_quantity = stock_quantity + $1, 
+                supplier_id = $2,
+                supplier_name = $3,
+                updated_at = CURRENT_TIMESTAMP 
+            WHERE id = $4
+          `, [item.quantity, purchase.supplier_id, supplierName, item.product_id]);
         } else {
           // Update product stock
           const productCheck = await query(`SELECT name, stock_quantity FROM products WHERE id = $1`, [item.product_id]);
@@ -2277,26 +2476,49 @@ ipcMain.handle('purchases:create', async (_, purchase) => {
         const supplier = await queryOne(`SELECT name FROM customers WHERE id = $1`, [purchase.supplier_id]);
         const supplierName = supplier?.name || 'Bilinmeyen Tedarikçi';
 
-        // Create stock movement record
-        await query(`
-          INSERT INTO stock_movements (
-            product_id, movement_type, quantity, previous_stock, new_stock, 
-            reference_type, reference_id, unit_price, total_amount, notes, "user"
-          ) 
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-        `, [
-          item.product_id,
-          'in',
-          item.quantity,
-          previousStock,
-          newStock,
-          'purchase',
-          purchaseResult.id,
-          item.unit_price,
-          item.total_price,
-          `Alım - ${productName} - Tedarikçi: ${supplierName}`,
-          'Sistem'
-        ]);
+        // Create movement record - use material_movements for materials, stock_movements for products
+        if (isMaterial) {
+          await query(`
+            INSERT INTO material_movements (
+              material_id, movement_type, quantity, previous_stock, new_stock, 
+              reference_type, reference_id, supplier_id, unit_price, total_amount, notes, "user"
+            ) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+          `, [
+            item.product_id,
+            'in',
+            item.quantity,
+            previousStock,
+            newStock,
+            'purchase',
+            purchaseResult.id,
+            purchase.supplier_id,
+            item.unit_price,
+            item.total_price,
+            `Alım - ${productName} - Tedarikçi: ${supplierName}`,
+            'Sistem'
+          ]);
+        } else {
+          await query(`
+            INSERT INTO stock_movements (
+              product_id, movement_type, quantity, previous_stock, new_stock, 
+              reference_type, reference_id, unit_price, total_amount, notes, "user"
+            ) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          `, [
+            item.product_id,
+            'in',
+            item.quantity,
+            previousStock,
+            newStock,
+            'purchase',
+            purchaseResult.id,
+            item.unit_price,
+            item.total_price,
+            `Alım - ${productName} - Tedarikçi: ${supplierName}`,
+            'Sistem'
+          ]);
+        }
       }
     }
 
