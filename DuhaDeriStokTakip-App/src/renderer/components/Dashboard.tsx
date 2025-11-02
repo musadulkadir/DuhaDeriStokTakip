@@ -2,45 +2,29 @@ import React, { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
-  Grid,
   Card,
   CardContent,
   Avatar,
   LinearProgress,
   Chip,
-  IconButton,
   Divider,
   CircularProgress,
 } from '@mui/material';
 import {
   Inventory,
-  Category,
   TrendingUp,
   TrendingDown,
   Warning,
-  Add,
-  MoreVert,
-  LocalShipping,
-  Assessment,
   People,
 } from '@mui/icons-material';
 import { dbAPI } from '../services/api';
-import { Product, Customer } from '../../main/database/models';
+import { Product } from '../../main/database/models';
 
 interface DashboardStats {
-  totalProducts: number;
   totalStock: number;
   totalCustomers: number;
-  totalBalanceTRY: number;
-  totalBalanceUSD: number;
-  monthlyIncomeTRY: number;
-  monthlyIncomeUSD: number;
-  monthlyExpenseTRY: number;
-  monthlyExpenseUSD: number;
-  customerDebt: number;
 }
 
-// Güvenli toLocaleString fonksiyonu
 const safeToLocaleString = (value: any): string => {
   const num = Number(value) || 0;
   return num.toLocaleString('tr-TR');
@@ -52,7 +36,7 @@ interface RecentActivity {
   item: string;
   amount: string;
   time: string;
-  type: 'in' | 'out' | 'payment' | 'sale';
+  type: 'in' | 'out';
 }
 
 interface LowStockItem {
@@ -66,16 +50,8 @@ interface LowStockItem {
 const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<DashboardStats>({
-    totalProducts: 0,
     totalStock: 0,
     totalCustomers: 0,
-    totalBalanceTRY: 0,
-    totalBalanceUSD: 0,
-    monthlyIncomeTRY: 0,
-    monthlyIncomeUSD: 0,
-    monthlyExpenseTRY: 0,
-    monthlyExpenseUSD: 0,
-    customerDebt: 0,
   });
   const [recentActivities, setRecentActivities] = useState<RecentActivity[]>([]);
   const [lowStockItems, setLowStockItems] = useState<LowStockItem[]>([]);
@@ -83,7 +59,6 @@ const Dashboard: React.FC = () => {
   const loadDashboardData = async () => {
     setLoading(true);
     try {
-      // Tüm API çağrılarını paralel yap
       const [productsResponse, customersResponse, cashResponse] = await Promise.all([
         dbAPI.getProducts(),
         dbAPI.getCustomers(),
@@ -94,55 +69,14 @@ const Dashboard: React.FC = () => {
       const customers = customersResponse.success ? customersResponse.data : [];
       const cashTransactions = cashResponse.success ? cashResponse.data : [];
 
-      // İstatistikleri hesapla
-      const totalProducts = products.length;
       const totalStock = products.reduce((sum: number, p: Product) => sum + (Number(p.stock_quantity) || 0), 0);
       const totalCustomers = customers.length;
 
-      // Para birimi bazında toplam bakiye ve aylık gelir/gider hesapla (tek döngüde)
-      const currentMonth = new Date().toISOString().substring(0, 7);
-      let totalBalanceTRY = 0;
-      let totalBalanceUSD = 0;
-      let monthlyIncomeTRY = 0;
-      let monthlyIncomeUSD = 0;
-      let monthlyExpenseTRY = 0;
-      let monthlyExpenseUSD = 0;
-
-      (cashTransactions || []).forEach((t: any) => {
-        const currency = t.currency && t.currency.trim() !== '' ? t.currency : 'TRY';
-        const amount = Number(t.amount) || 0;
-        const isIncome = t.type === 'in';
-        const isCurrentMonth = t.created_at && t.created_at.substring(0, 7) === currentMonth;
-
-        if (currency === 'TRY') {
-          totalBalanceTRY += isIncome ? amount : -amount;
-          if (isCurrentMonth) {
-            if (isIncome) monthlyIncomeTRY += amount;
-            else monthlyExpenseTRY += amount;
-          }
-        } else if (currency === 'USD') {
-          totalBalanceUSD += isIncome ? amount : -amount;
-          if (isCurrentMonth) {
-            if (isIncome) monthlyIncomeUSD += amount;
-            else monthlyExpenseUSD += amount;
-          }
-        }
-      });
-
       setStats({
-        totalProducts,
         totalStock,
         totalCustomers,
-        totalBalanceTRY,
-        totalBalanceUSD,
-        monthlyIncomeTRY,
-        monthlyIncomeUSD,
-        monthlyExpenseTRY,
-        monthlyExpenseUSD,
-        customerDebt: 0,
       });
 
-      // Son aktiviteler
       const activities: RecentActivity[] = (cashTransactions || [])
         .slice(-10)
         .reverse()
@@ -157,7 +91,6 @@ const Dashboard: React.FC = () => {
 
       setRecentActivities(activities.slice(0, 5));
 
-      // Düşük stok ürünlerini belirle
       const lowStock = products
         .filter(product => (Number(product.stock_quantity) || 0) < 10)
         .map(product => ({
@@ -178,7 +111,6 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  // Zaman formatı
   const formatTimeAgo = (dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
@@ -197,32 +129,25 @@ const Dashboard: React.FC = () => {
 
   const statsCards = [
     {
-      title: 'Toplam Ürün',
-      value: stats.totalProducts.toString(),
-      subtitle: 'farklı ürün',
-      icon: <Category />,
-      color: '#8D6E63',
-      trend: '',
-      trendUp: true,
-    },
-    {
       title: 'Toplam Stok',
       value: safeToLocaleString(stats.totalStock),
       subtitle: 'tane',
       icon: <Inventory />,
       color: '#FF9800',
-      trend: '',
-      trendUp: true,
     },
-
     {
       title: 'Müşteri Sayısı',
       value: stats.totalCustomers.toString(),
       subtitle: 'aktif müşteri',
       icon: <People />,
       color: '#2196F3',
-      trend: '',
-      trendUp: true,
+    },
+    {
+      title: 'Çalışan Sayısı',
+      value: '5',
+      subtitle: 'aktif çalışan',
+      icon: <People />,
+      color: '#4CAF50',
     },
   ];
 
@@ -235,113 +160,93 @@ const Dashboard: React.FC = () => {
   }
 
   return (
-    <Box sx={{ p: 3 }}>
-      {/* Header */}
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h3" sx={{ fontWeight: 700, mb: 1, color: 'text.primary' }}>
+    <Box sx={{ p: 2 }}>
+      <Box sx={{ mb: 2 }}>
+        <Typography variant="h4" sx={{ fontWeight: 700, mb: 0.5, color: 'text.primary' }}>
           Kontrol Paneli
         </Typography>
-        <Typography variant="body1" sx={{ color: 'text.secondary', mb: 3 }}>
+        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
           Dericilik işletmenizin genel durumu
         </Typography>
       </Box>
 
-      {/* Stats Cards */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
+      <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap' }}>
         {statsCards.map((card, index) => (
-          <Grid item xs={12} sm={6} md={3} key={index}>
+          <Box key={index} sx={{ flex: '1 1 200px', minWidth: '200px' }}>
             <Card
               sx={{
                 height: '100%',
                 background: `linear-gradient(135deg, ${card.color}15 0%, ${card.color}25 100%)`,
                 border: `1px solid ${card.color}30`,
-                transition: 'all 0.3s ease',
+                transition: 'all 0.2s ease',
                 '&:hover': {
-                  transform: 'translateY(-4px)',
-                  boxShadow: `0 8px 25px ${card.color}40`,
+                  transform: 'translateY(-2px)',
+                  boxShadow: `0 4px 12px ${card.color}30`,
                 },
               }}
             >
-              <CardContent sx={{ p: 3 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+              <CardContent sx={{ p: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
                   <Avatar
                     sx={{
                       bgcolor: card.color,
-                      width: 56,
-                      height: 56,
-                      boxShadow: `0 4px 14px ${card.color}40`,
+                      width: 44,
+                      height: 44,
+                      boxShadow: `0 2px 8px ${card.color}40`,
                     }}
                   >
                     {card.icon}
                   </Avatar>
-                  <IconButton size="small" sx={{ color: 'text.secondary' }}>
-                    <MoreVert />
-                  </IconButton>
                 </Box>
-                <Typography variant="h4" sx={{ fontWeight: 700, mb: 1, color: 'text.primary' }}>
+                <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.5, color: 'text.primary' }}>
                   {card.value}
                 </Typography>
-                <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
+                <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
                   {card.subtitle}
                 </Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  {card.trendUp ? (
-                    <TrendingUp sx={{ color: 'success.main', fontSize: 16 }} />
-                  ) : (
-                    <TrendingUp sx={{ color: 'error.main', fontSize: 16, transform: 'rotate(180deg)' }} />
-                  )}
-                  <Typography variant="caption" sx={{ color: card.trendUp ? 'success.main' : 'error.main' }}>
-                    {card.trend || 'Stabil'}
-                  </Typography>
-                </Box>
               </CardContent>
             </Card>
-          </Grid>
+          </Box>
         ))}
-      </Grid>
+      </Box>
 
-      {/* Content Grid */}
-      <Grid container spacing={3}>
-        {/* Recent Activities */}
-        <Grid item xs={12} md={8}>
+      <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+        <Box sx={{ flex: '2 1 500px', minWidth: '300px' }}>
           <Card sx={{ height: '100%' }}>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
-                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+            <CardContent sx={{ p: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
                   Son Aktiviteler
                 </Typography>
-                <IconButton size="small">
-                  <MoreVert />
-                </IconButton>
               </Box>
-              <Box sx={{ space: 2 }}>
+              <Box>
                 {recentActivities.length > 0 ? (
                   recentActivities.map((activity, index) => (
                     <Box key={activity.id}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', py: 2 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', py: 1.5 }}>
                         <Avatar
                           sx={{
                             bgcolor: activity.type === 'in' ? 'success.main' : 'error.main',
-                            width: 40,
-                            height: 40,
-                            mr: 2,
+                            width: 36,
+                            height: 36,
+                            mr: 1.5,
                           }}
                         >
-                          {activity.type === 'in' ? <TrendingUp /> : <TrendingDown />}
+                          {activity.type === 'in' ? <TrendingUp fontSize="small" /> : <TrendingDown fontSize="small" />}
                         </Avatar>
                         <Box sx={{ flex: 1 }}>
-                          <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
                             {activity.action}
                           </Typography>
-                          <Typography variant="body2" color="text.secondary">
+                          <Typography variant="caption" color="text.secondary">
                             {activity.item}
                           </Typography>
                         </Box>
                         <Box sx={{ textAlign: 'right' }}>
-                          <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
                             {activity.amount}
                           </Typography>
-                          <Typography variant="caption" color="text.secondary">
+                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
                             {formatTimeAgo(activity.time)}
                           </Typography>
                         </Box>
@@ -350,21 +255,20 @@ const Dashboard: React.FC = () => {
                     </Box>
                   ))
                 ) : (
-                  <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
                     Henüz aktivite bulunmuyor
                   </Typography>
                 )}
               </Box>
             </CardContent>
           </Card>
-        </Grid>
+        </Box>
 
-        {/* Low Stock Alert */}
-        <Grid item xs={12} md={4}>
+        <Box sx={{ flex: '1 1 300px', minWidth: '250px' }}>
           <Card sx={{ height: '100%' }}>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
-                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+            <CardContent sx={{ p: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
                   Düşük Stok Uyarısı
                 </Typography>
                 <Chip
@@ -374,15 +278,15 @@ const Dashboard: React.FC = () => {
                   icon={<Warning />}
                 />
               </Box>
-              <Box sx={{ space: 2 }}>
+              <Box>
                 {lowStockItems.length > 0 ? (
-                  lowStockItems.map((item, index) => (
-                    <Box key={item.id} sx={{ mb: 3 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  lowStockItems.map((item) => (
+                    <Box key={item.id} sx={{ mb: 2 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                        <Typography variant="caption" sx={{ fontWeight: 600 }}>
                           {item.name}
                         </Typography>
-                        <Typography variant="caption" color="text.secondary">
+                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
                           {item.current}/{item.min}
                         </Typography>
                       </Box>
@@ -390,27 +294,27 @@ const Dashboard: React.FC = () => {
                         variant="determinate"
                         value={item.percentage}
                         sx={{
-                          height: 6,
-                          borderRadius: 3,
+                          height: 4,
+                          borderRadius: 2,
                           bgcolor: 'grey.200',
                           '& .MuiLinearProgress-bar': {
                             bgcolor: item.percentage < 30 ? 'error.main' : item.percentage < 60 ? 'warning.main' : 'success.main',
-                            borderRadius: 3,
+                            borderRadius: 2,
                           },
                         }}
                       />
                     </Box>
                   ))
                 ) : (
-                  <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
                     Tüm ürünler yeterli stokta
                   </Typography>
                 )}
               </Box>
             </CardContent>
           </Card>
-        </Grid>
-      </Grid>
+        </Box>
+      </Box>
     </Box>
   );
 };

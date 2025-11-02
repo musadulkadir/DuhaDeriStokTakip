@@ -235,7 +235,7 @@ async function createTables() {
       )
     `);
 
-    // Colors table
+    // Colors table (sadece özel renkler için - default renkler kodda)
     await query(`
       CREATE TABLE IF NOT EXISTS colors (
         id SERIAL PRIMARY KEY,
@@ -883,20 +883,46 @@ ipcMain.handle('products:create', async (_, product) => {
 // Categories handlers
 ipcMain.handle('categories:get-all', async () => {
   try {
-    const result = await queryAll('SELECT * FROM categories ORDER BY name');
-    return { success: true, data: result };
+    // Sabit kategorileri koddan döndür
+    const { DEFAULT_CATEGORIES } = require('./constants/options');
+    
+    // Veritabanından özel kategorileri al (eğer varsa)
+    const customCategories = await queryAll('SELECT * FROM categories ORDER BY name');
+    
+    // Sabit + özel kategorileri birleştir
+    const allCategories = [
+      ...DEFAULT_CATEGORIES,
+      ...customCategories.map(c => ({ id: c.id, name: c.name }))
+    ];
+    
+    return { success: true, data: allCategories };
   } catch (error) {
-    return { success: false, error: error.message };
+    // Veritabanı hatası olsa bile sabit kategorileri döndür
+    const { DEFAULT_CATEGORIES } = require('./constants/options');
+    return { success: true, data: DEFAULT_CATEGORIES };
   }
 });
 
 // Colors handlers
 ipcMain.handle('colors:get-all', async () => {
   try {
-    const result = await queryAll('SELECT * FROM colors ORDER BY name');
-    return { success: true, data: result };
+    // Sabit renkleri koddan döndür
+    const { DEFAULT_COLORS } = require('./constants/options');
+    
+    // Veritabanından özel renkleri al (eğer varsa)
+    const customColors = await queryAll('SELECT * FROM colors ORDER BY name');
+    
+    // Sabit + özel renkleri birleştir
+    const allColors = [
+      ...DEFAULT_COLORS,
+      ...customColors.map(c => ({ id: c.id, name: c.name, hex_code: c.hex_code }))
+    ];
+    
+    return { success: true, data: allColors };
   } catch (error) {
-    return { success: false, error: error.message };
+    // Veritabanı hatası olsa bile sabit renkleri döndür
+    const { DEFAULT_COLORS } = require('./constants/options');
+    return { success: true, data: DEFAULT_COLORS };
   }
 });
 
@@ -1600,9 +1626,9 @@ ipcMain.handle('stock-movements:create', async (_, movement) => {
       INSERT INTO stock_movements (
         product_id, movement_type, quantity, previous_stock, new_stock, 
         reference_type, reference_id, customer_id, unit_price, total_amount, 
-        notes, "user", created_at
+        currency, notes, "user", created_at
       ) 
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, COALESCE($13, CURRENT_TIMESTAMP))
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, COALESCE($14, CURRENT_TIMESTAMP))
       RETURNING *
     `, [
       movement.product_id,
@@ -1615,6 +1641,7 @@ ipcMain.handle('stock-movements:create', async (_, movement) => {
       movement.customer_id || null,
       movement.unit_price || null,
       movement.total_amount || null,
+      movement.currency || 'TRY',
       movement.notes || null,
       movement.user || 'system',
       movement.created_at || null
@@ -1657,9 +1684,9 @@ ipcMain.handle('material-movements:create', async (_, movement) => {
       INSERT INTO material_movements (
         material_id, movement_type, quantity, previous_stock, new_stock,
         reference_type, reference_id, supplier_id, unit_price, total_amount,
-        notes, "user", created_at
+        currency, notes, "user", created_at
       ) 
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, COALESCE($13, CURRENT_TIMESTAMP))
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, COALESCE($14, CURRENT_TIMESTAMP))
       RETURNING *
     `, [
       movement.material_id,
@@ -1672,6 +1699,7 @@ ipcMain.handle('material-movements:create', async (_, movement) => {
       movement.supplier_id || null,
       movement.unit_price || null,
       movement.total_amount || null,
+      movement.currency || 'TRY',
       movement.notes || null,
       movement.user || 'system',
       movement.created_at || null
@@ -1793,9 +1821,9 @@ ipcMain.handle('sales:create', async (_, sale) => {
           INSERT INTO stock_movements (
             product_id, movement_type, quantity, previous_stock, new_stock, 
             reference_type, reference_id, customer_id, unit_price, total_amount, 
-            notes, "user"
+            currency, notes, "user"
           ) 
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         `, [
           stockProductId, // Stok düşen ürün (Keçi veya Koyun)
           'out', // Satış çıkış hareketi
@@ -1807,6 +1835,7 @@ ipcMain.handle('sales:create', async (_, sale) => {
           sale.customer_id,
           item.unit_price_per_desi,
           item.total_price,
+          sale.currency || 'TRY',
           `Satış - ${item.product_name || productInfo.category} ${item.color || ''} - ${item.quantity_pieces} adet`,
           'system'
         ]);
@@ -2481,9 +2510,9 @@ ipcMain.handle('purchases:create', async (_, purchase) => {
           await query(`
             INSERT INTO material_movements (
               material_id, movement_type, quantity, previous_stock, new_stock, 
-              reference_type, reference_id, supplier_id, unit_price, total_amount, notes, "user"
+              reference_type, reference_id, supplier_id, unit_price, total_amount, currency, notes, "user"
             ) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
           `, [
             item.product_id,
             'in',
@@ -2495,6 +2524,7 @@ ipcMain.handle('purchases:create', async (_, purchase) => {
             purchase.supplier_id,
             item.unit_price,
             item.total_price,
+            purchase.currency || 'TRY',
             `Alım - ${productName} - Tedarikçi: ${supplierName}`,
             'Sistem'
           ]);
@@ -2502,9 +2532,9 @@ ipcMain.handle('purchases:create', async (_, purchase) => {
           await query(`
             INSERT INTO stock_movements (
               product_id, movement_type, quantity, previous_stock, new_stock, 
-              reference_type, reference_id, unit_price, total_amount, notes, "user"
+              reference_type, reference_id, unit_price, total_amount, currency, notes, "user"
             ) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
           `, [
             item.product_id,
             'in',
@@ -2515,6 +2545,7 @@ ipcMain.handle('purchases:create', async (_, purchase) => {
             purchaseResult.id,
             item.unit_price,
             item.total_price,
+            purchase.currency || 'TRY',
             `Alım - ${productName} - Tedarikçi: ${supplierName}`,
             'Sistem'
           ]);

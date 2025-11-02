@@ -169,6 +169,8 @@ const CustomerDetail: React.FC = () => {
 
   const [startDate, setStartDate] = useState(getDefaultStartDate());
   const [endDate, setEndDate] = useState(getDefaultEndDate());
+  const [allSales, setAllSales] = useState<CustomerSale[]>([]); // Tüm satışlar
+  const [allPayments, setAllPayments] = useState<CustomerPayment[]>([]); // Tüm ödemeler
   const [filteredSales, setFilteredSales] = useState<CustomerSale[]>([]);
   const [filteredPayments, setFilteredPayments] = useState<CustomerPayment[]>([]);
   const [previousBalance, setPreviousBalance] = useState({ TRY: 0, USD: 0, EUR: 0 });
@@ -452,13 +454,13 @@ const CustomerDetail: React.FC = () => {
       });
 
       // Geçmiş bakiye hesapla (Satışlar - Ödemeler)
-      const prevPurchasesTRY = previousSales.filter(s => (s.currency || 'TRY') === 'TRY').reduce((sum, s) => sum + s.totalAmount, 0);
-      const prevPurchasesUSD = previousSales.filter(s => (s.currency || 'TRY') === 'USD').reduce((sum, s) => sum + s.totalAmount, 0);
-      const prevPurchasesEUR = previousSales.filter(s => (s.currency || 'TRY') === 'EUR').reduce((sum, s) => sum + s.totalAmount, 0);
+      const prevPurchasesTRY = previousSales.filter(s => (s.currency || 'TRY') === 'TRY').reduce((sum, s) => sum + Number(s.totalAmount), 0);
+      const prevPurchasesUSD = previousSales.filter(s => (s.currency || 'TRY') === 'USD').reduce((sum, s) => sum + Number(s.totalAmount), 0);
+      const prevPurchasesEUR = previousSales.filter(s => (s.currency || 'TRY') === 'EUR').reduce((sum, s) => sum + Number(s.totalAmount), 0);
 
-      const prevPaymentsTRY = previousPayments.filter(p => (p.currency || 'TRY') === 'TRY').reduce((sum, p) => sum + p.amount, 0);
-      const prevPaymentsUSD = previousPayments.filter(p => (p.currency || 'TRY') === 'USD').reduce((sum, p) => sum + p.amount, 0);
-      const prevPaymentsEUR = previousPayments.filter(p => (p.currency || 'TRY') === 'EUR').reduce((sum, p) => sum + p.amount, 0);
+      const prevPaymentsTRY = previousPayments.filter(p => (p.currency || 'TRY') === 'TRY').reduce((sum, p) => sum + Number(p.amount), 0);
+      const prevPaymentsUSD = previousPayments.filter(p => (p.currency || 'TRY') === 'USD').reduce((sum, p) => sum + Number(p.amount), 0);
+      const prevPaymentsEUR = previousPayments.filter(p => (p.currency || 'TRY') === 'EUR').reduce((sum, p) => sum + Number(p.amount), 0);
 
       const prevBalance = {
         TRY: prevPurchasesTRY - prevPaymentsTRY,
@@ -575,6 +577,38 @@ const CustomerDetail: React.FC = () => {
   const handleDownloadPDF = () => {
     if (!customer) return;
 
+    // Önceki bakiyeyi yeniden hesapla (PDF için)
+    let pdfPreviousBalance = { TRY: 0, USD: 0, EUR: 0 };
+    if (startDate) {
+      const start = new Date(startDate);
+      
+      const previousSales = sales.filter(sale => {
+        const saleDate = new Date(sale.date);
+        return saleDate < start;
+      });
+
+      const previousPayments = payments.filter(payment => {
+        const paymentDate = new Date(payment.paymentDate);
+        return paymentDate < start;
+      });
+
+      const prevPurchasesTRY = previousSales.filter(s => (s.currency || 'TRY') === 'TRY').reduce((sum, s) => sum + Number(s.totalAmount), 0);
+      const prevPurchasesUSD = previousSales.filter(s => (s.currency || 'TRY') === 'USD').reduce((sum, s) => sum + Number(s.totalAmount), 0);
+      const prevPurchasesEUR = previousSales.filter(s => (s.currency || 'TRY') === 'EUR').reduce((sum, s) => sum + Number(s.totalAmount), 0);
+
+      const prevPaymentsTRY = previousPayments.filter(p => (p.currency || 'TRY') === 'TRY').reduce((sum, p) => sum + Number(p.amount), 0);
+      const prevPaymentsUSD = previousPayments.filter(p => (p.currency || 'TRY') === 'USD').reduce((sum, p) => sum + Number(p.amount), 0);
+      const prevPaymentsEUR = previousPayments.filter(p => (p.currency || 'TRY') === 'EUR').reduce((sum, p) => sum + Number(p.amount), 0);
+
+      pdfPreviousBalance = {
+        TRY: prevPurchasesTRY - prevPaymentsTRY,
+        USD: prevPurchasesUSD - prevPaymentsUSD,
+        EUR: prevPurchasesEUR - prevPaymentsEUR
+      };
+
+      console.log('📄 PDF Önceki Bakiye:', pdfPreviousBalance);
+    }
+
     // Sayı formatla (NaN kontrolü ile)
     const formatNumber = (num: any) => {
       const n = Number(num);
@@ -645,7 +679,7 @@ const CustomerDetail: React.FC = () => {
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(100, 100, 100);
       doc.setFontSize(7);
-      const prevText = `TL ${formatNumber(previousBalance.TRY)} | USD ${formatNumber(previousBalance.USD)} | EUR ${formatNumber(previousBalance.EUR)}`;
+      const prevText = `TL ${formatNumber(pdfPreviousBalance.TRY)} | USD ${formatNumber(pdfPreviousBalance.USD)} | EUR ${formatNumber(pdfPreviousBalance.EUR)}`;
       doc.text(prevText, 18, yPos + 8);
 
       // Ayırıcı çizgi
@@ -724,8 +758,8 @@ const CustomerDetail: React.FC = () => {
     doc.setFont('helvetica', 'bold');
     doc.text('Odeme Gecmisi', 20, finalY + 10);
 
-    // Filtrelenmiş ödemeleri kullan (tarih filtresine göre)
-    const paymentsTableData = filteredPayments.slice(0, 10).map(payment => {
+    // Filtrelenmiş ödemeleri kullan (tarih filtresine göre) - Tüm ödemeleri al
+    const paymentsTableData = filteredPayments.map(payment => {
       const paymentTypeText = payment.paymentType === 'cash' ? 'Nakit' :
         payment.paymentType === 'bank_transfer' ? 'Havale' :
           payment.paymentType === 'check' ? 'Cek' : 'Diger';
@@ -822,7 +856,7 @@ const CustomerDetail: React.FC = () => {
 
     // Keçi alt kategorileri için original_id kullan
     const productId = (selectedProduct as any).original_id || selectedProduct!.id!;
-    
+
     const item: SaleItem = {
       productId: productId,
       productName: selectedProduct!.category, // Kategori adı (Keçi, Koyun, Keçi-Oğlak, vb.)
@@ -833,7 +867,7 @@ const CustomerDetail: React.FC = () => {
       total: parseFormattedNumber(quantityDesi) * parseFormattedNumber(unitPricePerDesi),
       unit: saleUnit,
     };
-    
+
     console.log('🛒 Satış kalemi eklendi:', item);
 
     setSaleItems([...saleItems, item]);
@@ -886,7 +920,7 @@ const CustomerDetail: React.FC = () => {
           unit: item.unit
         }))
       };
-      
+
       console.log('📤 Backend\'e gönderilen satış verisi:', JSON.stringify(saleData, null, 2));
 
       const saleResponse = await dbAPI.createSale(saleData);
@@ -1495,7 +1529,7 @@ const CustomerDetail: React.FC = () => {
                           }
 
                           const currencySymbol = payment.currency === 'TRY' ? '₺' : payment.currency === 'EUR' ? '€' : '$';
-                          
+
                           return (
                             <TableRow key={payment.id}>
                               <TableCell>
@@ -1520,7 +1554,9 @@ const CustomerDetail: React.FC = () => {
                               </TableCell>
                               <TableCell>
                                 <Chip
-                                  label={payment.paymentType === 'cash' ? 'Nakit' : 'Banka'}
+                                  label={payment.paymentType === 'cash' ? 'Nakit' : (
+                                    payment.paymentType === 'bank_transfer' ? 'Banka' : 'Çek'
+                                  )}
                                   variant="outlined"
                                   size="small"
                                 />
@@ -1947,9 +1983,9 @@ const CustomerDetail: React.FC = () => {
                                 <TableCell>{item.productName} - {item.color}</TableCell>
                                 <TableCell align="right">{Number(item.quantityPieces).toLocaleString('tr-TR')} adet</TableCell>
                                 <TableCell align="center">
-                                  <Chip 
-                                    label={item.unit === 'desi' ? 'Desi' : 'Ayak'} 
-                                    size="small" 
+                                  <Chip
+                                    label={item.unit === 'desi' ? 'Desi' : 'Ayak'}
+                                    size="small"
                                     color={item.unit === 'desi' ? 'primary' : 'secondary'}
                                   />
                                 </TableCell>

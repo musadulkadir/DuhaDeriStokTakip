@@ -26,7 +26,7 @@ interface ProductMovementsModalProps {
 }
 
 interface Movement {
-  id: number;
+  id?: number;
   product_id?: number;
   material_id?: number;
   movement_type: 'in' | 'out';
@@ -39,17 +39,16 @@ interface Movement {
   supplier_id?: number;
   unit_price?: number;
   total_amount?: number;
+  currency?: string;
   notes?: string;
   user?: string;
   created_at: string;
 }
 
-
 const ProductMovementsModal: React.FC<ProductMovementsModalProps> = ({ open, onClose, product, type = 'product' }) => {
   const [movements, setMovements] = useState<Movement[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Güvenli toLocaleString fonksiyonu
   const safeToLocaleString = (value: any): string => {
     if (value === null || value === undefined || value === '') return '0';
     const num = Number(value);
@@ -67,7 +66,7 @@ const ProductMovementsModal: React.FC<ProductMovementsModalProps> = ({ open, onC
       console.log('📦 Movements response:', { itemType, success: response.success, count: response.data?.length });
       
       if (response.success) {
-        setMovements(response.data || []);
+        setMovements((response.data || []) as Movement[]);
       } else {
         console.error('Failed to load movements:', response.error);
         setMovements([]);
@@ -86,7 +85,6 @@ const ProductMovementsModal: React.FC<ProductMovementsModalProps> = ({ open, onC
     }
   }, [product, type]);
 
-  // Pencereyi ortalamak için stil
   const style = {
     position: 'absolute' as 'absolute',
     top: '50%',
@@ -157,7 +155,7 @@ const ProductMovementsModal: React.FC<ProductMovementsModalProps> = ({ open, onC
                     </TableCell>
                     <TableCell align="right">
                       <Chip
-                        label={movement.movement_type === 'in' ? `+${safeToLocaleString(movement.quantity)}` : `-${safeToLocaleString(movement.quantity)}`}
+                        label={movement.movement_type === 'in' ? `+${safeToLocaleString(movement.quantity)}` : `-${safeToLocaleString(Math.abs(movement.quantity))}`}
                         color={movement.movement_type === 'in' ? 'success' : 'error'}
                         size="small"
                       />
@@ -169,7 +167,7 @@ const ProductMovementsModal: React.FC<ProductMovementsModalProps> = ({ open, onC
                       {movement.notes || 'Açıklama yok'}
                       {movement.total_amount && (
                         <Typography variant="caption" display="block" color="text.secondary">
-                          Tutar: ₺{safeToLocaleString(movement.total_amount)}
+                          Tutar: {movement.currency === 'USD' ? '$' : '₺'}{safeToLocaleString(movement.total_amount)}
                         </Typography>
                       )}
                     </TableCell>

@@ -15,6 +15,7 @@ import {
   Card,
   CardContent,
   Avatar,
+  Grid,
   Chip,
   InputAdornment,
   Dialog,
@@ -52,12 +53,14 @@ interface NewProduct {
 }
 
 interface NewMaterial {
-  category: 'Boya' | 'Cila' | 'Binder' | 'Kimyasal' | '';
+  category: 'Boya' | 'Cila' | 'Binder' | '';
   color_shade?: string;
   brand?: string;
   code?: string;
   stock_quantity: string;
   description: string;
+  supplier_id?: number;
+  supplier_name?: string;
 }
 
 const ProductManagement: React.FC = () => {
@@ -68,8 +71,7 @@ const ProductManagement: React.FC = () => {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterCategory, setFilterCategory] = useState('');
-  const [filterColor, setFilterColor] = useState('');
+  const [showMaterials, setShowMaterials] = useState(false); // Deri/Malzeme toggle
   const [loading, setLoading] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [materials, setMaterials] = useState<Product[]>([]);
@@ -85,6 +87,7 @@ const ProductManagement: React.FC = () => {
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [colors, setColors] = useState<Color[]>([]);
+  const [suppliers, setSuppliers] = useState<any[]>([]);
   const [newProduct, setNewProduct] = useState<NewProduct>({
     category: '',
     color: '',
@@ -100,6 +103,8 @@ const ProductManagement: React.FC = () => {
     code: '',
     stock_quantity: '',
     description: '',
+    supplier_id: undefined,
+    supplier_name: '',
   });
 
   // Sayı formatlama fonksiyonları
@@ -198,7 +203,21 @@ const ProductManagement: React.FC = () => {
     loadMaterials();
     loadCategories();
     loadColors();
+    loadSuppliers();
   }, []);
+
+  const loadSuppliers = async () => {
+    try {
+      const response = await dbAPI.getCustomers();
+      if (response.success) {
+        // Sadece tedarikçileri filtrele
+        const supplierList = response.data.filter((c: any) => c.type === 'supplier');
+        setSuppliers(supplierList);
+      }
+    } catch (error) {
+      console.error('Error loading suppliers:', error);
+    }
+  };
 
   const handleOpenModal = (product: Product) => {
     console.log('🔓 Opening modal for:', { id: product.id, type: (product as any)?.type, category: product.category });
@@ -242,7 +261,7 @@ const ProductManagement: React.FC = () => {
   useEffect(() => {
     setProductsCurrentPage(1);
     setMaterialsCurrentPage(1);
-  }, [searchTerm, filterCategory, filterColor]);
+  }, [searchTerm]);
 
   const handleAddProduct = async () => {
     console.log('Form data:', newProduct);
@@ -279,7 +298,7 @@ const ProductManagement: React.FC = () => {
 
             notes: newProduct.description || merged
               ? `Stok ekleme - ${productData.category}`
-              :`İlk stok girişi - ${productData.category}`,
+              : `İlk stok girişi - ${productData.category}`,
             user: 'Sistem Kullanıcısı',
             created_at: newProduct.entry_date ? new Date(newProduct.entry_date).toISOString() : new Date().toISOString(),
           };
@@ -332,23 +351,24 @@ const ProductManagement: React.FC = () => {
         return;
       }
 
+      // Tedarikçi kontrolü
+      if (!newMaterial.supplier_id) {
+        setSnackbar({ open: true, message: 'Lütfen tedarikçi seçin', severity: 'error' });
+        setLoading(false);
+        return;
+      }
+
       // Kategori bazında zorunlu alan kontrolü
       if (newMaterial.category === 'Boya' && !newMaterial.color_shade) {
         setSnackbar({ open: true, message: 'Boya için renk tonu gerekli', severity: 'error' });
         setLoading(false);
         return;
       }
-      if (newMaterial.category === 'Cila' && !newMaterial.brand) {
-        setSnackbar({ open: true, message: 'Cila için firma gerekli', severity: 'error' });
+      if (newMaterial.category === 'Binder' && !newMaterial.code) {
+        setSnackbar({ open: true, message: 'Binder için kod gerekli', severity: 'error' });
         setLoading(false);
         return;
       }
-      if (newMaterial.category === 'Binder' && (!newMaterial.code || !newMaterial.brand)) {
-        setSnackbar({ open: true, message: 'Binder için kod ve firma gerekli', severity: 'error' });
-        setLoading(false);
-        return;
-      }
-      // Kimyasal için zorunlu alan yok, opsiyonel
 
       // Malzeme adını oluştur
       const materialName = `${newMaterial.category}${newMaterial.color_shade ? ` - ${newMaterial.color_shade}` : ''}${newMaterial.code ? ` - ${newMaterial.code}` : ''}`;
@@ -359,18 +379,9 @@ const ProductManagement: React.FC = () => {
         if (newMaterial.category === 'Boya') {
           return m.category === newMaterial.category && m.color_shade === newMaterial.color_shade;
         } else if (newMaterial.category === 'Cila') {
-          return m.category === newMaterial.category && m.brand === newMaterial.brand;
+          return m.category === newMaterial.category;
         } else if (newMaterial.category === 'Binder') {
-          return m.category === newMaterial.category && m.code === newMaterial.code && m.brand === newMaterial.brand;
-        } else if (newMaterial.category === 'Kimyasal') {
-          // Kimyasal için kod ve firma varsa kontrol et, yoksa sadece kategori
-          if (newMaterial.code && newMaterial.brand) {
-            return m.category === newMaterial.category && m.code === newMaterial.code && m.brand === newMaterial.brand;
-          } else if (newMaterial.code) {
-            return m.category === newMaterial.category && m.code === newMaterial.code;
-          } else if (newMaterial.brand) {
-            return m.category === newMaterial.category && m.brand === newMaterial.brand;
-          }
+          return m.category === newMaterial.category && m.code === newMaterial.code;
         }
         return false;
       });
@@ -391,6 +402,7 @@ const ProductManagement: React.FC = () => {
             previous_stock: existingMaterial.stock_quantity || 0,
             new_stock: newStock,
             reference_type: 'manual_adjustment' as const,
+            supplier_id: newMaterial.supplier_id,
             notes: `Stok ekleme - ${materialName}`,
             user: 'Sistem Kullanıcısı',
           };
@@ -417,7 +429,9 @@ const ProductManagement: React.FC = () => {
           code: newMaterial.code || undefined,
           stock_quantity: stockQuantity,
           unit: 'kg',
-          description: newMaterial.description || undefined
+          description: newMaterial.description || undefined,
+          supplier_id: newMaterial.supplier_id,
+          supplier_name: newMaterial.supplier_name
         };
 
         console.log('Malzeme verisi:', materialData);
@@ -436,6 +450,7 @@ const ProductManagement: React.FC = () => {
               previous_stock: 0,
               new_stock: stockQuantity,
               reference_type: 'initial_stock' as const,
+              supplier_id: newMaterial.supplier_id,
               notes: `İlk stok girişi - ${materialName}`,
               user: 'Sistem Kullanıcısı',
             };
@@ -637,10 +652,8 @@ const ProductManagement: React.FC = () => {
       productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (product.category || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (product.color || '').toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = filterCategory === '' || product.category === filterCategory;
-    const matchesColor = filterColor === '' || product.color === filterColor;
 
-    return matchesSearch && matchesCategory && matchesColor;
+    return matchesSearch;
   });
 
   const productsStartIndex = (productsCurrentPage - 1) * productsItemsPerPage;
@@ -780,339 +793,264 @@ const ProductManagement: React.FC = () => {
         </Card>
       </Box>
 
-      {/* Search and Filter */}
+      {/* Search and Toggle */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 3, alignItems: 'center' }}>
-            <TextField
-              fullWidth
-              placeholder="Ürün adı, kategori veya renk ara..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              sx={{
-                '& .MuiOutlinedInput-root': {
-                  minHeight: '56px',
-                  fontSize: '1.1rem',
-                },
-                '& .MuiOutlinedInput-input': {
-                  fontSize: '1.1rem',
-                  fontWeight: 500,
-                }
-              }}
-              slotProps={{
-                input: {
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <SearchIcon />
-                    </InputAdornment>
-                  ),
-                },
-              }}
-            />
-            <FormControl fullWidth variant="outlined">
-              <InputLabel
-                id="category-filter-label"
+          <Grid container spacing={2} alignItems="center">
+            <Grid size={{ xs: 12, md: 6 }}>
+              <TextField
+                fullWidth
+                placeholder="Ürün adı, kategori veya renk ara..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
                 sx={{
-                  fontSize: '1.1rem',
-                  fontWeight: 600,
-                }}
-              >
-                Deri Türü
-              </InputLabel>
-              <Select
-                labelId="category-filter-label"
-                value={filterCategory}
-                label="Deri Türü"
-                onChange={(e) => setFilterCategory(e.target.value)}
-                sx={{
-                  minHeight: '56px',
-                  '& .MuiSelect-select': {
-                    fontSize: '1.1rem',
+                  '& .MuiOutlinedInput-root': {
+                    minHeight: '56px',
+                    fontSize: '1rem',
+                  },
+                  '& .MuiOutlinedInput-input': {
+                    fontSize: '1rem',
                     fontWeight: 500,
                   }
                 }}
-              >
-                <MenuItem value="">Tüm Deri Türleri</MenuItem>
-                {categories.map(category => (
-                  <MenuItem key={category.id} value={category.name}>{category.name}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <FormControl fullWidth variant="outlined">
-              <InputLabel
-                id="color-filter-label"
-                sx={{
-                  fontSize: '1.1rem',
-                  fontWeight: 600,
+                slotProps={{
+                  input: {
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon />
+                      </InputAdornment>
+                    ),
+                  },
                 }}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, md: 3 }}>
+              <Button
+                fullWidth
+                variant={showMaterials ? "outlined" : "contained"}
+                size="large"
+                sx={{ minHeight: '56px' }}
+                onClick={() => setShowMaterials(!showMaterials)}
               >
-                Renk
-              </InputLabel>
-              <Select
-                labelId="color-filter-label"
-                value={filterColor}
-                label="Renk"
-                onChange={(e) => setFilterColor(e.target.value)}
-                sx={{
-                  minHeight: '56px',
-                  '& .MuiSelect-select': {
-                    fontSize: '1.1rem',
-                    fontWeight: 500,
-                  }
-                }}
+                {showMaterials ? 'Derileri Göster' : 'Malzemeleri Göster'}
+              </Button>
+            </Grid>
+            <Grid size={{ xs: 12, md: 3 }}>
+              <Button
+                fullWidth
+                variant="contained"
+                size="large"
+                startIcon={<AddIcon />}
+                sx={{ minHeight: '56px' }}
+                onClick={() => showMaterials ? setAddMaterialDialogOpen(true) : setAddDialogOpen(true)}
               >
-                <MenuItem value="">Tüm Renkler</MenuItem>
-                {colors.map(color => (
-                  <MenuItem key={color.id} value={color.name}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Box
-                        sx={{
-                          width: 16,
-                          height: 16,
-                          borderRadius: '50%',
-                          backgroundColor: color.hex_code || '#F5F5DC',
-                          border: color.name === 'Beyaz' ? '1px solid #ccc' : 'none',
-                        }}
-                      />
-                      {color.name}
-                    </Box>
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <Button
-              fullWidth
-              variant="outlined"
-              size="large"
-              sx={{ minHeight: '56px' }}
-              onClick={() => {
-                setSearchTerm('');
-                setFilterCategory('');
-                setFilterColor('');
-              }}
-            >
-              Temizle
-            </Button>
-            <Button
-              fullWidth
-              variant="contained"
-              size="large"
-              startIcon={<AddIcon />}
-              sx={{ minHeight: '56px' }}
-              onClick={() => setAddDialogOpen(true)}
-            >
-              Ürün Ekle
-            </Button>
-            <Button
-              fullWidth
-              variant="outlined"
-              size="large"
-              startIcon={<AddIcon />}
-              sx={{ minHeight: '56px' }}
-              onClick={() => setAddMaterialDialogOpen(true)}
-            >
-              Malzeme Ekle
-            </Button>
-          </Box>
+                {showMaterials ? 'Malzeme Ekle' : 'Ürün Ekle'}
+              </Button>
+            </Grid>
+          </Grid>
         </CardContent>
       </Card>
 
-      {/* Products Table */}
-      <Card>
-        <CardContent sx={{ p: 0 }}>
-          <Box sx={{ p: 3, pb: 0 }}>
-            <Typography variant="h6" sx={{ fontWeight: 600 }}>
-              Deri Stok Listesi ({allFilteredProducts.length} ürün)
-            </Typography>
-          </Box>
-          <TableContainer>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Deri Türü</TableCell>
-                  <TableCell align="right">Stok (Adet)</TableCell>
-                  <TableCell>Durum</TableCell>
-                  <TableCell align="center">İşlemler</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {(filteredProducts || []).map((product) => {
-                  if (!product) return null; // Null ürünleri atla
-                  const stockStatus = getStockStatus(Number(product?.stock_quantity) || 0);
-                  return (
-                    <TableRow key={product.id} hover>
-                      <TableCell sx={{ fontWeight: 600 }}>{product.category}</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 600 }}>
-                        {(() => {
-                          try {
-                            return safeToLocaleString(product?.stock_quantity) + ' adet';
-                          } catch (e) {
-                            return '0 adet';
-                          }
-                        })()}
-                      </TableCell>
-                      <TableCell>
-                        <Chip
-                          label={stockStatus.label}
-                          color={stockStatus.color as any}
-                          size="small"
-                        />
-                      </TableCell>
-                      <TableCell align="center">
-                        <IconButton
-                          size="small"
-                          onClick={() => handleOpenModal(product)}
-                          title="Stok Geçmişi"
-                        >
-                          <HistoryIcon />
-                        </IconButton>
-                        <IconButton
-                          size="small"
-                          color="primary"
-                          title="Düzenle"
-                          onClick={() => { setSelectedProduct(product); setEditDialogOpen(true); }}
-                        >
-                          <EditIcon />
-                        </IconButton>
-                        <IconButton
-                          size="small"
-                          color="error"
-                          title="Sil"
-                          onClick={() => { setSelectedProduct(product); setDeleteDialogOpen(true); }}
-                        >
-                          <DeleteIcon />
-                        </IconButton>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </TableContainer>
-
-          {/* Pagination for Products */}
-          <Pagination
-            currentPage={productsCurrentPage}
-            totalPages={Math.ceil(allFilteredProducts.length / productsItemsPerPage)}
-            totalItems={allFilteredProducts.length}
-            itemsPerPage={productsItemsPerPage}
-            onPageChange={handleProductsPageChange}
-            onItemsPerPageChange={handleProductsItemsPerPageChange}
-          />
-        </CardContent>
-      </Card>
-
-      {/* Materials Table */}
-      <Card sx={{ mt: 3, mb: 3 }}>
-        <CardContent sx={{ p: 0 }}>
-          <Box sx={{ p: 3, pb: 0 }}>
-            <Typography variant="h6" sx={{ fontWeight: 600 }}>
-              Malzeme Listesi ({allFilteredMaterials.length} malzeme)
-            </Typography>
-          </Box>
-          <TableContainer>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Malzeme Adı</TableCell>
-                  <TableCell>Tür</TableCell>
-                  <TableCell>Firma</TableCell>
-                  <TableCell align="right">Stok (kg)</TableCell>
-                  <TableCell>Durum</TableCell>
-                  <TableCell align="center">İşlemler</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {(filteredMaterials || []).map((material) => {
-                  if (!material) return null; // Null malzemeleri atla
-                  const stockStatus = getStockStatus(Number(material?.stock_quantity) || 0);
-                  return (
-                    <TableRow key={material.id} hover>
-                      <TableCell sx={{ fontWeight: 600 }}>
-                        {material.name || `${material.category}${material.color ? ` - ${material.color}` : ''}`}
-                      </TableCell>
-                      <TableCell>
-                        <Chip
-                          label={material.category?.toUpperCase() || 'MALZEME'}
-                          size="small"
-                          variant="outlined"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        {(material as any).supplier_name || '-'}
-                      </TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 600 }}>
-                        {(() => {
-                          try {
-                            return safeToLocaleString(material?.stock_quantity) + ' kg';
-                          } catch (e) {
-                            return '0 kg';
-                          }
-                        })()}
-                      </TableCell>
-                      <TableCell>
-                        <Chip
-                          label={stockStatus.label}
-                          color={stockStatus.color as any}
-                          size="small"
-                        />
-                      </TableCell>
-                      <TableCell align="center">
-                        <IconButton
-                          size="small"
-                          onClick={() => handleOpenModal(material)}
-                          title="Stok Geçmişi"
-                        >
-                          <HistoryIcon />
-                        </IconButton>
-                        <IconButton
-                          size="small"
-                          color="primary"
-                          title="Düzenle"
-                          onClick={() => {
-                            setSelectedProduct(material);
-                            setEditDialogOpen(true);
-                          }}
-                        >
-                          <EditIcon />
-                        </IconButton>
-                        <IconButton
-                          size="small"
-                          color="error"
-                          title="Sil"
-                          onClick={() => {
-                            setSelectedProduct(material);
-                            setDeleteDialogOpen(true);
-                          }}
-                        >
-                          <DeleteIcon />
-                        </IconButton>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-                {(filteredMaterials || []).length === 0 && (
+      {/* Products Table - Sadece showMaterials false ise göster */}
+      {!showMaterials && (
+        <Card>
+          <CardContent sx={{ p: 0 }}>
+            <Box sx={{ p: 3, pb: 0 }}>
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                Deri Stok Listesi ({allFilteredProducts.length} ürün)
+              </Typography>
+            </Box>
+            <TableContainer>
+              <Table>
+                <TableHead>
                   <TableRow>
-                    <TableCell colSpan={5} align="center">
-                      {loading ? 'Yükleniyor...' : 'Malzeme bulunamadı'}
-                    </TableCell>
+                    <TableCell>Deri Türü</TableCell>
+                    <TableCell align="right">Stok (Adet)</TableCell>
+                    <TableCell>Durum</TableCell>
+                    <TableCell align="center">İşlemler</TableCell>
                   </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </TableContainer>
+                </TableHead>
+                <TableBody>
+                  {(filteredProducts || []).map((product) => {
+                    if (!product) return null; // Null ürünleri atla
+                    const stockStatus = getStockStatus(Number(product?.stock_quantity) || 0);
+                    return (
+                      <TableRow key={product.id} hover>
+                        <TableCell sx={{ fontWeight: 600 }}>{product.category}</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 600 }}>
+                          {(() => {
+                            try {
+                              return safeToLocaleString(product?.stock_quantity) + ' adet';
+                            } catch (e) {
+                              return '0 adet';
+                            }
+                          })()}
+                        </TableCell>
+                        <TableCell>
+                          <Chip
+                            label={stockStatus.label}
+                            color={stockStatus.color as any}
+                            size="small"
+                          />
+                        </TableCell>
+                        <TableCell align="center">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleOpenModal(product)}
+                            title="Stok Geçmişi"
+                          >
+                            <HistoryIcon />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            color="primary"
+                            title="Düzenle"
+                            onClick={() => { setSelectedProduct(product); setEditDialogOpen(true); }}
+                          >
+                            <EditIcon />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            title="Sil"
+                            onClick={() => { setSelectedProduct(product); setDeleteDialogOpen(true); }}
+                          >
+                            <DeleteIcon />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </TableContainer>
 
-          {/* Pagination for Materials */}
-          <Pagination
-            currentPage={materialsCurrentPage}
-            totalPages={Math.ceil(allFilteredMaterials.length / materialsItemsPerPage)}
-            totalItems={allFilteredMaterials.length}
-            itemsPerPage={materialsItemsPerPage}
-            onPageChange={handleMaterialsPageChange}
-            onItemsPerPageChange={handleMaterialsItemsPerPageChange}
-          />
-        </CardContent>
-      </Card>
+            {/* Pagination for Products */}
+            <Pagination
+              currentPage={productsCurrentPage}
+              totalPages={Math.ceil(allFilteredProducts.length / productsItemsPerPage)}
+              totalItems={allFilteredProducts.length}
+              itemsPerPage={productsItemsPerPage}
+              onPageChange={handleProductsPageChange}
+              onItemsPerPageChange={handleProductsItemsPerPageChange}
+            />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Materials Table - Sadece showMaterials true ise göster */}
+      {showMaterials && (
+        <Card sx={{ mb: 3 }}>
+          <CardContent sx={{ p: 0 }}>
+            <Box sx={{ p: 3, pb: 0 }}>
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                Malzeme Listesi ({allFilteredMaterials.length} malzeme)
+              </Typography>
+            </Box>
+            <TableContainer>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Malzeme Adı</TableCell>
+                    <TableCell>Tür</TableCell>
+                    <TableCell>Firma</TableCell>
+                    <TableCell align="right">Stok (kg)</TableCell>
+                    <TableCell>Durum</TableCell>
+                    <TableCell align="center">İşlemler</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {(filteredMaterials || []).map((material) => {
+                    if (!material) return null; // Null malzemeleri atla
+                    const stockStatus = getStockStatus(Number(material?.stock_quantity) || 0);
+                    return (
+                      <TableRow key={material.id} hover>
+                        <TableCell sx={{ fontWeight: 600 }}>
+                          {material.name || `${material.category}${material.color ? ` - ${material.color}` : ''}`}
+                        </TableCell>
+                        <TableCell>
+                          <Chip
+                            label={material.category?.toUpperCase() || 'MALZEME'}
+                            size="small"
+                            variant="outlined"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          {(material as any).supplier_name || '-'}
+                        </TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 600 }}>
+                          {(() => {
+                            try {
+                              return safeToLocaleString(material?.stock_quantity) + ' kg';
+                            } catch (e) {
+                              return '0 kg';
+                            }
+                          })()}
+                        </TableCell>
+                        <TableCell>
+                          <Chip
+                            label={stockStatus.label}
+                            color={stockStatus.color as any}
+                            size="small"
+                          />
+                        </TableCell>
+                        <TableCell align="center">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleOpenModal(material)}
+                            title="Stok Geçmişi"
+                          >
+                            <HistoryIcon />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            color="primary"
+                            title="Düzenle"
+                            onClick={() => {
+                              setSelectedProduct(material);
+                              setEditDialogOpen(true);
+                            }}
+                          >
+                            <EditIcon />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            title="Sil"
+                            onClick={() => {
+                              setSelectedProduct(material);
+                              setDeleteDialogOpen(true);
+                            }}
+                          >
+                            <DeleteIcon />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  {(filteredMaterials || []).length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={5} align="center">
+                        {loading ? 'Yükleniyor...' : 'Malzeme bulunamadı'}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+
+            {/* Pagination for Materials */}
+            <Pagination
+              currentPage={materialsCurrentPage}
+              totalPages={Math.ceil(allFilteredMaterials.length / materialsItemsPerPage)}
+              totalItems={allFilteredMaterials.length}
+              itemsPerPage={materialsItemsPerPage}
+              onPageChange={handleMaterialsPageChange}
+              onItemsPerPageChange={handleMaterialsItemsPerPageChange}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       {/* Add Product Dialog */}
       <Dialog
@@ -1220,7 +1158,29 @@ const ProductManagement: React.FC = () => {
                     <MenuItem value="Boya">Boya</MenuItem>
                     <MenuItem value="Cila">Cila</MenuItem>
                     <MenuItem value="Binder">Binder</MenuItem>
-                    <MenuItem value="Kimyasal">Kimyasal</MenuItem>
+                  </Select>
+                </FormControl>
+
+                <FormControl fullWidth>
+                  <InputLabel>Tedarikçi *</InputLabel>
+                  <Select
+                    value={(selectedProduct as any)?.supplier_id || ''}
+                    label="Tedarikçi *"
+                    onChange={(e) => {
+                      const selectedSupplier = suppliers.find(s => s.id === e.target.value);
+                      setSelectedProduct(prev => prev ? {
+                        ...prev,
+                        supplier_id: e.target.value as number,
+                        supplier_name: selectedSupplier?.name || ''
+                      } as any : null);
+                    }}
+                    required
+                  >
+                    {suppliers.map((supplier) => (
+                      <MenuItem key={supplier.id} value={supplier.id}>
+                        {supplier.name}
+                      </MenuItem>
+                    ))}
                   </Select>
                 </FormControl>
 
@@ -1235,55 +1195,15 @@ const ProductManagement: React.FC = () => {
                   />
                 )}
 
-                {/* Cila için Firma */}
-                {selectedProduct?.category === 'Cila' && (
+                {/* Binder için Kod */}
+                {selectedProduct?.category === 'Binder' && (
                   <TextField
                     fullWidth
-                    label="Firma"
-                    value={(selectedProduct as any)?.brand || ''}
-                    onChange={(e) => setSelectedProduct(prev => prev ? { ...prev, brand: e.target.value } as any : null)}
-                    placeholder="Örn: Sayerlack"
+                    label="Kod"
+                    value={(selectedProduct as any)?.code || ''}
+                    onChange={(e) => setSelectedProduct(prev => prev ? { ...prev, code: e.target.value } as any : null)}
+                    placeholder="Örn: B-100"
                   />
-                )}
-
-                {/* Binder için Kod ve Firma */}
-                {selectedProduct?.category === 'Binder' && (
-                  <>
-                    <TextField
-                      fullWidth
-                      label="Kod"
-                      value={(selectedProduct as any)?.code || ''}
-                      onChange={(e) => setSelectedProduct(prev => prev ? { ...prev, code: e.target.value } as any : null)}
-                      placeholder="Örn: B-100"
-                    />
-                    <TextField
-                      fullWidth
-                      label="Firma"
-                      value={(selectedProduct as any)?.brand || ''}
-                      onChange={(e) => setSelectedProduct(prev => prev ? { ...prev, brand: e.target.value } as any : null)}
-                      placeholder="Örn: BASF"
-                    />
-                  </>
-                )}
-
-                {/* Kimyasal için Kod ve Firma */}
-                {selectedProduct?.category === 'Kimyasal' && (
-                  <>
-                    <TextField
-                      fullWidth
-                      label="Kod"
-                      value={(selectedProduct as any)?.code || ''}
-                      onChange={(e) => setSelectedProduct(prev => prev ? { ...prev, code: e.target.value } as any : null)}
-                      placeholder="Örn: K-200"
-                    />
-                    <TextField
-                      fullWidth
-                      label="Firma"
-                      value={(selectedProduct as any)?.brand || ''}
-                      onChange={(e) => setSelectedProduct(prev => prev ? { ...prev, brand: e.target.value } as any : null)}
-                      placeholder="Örn: Clariant"
-                    />
-                  </>
                 )}
 
                 <TextField
@@ -1432,7 +1352,7 @@ const ProductManagement: React.FC = () => {
                 label="Kategori"
                 onChange={(e) => setNewMaterial({
                   ...newMaterial,
-                  category: e.target.value as 'Boya' | 'Cila' | 'Binder' | 'Kimyasal',
+                  category: e.target.value as 'Boya' | 'Cila' | 'Binder',
                   color_shade: '',
                   brand: '',
                   code: ''
@@ -1441,7 +1361,29 @@ const ProductManagement: React.FC = () => {
                 <MenuItem value="Boya">Boya</MenuItem>
                 <MenuItem value="Cila">Cila</MenuItem>
                 <MenuItem value="Binder">Binder</MenuItem>
-                <MenuItem value="Kimyasal">Kimyasal</MenuItem>
+              </Select>
+            </FormControl>
+
+            <FormControl fullWidth>
+              <InputLabel>Tedarikçi *</InputLabel>
+              <Select
+                value={newMaterial.supplier_id || ''}
+                label="Tedarikçi *"
+                onChange={(e) => {
+                  const selectedSupplier = suppliers.find(s => s.id === e.target.value);
+                  setNewMaterial({
+                    ...newMaterial,
+                    supplier_id: e.target.value as number,
+                    supplier_name: selectedSupplier?.name || ''
+                  });
+                }}
+                required
+              >
+                {suppliers.map((supplier) => (
+                  <MenuItem key={supplier.id} value={supplier.id}>
+                    {supplier.name}
+                  </MenuItem>
+                ))}
               </Select>
             </FormControl>
 
@@ -1457,58 +1399,16 @@ const ProductManagement: React.FC = () => {
               />
             )}
 
-            {/* Cila için Firma */}
-            {newMaterial.category === 'Cila' && (
+            {/* Binder için Kod */}
+            {newMaterial.category === 'Binder' && (
               <TextField
                 fullWidth
-                label="Firma *"
-                value={newMaterial.brand || ''}
-                onChange={(e) => setNewMaterial({ ...newMaterial, brand: e.target.value })}
-                placeholder="Örn: Sayerlack"
+                label="Kod *"
+                value={newMaterial.code || ''}
+                onChange={(e) => setNewMaterial({ ...newMaterial, code: e.target.value })}
+                placeholder="Örn: B-100"
                 required
               />
-            )}
-
-            {/* Binder için Kod ve Firma */}
-            {newMaterial.category === 'Binder' && (
-              <>
-                <TextField
-                  fullWidth
-                  label="Kod *"
-                  value={newMaterial.code || ''}
-                  onChange={(e) => setNewMaterial({ ...newMaterial, code: e.target.value })}
-                  placeholder="Örn: B-100"
-                  required
-                />
-                <TextField
-                  fullWidth
-                  label="Firma *"
-                  value={newMaterial.brand || ''}
-                  onChange={(e) => setNewMaterial({ ...newMaterial, brand: e.target.value })}
-                  placeholder="Örn: BASF"
-                  required
-                />
-              </>
-            )}
-
-            {/* Kimyasal için Kod ve Firma */}
-            {newMaterial.category === 'Kimyasal' && (
-              <>
-                <TextField
-                  fullWidth
-                  label="Kod"
-                  value={newMaterial.code || ''}
-                  onChange={(e) => setNewMaterial({ ...newMaterial, code: e.target.value })}
-                  placeholder="Örn: K-200"
-                />
-                <TextField
-                  fullWidth
-                  label="Firma"
-                  value={newMaterial.brand || ''}
-                  onChange={(e) => setNewMaterial({ ...newMaterial, brand: e.target.value })}
-                  placeholder="Örn: Clariant"
-                />
-              </>
             )}
 
             <TextField
@@ -1544,6 +1444,8 @@ const ProductManagement: React.FC = () => {
               code: '',
               stock_quantity: '',
               description: '',
+              supplier_id: undefined,
+              supplier_name: '',
             });
           }}>İptal</Button>
           <Button onClick={handleAddMaterial} variant="contained" disabled={loading}>

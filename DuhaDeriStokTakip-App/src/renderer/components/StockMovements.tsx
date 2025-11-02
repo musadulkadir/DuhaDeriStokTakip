@@ -53,6 +53,7 @@ interface MovementDisplay extends StockMovement {
   productCategory?: string;
   productColor?: string;
   customerName?: string;
+  supplier_id?: number;
   date?: string;
   time?: string;
 }
@@ -98,27 +99,69 @@ const StockMovements: React.FC = () => {
   const loadMovements = async () => {
     setLoading(true);
     try {
-      const response = await dbAPI.getStockMovements();
-      if (response.success) {
-        // Ürün ve müşteri bilgilerini ekleyerek movements'ı zenginleştir
-        const enrichedMovements = response.data.map((movement: StockMovement) => {
-          const product = products.find(p => p.id === movement.product_id);
-          const customer = customers.find(c => c.id === movement.customer_id);
+      // Hem stock_movements hem material_movements'ı yükle
+      const [stockResponse, materialResponse] = await Promise.all([
+        dbAPI.getStockMovements(),
+        dbAPI.getMaterialMovements()
+      ]);
 
-          let description = movement.notes || '';
-          if (movement.reference_type === 'sale' && customer) {
-            description = `Satış - ${customer.name}`;
-          } else if (movement.reference_type === 'sale' && !customer) {
-            description = 'Satış - Müşteri bilgisi bulunamadı';
+      console.log('📊 Stock movements response:', stockResponse);
+      console.log('📊 Material movements response:', materialResponse);
+      console.log('📦 Available products:', products.length);
+      console.log('👥 Available customers:', customers.length);
+
+      const allMovements = [
+        ...(stockResponse.success && stockResponse.data ? stockResponse.data : []),
+        ...(materialResponse.success && materialResponse.data ? materialResponse.data : [])
+      ];
+
+      if (allMovements.length > 0) {
+        // Ürün ve müşteri bilgilerini ekleyerek movements'ı zenginleştir
+        const enrichedMovements = allMovements.map((movement: any) => {
+          // product_id veya material_id'ye göre ürün bul
+          const itemId = movement.product_id || movement.material_id;
+          const product = products.find(p => p.id === itemId);
+          const customer = customers.find(c => c.id === movement.customer_id);
+          const supplier = customers.find(c => c.id === movement.supplier_id);
+
+          console.log('🔍 Movement:', {
+            id: movement.id,
+            product_id: movement.product_id,
+            material_id: movement.material_id,
+            itemId: itemId,
+            found_product: product ? `${product.category} - ${product.color || product.name}` : 'NOT FOUND',
+            product_details: product,
+            notes: movement.notes
+          });
+
+          // Notes'tan ürün bilgisini parse et
+          // Format: "Satış - Keçi-Palto Bej - 10 adet"
+          let parsedProductName = product?.name || product?.category;
+          let parsedProductColor = product?.color;
+          
+          if (movement.notes && (movement.notes.includes('Satış - ') || movement.notes.includes('Alım - '))) {
+            const parts = movement.notes.split(' - ');
+            if (parts.length >= 2) {
+              const productPart = parts[1].trim(); // "Keçi-Palto Bej"
+              const lastSpaceIndex = productPart.lastIndexOf(' ');
+              if (lastSpaceIndex > 0) {
+                parsedProductName = productPart.substring(0, lastSpaceIndex); // "Keçi-Palto"
+                parsedProductColor = productPart.substring(lastSpaceIndex + 1); // "Bej"
+              } else {
+                parsedProductName = productPart;
+              }
+            }
           }
 
           return {
             ...movement,
-            productName: product?.name || (product ? `${product.category} - ${product.color}` : 'Bilinmeyen Ürün'),
+            product_id: itemId,
+            productName: parsedProductName || 'Bilinmeyen Ürün',
             productCategory: product?.category,
-            productColor: product?.color,
+            productColor: parsedProductColor,
             customerName: customer?.name,
-            notes: description,
+            supplier_id: movement.supplier_id, // Material movements için
+            notes: movement.notes,
             date: movement.created_at ? new Date(movement.created_at).toISOString().split('T')[0] : '',
             time: movement.created_at ? new Date(movement.created_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : '',
           };
@@ -201,9 +244,21 @@ const StockMovements: React.FC = () => {
   }, [products, customers]);
 
   const filteredMovements = movements.filter(movement => {
-    const matchesSearch = (movement.productName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (movement.notes || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (movement.user || '').toLowerCase().includes(searchTerm.toLowerCase());
+    const product = products.find(p => p.id === movement.product_id);
+    const supplier = movement.supplier_id ? customers.find((c: any) => c.id === movement.supplier_id) : null;
+    const searchLower = searchTerm.toLowerCase();
+
+    const matchesSearch =
+      (movement.productName || '').toLowerCase().includes(searchLower) ||
+      (movement.productCategory || '').toLowerCase().includes(searchLower) ||
+      (movement.productColor || '').toLowerCase().includes(searchLower) ||
+      (movement.notes || '').toLowerCase().includes(searchLower) ||
+      (movement.customerName || '').toLowerCase().includes(searchLower) ||
+      (supplier?.name || '').toLowerCase().includes(searchLower) ||
+      ((product as any)?.brand || '').toLowerCase().includes(searchLower) ||
+      ((product as any)?.code || '').toLowerCase().includes(searchLower) ||
+      ((product as any)?.color_shade || '').toLowerCase().includes(searchLower);
+
     const matchesType = filterType === '' || movement.movement_type === filterType;
     const matchesDateRange = (!startDate || (movement.date && movement.date >= startDate)) &&
       (!endDate || (movement.date && movement.date <= endDate));
@@ -407,7 +462,7 @@ const StockMovements: React.FC = () => {
               <TextField
                 fullWidth
                 size="medium"
-                placeholder="Ürün, açıklama veya kullanıcı ara..."
+                placeholder="Ürün adı, kategori, renk, kod, marka veya açıklama ara..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 sx={{
@@ -566,66 +621,101 @@ const StockMovements: React.FC = () => {
             <Table>
               <TableHead>
                 <TableRow>
-                  <TableCell>Ürün</TableCell>
+                  <TableCell>Ürün Detayları</TableCell>
                   <TableCell align="center">Miktar</TableCell>
                   <TableCell>Tip</TableCell>
                   <TableCell>Tarih & Saat</TableCell>
-                  <TableCell>Kullanıcı</TableCell>
                   <TableCell>Açıklama</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {paginatedMovements.map((movement) => (
-                  <TableRow key={movement.id} hover>
-                    <TableCell>
-                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                        {movement.productName}
-                      </Typography>
-                    </TableCell>
-                    <TableCell align="center">
-                      <Chip
-                        label={`${(movement.quantity || 0) >= 0 ? '+' : ''}${(movement.quantity || 0).toLocaleString('tr-TR')}`}
-                        color={movement.movement_type === 'out' ? 'error' : 'success'}
-                        size="small"
-                        sx={{ fontWeight: 600 }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={getMovementTypeLabel(movement.movement_type || '')}
-                        size="small"
-                        sx={{
-                          bgcolor: getMovementColor(movement.movement_type || ''),
-                          color: 'white',
-                          fontWeight: 600,
-                        }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Box>
-                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                          {movement.date ? new Date(movement.date).toLocaleDateString('tr-TR') : '-'}
+                {paginatedMovements.map((movement) => {
+                  // Reports sayfasındaki gibi format: productName - color
+                  const productName = movement.productColor 
+                    ? `${movement.productName || movement.productCategory || 'Ürün'} - ${movement.productColor}` 
+                    : (movement.productName || movement.productCategory || 'Ürün');
+                  
+                  console.log('🔄 Stok hareketi formatlanıyor:', {
+                    raw_productName: movement.productName,
+                    raw_productCategory: movement.productCategory,
+                    raw_productColor: movement.productColor,
+                    formatted_productName: productName,
+                    notes: movement.notes
+                  });
+                  
+                  return (
+                    <TableRow key={movement.id} hover>
+                      <TableCell>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {productName}
                         </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {movement.time || '-'}
+                      </TableCell>
+                      <TableCell align="center">
+                        <Chip
+                          label={`${(movement.quantity || 0) >= 0 ? '+' : ''}${(movement.quantity || 0).toLocaleString('tr-TR')}`}
+                          color={movement.movement_type === 'out' ? 'error' : 'success'}
+                          size="small"
+                          sx={{ fontWeight: 600 }}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={getMovementTypeLabel(movement.movement_type || '')}
+                          size="small"
+                          sx={{
+                            bgcolor: getMovementColor(movement.movement_type || ''),
+                            color: 'white',
+                            fontWeight: 600,
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Box>
+                          <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                            {movement.date ? new Date(movement.date).toLocaleDateString('tr-TR') : '-'}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {movement.time || '-'}
+                          </Typography>
+                        </Box>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" sx={{ maxWidth: 250 }}>
+                          {(() => {
+                            if (!movement.notes) return '-';
+                            
+                            console.log('📝 Açıklama formatlanıyor:', {
+                              notes: movement.notes,
+                              supplier_id: movement.supplier_id,
+                              customerName: movement.customerName,
+                              reference_type: movement.reference_type
+                            });
+                            
+                            // "Satış - Keçi-Palto Bej - 10 adet" -> "Satış - Müşteri Adı"
+                            if (movement.notes.includes('Satış - ')) {
+                              return movement.customerName ? `Satış - ${movement.customerName}` : 'Satış';
+                            }
+                            
+                            // "Alım - Boya Kahverengi - 100 kg" -> "Alım - Tedarikçi Adı"
+                            if (movement.notes.includes('Alım - ')) {
+                              const supplier = movement.supplier_id ? customers.find((c: any) => c.id === movement.supplier_id) : null;
+                              console.log('🏢 Tedarikçi bulundu:', supplier);
+                              return supplier ? `Alım - ${supplier.name}` : 'Alım';
+                            }
+                            
+                            // "İlk stok girişi" veya "Stok ekleme" -> Tedarikçi adını göster
+                            if (movement.supplier_id && (movement.notes.includes('İlk stok') || movement.notes.includes('Stok ekleme'))) {
+                              const supplier = customers.find((c: any) => c.id === movement.supplier_id);
+                              return supplier ? `Alım - ${supplier.name}` : movement.notes;
+                            }
+                            
+                            return movement.notes;
+                          })()}
                         </Typography>
-                      </Box>
-                    </TableCell>
-                    <TableCell>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Person sx={{ fontSize: 16, color: 'text.secondary' }} />
-                        <Typography variant="body2">
-                          {movement.user || 'Sistem'}
-                        </Typography>
-                      </Box>
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="body2" sx={{ maxWidth: 200 }}>
-                        {movement.notes || '-'}
-                      </Typography>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </TableContainer>
