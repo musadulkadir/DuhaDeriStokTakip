@@ -8,6 +8,10 @@
     "dev": "concurrently \"npm run dev:react\" \"wait-on http://localhost:3000 && electron .\"",
     "dev:react": "vite",
     "build": "vite build && electron-builder",
+    "build:win": "vite build && electron-builder --win --x64",
+    "build:win32": "vite build && electron-builder --win --ia32",
+    "build:mac": "vite build && electron-builder --mac",
+    "build:linux": "vite build && electron-builder --linux",
     "build:react": "vite build",
     "postinstall": "electron-builder install-app-deps",
     "rebuild": "electron-rebuild"
@@ -74,8 +78,17 @@
     },
     "win": {
       "target": [
-        "nsis"
-      ]
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "ia32"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "${productName}-${version}-${arch}.${ext}",
+      "requestedExecutionLevel": "asInvoker"
     },
     "linux": {
       "target": [

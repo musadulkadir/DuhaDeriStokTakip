@@ -19,17 +19,33 @@ let pool;
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 3;
 
-// PostgreSQL'i başlat
+// PostgreSQL'i başlat (Platform bağımsız)
 async function startPostgreSQL() {
   try {
     console.log('PostgreSQL başlatılıyor...');
-    await execPromise('brew services restart postgresql@14');
+    
+    const platform = process.platform;
+    let command;
+    
+    if (platform === 'darwin') {
+      // macOS - Homebrew
+      command = 'brew services restart postgresql@14';
+    } else if (platform === 'win32') {
+      // Windows - PostgreSQL service
+      command = 'net start postgresql-x64-14 || sc start postgresql-x64-14';
+    } else {
+      // Linux
+      command = 'sudo systemctl start postgresql';
+    }
+    
+    await execPromise(command);
     console.log('PostgreSQL başlatıldı');
     // Başlaması için biraz bekle
     await new Promise(resolve => setTimeout(resolve, 2000));
     return true;
   } catch (error) {
     console.error('PostgreSQL başlatılamadı:', error.message);
+    console.log('PostgreSQL manuel olarak başlatılmalı');
     return false;
   }
 }
