@@ -1,19 +1,39 @@
 const { Pool } = require('pg');
 const { exec } = require('child_process');
 const util = require('util');
+const path = require('path');
+const fs = require('fs');
 const execPromise = util.promisify(exec);
 
+// .env dosyasını yükle (varsa)
+const envPath = path.join(__dirname, '../../.env');
+if (fs.existsSync(envPath)) {
+  require('dotenv').config({ path: envPath });
+  console.log('✅ .env dosyası yüklendi');
+}
+
 // PostgreSQL connection configuration
+// Windows için varsayılan kullanıcı 'postgres'
+const defaultUser = process.platform === 'win32' ? 'postgres' : 'musadulkadir';
+
 const dbConfig = {
-  user: process.env.DB_USER || 'musadulkadir',
+  user: process.env.DB_USER || defaultUser,
   host: process.env.DB_HOST || 'localhost',
   database: process.env.DB_NAME || 'duha_deri_db',
   password: process.env.DB_PASSWORD || '',
-  port: process.env.DB_PORT || 5432,
+  port: parseInt(process.env.DB_PORT || '5432'),
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 2000,
 };
+
+console.log('📊 PostgreSQL Bağlantı Ayarları:', {
+  user: dbConfig.user,
+  host: dbConfig.host,
+  database: dbConfig.database,
+  port: dbConfig.port,
+  platform: process.platform
+});
 
 let pool;
 let reconnectAttempts = 0;
