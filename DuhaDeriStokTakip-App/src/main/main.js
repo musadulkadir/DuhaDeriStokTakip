@@ -5,8 +5,7 @@ const os = require('os');
 const { initializeDatabase, query, queryOne, queryAll } = require('./database');
 
 // Environment detection
-//const isDev = process.env.NODE_ENV === 'development';
-const isDev = true;
+const isDev = !app.isPackaged; // Build edilmişse false, dev modda true
 
 let db;
 let mainWindow;
@@ -751,16 +750,25 @@ function createWindow() {
     // GELİŞTİRME MODU
     htmlPath = 'http://localhost:3000';
     console.log('GELİŞTİRME MODU: Yükleniyor:', htmlPath);
-    //mainWindow.webContents.openDevTools(); // Geliştirici araçlarını aç
+    mainWindow.webContents.openDevTools(); // Geliştirici araçlarını aç
 
   } else {
     // PRODUCTION MODU
-    htmlPath = `file://${path.join(__dirname, '../../dist-react/index.html')}`;
+    // Windows'ta path.join backslash kullanır, URL için forward slash'e çevirmemiz gerekir
+    const indexPath = path.join(__dirname, '../../dist-react/index.html');
+    htmlPath = `file://${indexPath.replace(/\\/g, '/')}`;
     console.log('PRODUCTION MODU: Yükleniyor:', htmlPath);
+    console.log('__dirname:', __dirname);
+    console.log('Index path exists:', fs.existsSync(indexPath));
+    
+    // Production'da da DevTools aç (hata ayıklama için)
+    mainWindow.webContents.openDevTools();
   }
 
   // Belirlenen yolu yükle
-  mainWindow.loadURL(htmlPath);
+  mainWindow.loadURL(htmlPath).catch(err => {
+    console.error('URL yükleme hatası:', err);
+  });
 }
 
 app.whenReady().then(async () => {
