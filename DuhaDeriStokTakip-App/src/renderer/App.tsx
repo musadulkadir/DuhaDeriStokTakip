@@ -207,11 +207,17 @@ export default function App() {
     const timer = setTimeout(() => {
       setIsLoading(false);
       
-      // Şifre koruması kapalıysa otomatik giriş yap
+      // İlk açılışta şifre koruması kapalı olmalı
       const passwordEnabled = localStorage.getItem('passwordEnabled');
-      if (passwordEnabled === 'false') {
+      if (passwordEnabled === null) {
+        // İlk açılış - şifre koruması kapalı
+        localStorage.setItem('passwordEnabled', 'false');
+        setIsAuthenticated(true);
+      } else if (passwordEnabled === 'false') {
+        // Şifre koruması kapalı
         setIsAuthenticated(true);
       }
+      // passwordEnabled === 'true' ise login ekranı gösterilecek
     }, 1500); // 1.5 saniye yükleme ekranı
 
     return () => clearTimeout(timer);

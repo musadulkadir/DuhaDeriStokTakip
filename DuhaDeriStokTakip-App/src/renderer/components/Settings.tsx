@@ -54,7 +54,7 @@ const Settings: React.FC = () => {
     lowStockThreshold: 20,
     autoSave: true,
     soundEffects: false,
-    passwordEnabled: localStorage.getItem('passwordEnabled') !== 'false', // Default true
+    passwordEnabled: localStorage.getItem('passwordEnabled') === 'true', // Default false (kapalı)
   });
 
   const [backupDialogOpen, setBackupDialogOpen] = useState(false);
