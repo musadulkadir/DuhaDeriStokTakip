@@ -1,0 +1,87 @@
+========================================
+DUHA DERİ STOK TAKİP - KURULUM REHBERİ
+========================================
+
+ADIM 1: POSTGRESQL KURULUMU
+----------------------------
+1. PostgreSQL-14-windows-x64.exe dosyasını çalıştırın
+   (Eğer yoksa: https://www.postgresql.org/download/windows/)
+
+2. Kurulum ayarları:
+   - Port: 5432 (varsayılan)
+   - Kullanıcı: postgres
+   - Şifre: Boş bırakın veya basit bir şifre belirleyin
+   - Locale: Turkish, Turkey veya English, United States
+
+3. Kurulum tamamlandığında PostgreSQL servisi otomatik başlayacak
+
+
+ADIM 2: VERİTABANI OLUŞTURMA
+-----------------------------
+1. "setup-database.bat" dosyasını çalıştırın
+   (Sağ tık > Yönetici olarak çalıştır)
+
+2. Script otomatik olarak:
+   - PostgreSQL'i kontrol eder
+   - duha_deri_db veritabanını oluşturur
+   - Hazır olduğunu bildirir
+
+NOT: Tablolar uygulama ilk açıldığında otomatik oluşturulur!
+
+
+ADIM 3: UYGULAMAYI BAŞLATMA
+----------------------------
+1. "Duha Deri Stok Takip.exe" dosyasını çalıştırın
+
+2. İlk açılışta:
+   - Splash ekranı görünür (1-2 saniye)
+   - Tablolar otomatik oluşturulur
+   - Dashboard açılır
+
+3. Şifre sistemi varsayılan olarak KAPALI
+   - İsterseniz Ayarlar > Güvenlik'ten açabilirsiniz
+
+
+ŞİFRE GEREKİYORSA
+------------------
+Eğer PostgreSQL kurulumunda şifre belirlediyseniz:
+
+1. Uygulama klasöründe "notepad .env" ile yeni dosya oluşturun
+
+2. İçine şunu yazın:
+   DB_USER=postgres
+   DB_PASSWORD=sizin_sifreniz
+   DB_HOST=localhost
+   DB_PORT=5432
+   DB_NAME=duha_deri_db
+
+3. Kaydedin ve uygulamayı yeniden başlatın
+
+
+SORUN GİDERME
+--------------
+"Veritabanına bağlanılamadı" hatası:
+→ PostgreSQL servisini başlatın:
+  Windows + R > services.msc > postgresql-x64-14 > Start
+
+"Port 5432 kullanımda" hatası:
+→ Başka bir PostgreSQL instance'ı kapatın
+
+"Şifre hatası":
+→ .env dosyası oluşturun (yukarıya bakın)
+
+Antivirus uyarısı:
+→ Uygulamayı güvenli listeye ekleyin
+
+
+DESTEK
+------
+Sorun yaşarsanız:
+1. setup-database.bat çıktısını kontrol edin
+2. PostgreSQL loglarına bakın:
+   C:\Program Files\PostgreSQL\14\data\log\
+3. Uygulama açıkken F12 tuşuna basıp Console'a bakın
+
+
+İYİ KULANIMLAR!
+========================================
