@@ -68,6 +68,8 @@ const Sidebar: React.FC<SidebarProps> = ({ open, toggleSidebar }) => {
           position: 'fixed',
           height: '100vh',
           zIndex: 1200,
+          borderTopLeftRadius: 0,
+          borderBottomLeftRadius: 0,
         },
       }}
       open={open}
