@@ -1074,9 +1074,13 @@ const ProductManagement: React.FC = () => {
                   >
                     {categories
                       .filter(cat => ['Keçi', 'Koyun'].includes(cat.name))
-                      .map(category => (
-                        <MenuItem key={category.id} value={category.name}>{category.name}</MenuItem>
-                      ))}
+                      .map(category => {
+                        console.log(category);
+
+                        return (
+                          <MenuItem key={category.id} value={category.name}>{category.name}</MenuItem>
+                        )
+                      })}
                   </Select>
                 </FormControl>
               </Box>

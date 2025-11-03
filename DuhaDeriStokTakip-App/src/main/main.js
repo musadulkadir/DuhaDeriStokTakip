@@ -119,6 +119,8 @@ async function createTables() {
         id SERIAL PRIMARY KEY,
         sale_id INTEGER REFERENCES sales(id) ON DELETE CASCADE,
         product_id INTEGER REFERENCES products(id),
+        product_name VARCHAR(255),
+        color VARCHAR(50),
         quantity_pieces INTEGER NOT NULL,
         quantity_desi DECIMAL(10,2) NOT NULL,
         unit_price_per_desi DECIMAL(15,2) NOT NULL,
@@ -128,11 +130,13 @@ async function createTables() {
       )
     `);
 
-    // Mevcut tabloya unit kolonunu ekle (eğer yoksa)
+    // Mevcut tabloya eksik kolonları ekle (eğer yoksa)
     try {
       await query(`ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS unit VARCHAR(10) DEFAULT 'desi'`);
+      await query(`ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS product_name VARCHAR(255)`);
+      await query(`ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS color VARCHAR(50)`);
     } catch (err) {
-      // Kolon zaten varsa hata vermez
+      // Kolonlar zaten varsa hata vermez
     }
 
     // Stock movements table (for products only)
@@ -224,25 +228,8 @@ async function createTables() {
       )
     `);
 
-    // Categories table
-    await query(`
-      CREATE TABLE IF NOT EXISTS categories (
-        id SERIAL PRIMARY KEY,
-        name VARCHAR(100) NOT NULL UNIQUE,
-        description TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // Colors table (sadece özel renkler için - default renkler kodda)
-    await query(`
-      CREATE TABLE IF NOT EXISTS colors (
-        id SERIAL PRIMARY KEY,
-        name VARCHAR(50) NOT NULL UNIQUE,
-        hex_code VARCHAR(7),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
+    // NOT: Categories ve Colors tabloları kaldırıldı
+    // Artık kategoriler ve renkler koddan geliyor (ProductManagement.tsx)
 
     // Settings table
     await query(`
@@ -306,26 +293,8 @@ async function createTables() {
       )
     `);
 
-    // Insert default categories
-    const defaultCategories = ['Keçi', 'Koyun', 'Oğlak', 'Dana'];
-    for (const category of defaultCategories) {
-      await query('INSERT INTO categories (name) VALUES ($1) ON CONFLICT (name) DO NOTHING', [category]);
-    }
-
-    // Insert default colors
-    const defaultColors = [
-      { name: 'Siyah', hex: '#000000' },
-      { name: 'Bej', hex: '#F5F5DC' },
-      { name: 'Beyaz', hex: '#FFFFFF' },
-      { name: 'Kahverengi', hex: '#8B4513' },
-      { name: 'Kırmızı', hex: '#FF0000' },
-      { name: 'Bordo', hex: '#800020' },
-      { name: 'Taba', hex: '#D2B48C' }
-    ];
-
-    for (const color of defaultColors) {
-      await query('INSERT INTO colors (name, hex_code) VALUES ($1, $2) ON CONFLICT (name) DO NOTHING', [color.name, color.hex]);
-    }
+    // NOT: Default categories ve colors kaldırıldı
+    // Artık bunlar koddan geliyor (ProductManagement.tsx)
 
     // Migration: products tablosundaki type='material' kayıtları materials'a taşı
     try {
