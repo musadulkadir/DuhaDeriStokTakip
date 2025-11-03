@@ -95,9 +95,9 @@ interface CustomerPayment {
 
 interface CustomerStats {
   totalSales: number;
-  totalPurchasesTRY: number;
-  totalPurchasesUSD: number;
-  totalPurchasesEUR: number;
+  totalSalesTRY: number;
+  totalSalesUSD: number;
+  totalSalesEUR: number;
   totalPaymentsTRY: number;
   totalPaymentsUSD: number;
   totalPaymentsEUR: number;
@@ -119,9 +119,9 @@ const CustomerDetail: React.FC = () => {
   const [payments, setPayments] = useState<CustomerPayment[]>([]);
   const [stats, setStats] = useState<CustomerStats>({
     totalSales: 0,
-    totalPurchasesTRY: 0,
-    totalPurchasesUSD: 0,
-    totalPurchasesEUR: 0,
+    totalSalesTRY: 0,
+    totalSalesUSD: 0,
+    totalSalesEUR: 0,
     totalPaymentsTRY: 0,
     totalPaymentsUSD: 0,
     totalPaymentsEUR: 0,
@@ -345,13 +345,13 @@ const CustomerDetail: React.FC = () => {
     const totalSales = customerSales.length;
 
     // Para birimi bazında hesaplama - String'leri number'a çevir
-    const totalPurchasesTRY = customerSales
+    const totalSalesTRY = customerSales
       .filter((sale: any) => (sale.currency || 'TRY') === 'TRY')
       .reduce((sum: number, sale: any) => sum + parseFloat(sale.total_amount || 0), 0);
-    const totalPurchasesUSD = customerSales
+    const totalSalesUSD = customerSales
       .filter((sale: any) => (sale.currency || 'TRY') === 'USD')
       .reduce((sum: number, sale: any) => sum + parseFloat(sale.total_amount || 0), 0);
-    const totalPurchasesEUR = customerSales
+    const totalSalesEUR = customerSales
       .filter((sale: any) => (sale.currency || 'TRY') === 'EUR')
       .reduce((sum: number, sale: any) => sum + parseFloat(sale.total_amount || 0), 0);
 
@@ -384,9 +384,9 @@ const CustomerDetail: React.FC = () => {
 
     const statsData = {
       totalSales,
-      totalPurchasesTRY,
-      totalPurchasesUSD,
-      totalPurchasesEUR,
+      totalSalesTRY,
+      totalSalesUSD,
+      totalSalesEUR,
       totalPaymentsTRY,
       totalPaymentsUSD,
       totalPaymentsEUR,
@@ -429,18 +429,20 @@ const CustomerDetail: React.FC = () => {
     }
 
     // Filtrelenmiş satışlar
-    const filtered = sales.filter(sale => {
-      const saleDate = new Date(sale.date);
+    const filtered = sales
+      .filter(sale => {
+        const saleDate = new Date(sale.date);
 
-      if (start && end) {
-        return saleDate >= start && saleDate < end;
-      } else if (start) {
-        return saleDate >= start;
-      } else if (end) {
-        return saleDate < end;
-      }
-      return true;
-    });
+        if (start && end) {
+          return saleDate >= start && saleDate < end;
+        } else if (start) {
+          return saleDate >= start;
+        } else if (end) {
+          return saleDate < end;
+        }
+        return true;
+      })
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); // En yeni en üstte
 
     // Başlangıç tarihinden önceki satışları hesapla (geçmiş bakiye)
     if (start) {
@@ -455,18 +457,18 @@ const CustomerDetail: React.FC = () => {
       });
 
       // Geçmiş bakiye hesapla (Satışlar - Ödemeler)
-      const prevPurchasesTRY = previousSales.filter(s => (s.currency || 'TRY') === 'TRY').reduce((sum, s) => sum + Number(s.totalAmount), 0);
-      const prevPurchasesUSD = previousSales.filter(s => (s.currency || 'TRY') === 'USD').reduce((sum, s) => sum + Number(s.totalAmount), 0);
-      const prevPurchasesEUR = previousSales.filter(s => (s.currency || 'TRY') === 'EUR').reduce((sum, s) => sum + Number(s.totalAmount), 0);
+      const prevSalesTRY = previousSales.filter(s => (s.currency || 'TRY') === 'TRY').reduce((sum, s) => sum + Number(s.totalAmount), 0);
+      const prevSalesUSD = previousSales.filter(s => (s.currency || 'TRY') === 'USD').reduce((sum, s) => sum + Number(s.totalAmount), 0);
+      const prevSalesEUR = previousSales.filter(s => (s.currency || 'TRY') === 'EUR').reduce((sum, s) => sum + Number(s.totalAmount), 0);
 
       const prevPaymentsTRY = previousPayments.filter(p => (p.currency || 'TRY') === 'TRY').reduce((sum, p) => sum + Number(p.amount), 0);
       const prevPaymentsUSD = previousPayments.filter(p => (p.currency || 'TRY') === 'USD').reduce((sum, p) => sum + Number(p.amount), 0);
       const prevPaymentsEUR = previousPayments.filter(p => (p.currency || 'TRY') === 'EUR').reduce((sum, p) => sum + Number(p.amount), 0);
 
       const prevBalance = {
-        TRY: prevPurchasesTRY - prevPaymentsTRY,
-        USD: prevPurchasesUSD - prevPaymentsUSD,
-        EUR: prevPurchasesEUR - prevPaymentsEUR
+        TRY: prevSalesTRY - prevPaymentsTRY,
+        USD: prevSalesUSD - prevPaymentsUSD,
+        EUR: prevSalesEUR - prevPaymentsEUR
       };
 
       console.log('📅 Önceki Bakiye Hesaplandı:', {
@@ -476,9 +478,9 @@ const CustomerDetail: React.FC = () => {
         previousPaymentsCount: previousPayments.length,
         previousSales: previousSales.map(s => ({ date: s.date, amount: s.totalAmount, currency: s.currency })),
         previousPayments: previousPayments.map(p => ({ date: p.paymentDate, amount: p.amount, currency: p.currency })),
-        prevPurchasesTRY,
-        prevPurchasesUSD,
-        prevPurchasesEUR,
+        prevSalesTRY,
+        prevSalesUSD,
+        prevSalesEUR,
         prevPaymentsTRY,
         prevPaymentsUSD,
         prevPaymentsEUR,
@@ -491,18 +493,20 @@ const CustomerDetail: React.FC = () => {
     }
 
     // Filtrelenmiş ödemeler
-    const filteredPaymentsData = payments.filter(payment => {
-      const paymentDate = new Date(payment.paymentDate);
+    const filteredPaymentsData = payments
+      .filter(payment => {
+        const paymentDate = new Date(payment.paymentDate);
 
-      if (start && end) {
-        return paymentDate >= start && paymentDate < end;
-      } else if (start) {
-        return paymentDate >= start;
-      } else if (end) {
-        return paymentDate < end;
-      }
-      return true;
-    });
+        if (start && end) {
+          return paymentDate >= start && paymentDate < end;
+        } else if (start) {
+          return paymentDate >= start;
+        } else if (end) {
+          return paymentDate < end;
+        }
+        return true;
+      })
+      .sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime()); // En yeni en üstte
 
     setFilteredSales(filtered);
     setFilteredPayments(filteredPaymentsData);
@@ -524,7 +528,7 @@ const CustomerDetail: React.FC = () => {
         amount,
         currency: paymentCurrency,
         payment_type: paymentType,
-        payment_date: getNowISO(),
+        payment_date: paymentDate, // Kullanıcının seçtiği tarih
         notes: paymentNotes || `Müşteri ödemesi - ${customer.name}`,
       };
 
@@ -582,7 +586,7 @@ const CustomerDetail: React.FC = () => {
     let pdfPreviousBalance = { TRY: 0, USD: 0, EUR: 0 };
     if (startDate) {
       const start = new Date(startDate);
-      
+
       const previousSales = sales.filter(sale => {
         const saleDate = new Date(sale.date);
         return saleDate < start;
@@ -593,18 +597,18 @@ const CustomerDetail: React.FC = () => {
         return paymentDate < start;
       });
 
-      const prevPurchasesTRY = previousSales.filter(s => (s.currency || 'TRY') === 'TRY').reduce((sum, s) => sum + Number(s.totalAmount), 0);
-      const prevPurchasesUSD = previousSales.filter(s => (s.currency || 'TRY') === 'USD').reduce((sum, s) => sum + Number(s.totalAmount), 0);
-      const prevPurchasesEUR = previousSales.filter(s => (s.currency || 'TRY') === 'EUR').reduce((sum, s) => sum + Number(s.totalAmount), 0);
+      const prevSalesTRY = previousSales.filter(s => (s.currency || 'TRY') === 'TRY').reduce((sum, s) => sum + Number(s.totalAmount), 0);
+      const prevSalesUSD = previousSales.filter(s => (s.currency || 'TRY') === 'USD').reduce((sum, s) => sum + Number(s.totalAmount), 0);
+      const prevSalesEUR = previousSales.filter(s => (s.currency || 'TRY') === 'EUR').reduce((sum, s) => sum + Number(s.totalAmount), 0);
 
       const prevPaymentsTRY = previousPayments.filter(p => (p.currency || 'TRY') === 'TRY').reduce((sum, p) => sum + Number(p.amount), 0);
       const prevPaymentsUSD = previousPayments.filter(p => (p.currency || 'TRY') === 'USD').reduce((sum, p) => sum + Number(p.amount), 0);
       const prevPaymentsEUR = previousPayments.filter(p => (p.currency || 'TRY') === 'EUR').reduce((sum, p) => sum + Number(p.amount), 0);
 
       pdfPreviousBalance = {
-        TRY: prevPurchasesTRY - prevPaymentsTRY,
-        USD: prevPurchasesUSD - prevPaymentsUSD,
-        EUR: prevPurchasesEUR - prevPaymentsEUR
+        TRY: prevSalesTRY - prevPaymentsTRY,
+        USD: prevSalesUSD - prevPaymentsUSD,
+        EUR: prevSalesEUR - prevPaymentsEUR
       };
 
       console.log('📄 PDF Önceki Bakiye:', pdfPreviousBalance);
@@ -908,7 +912,7 @@ const CustomerDetail: React.FC = () => {
         total_amount: totalAmount,
         currency: saleCurrency,
         payment_status: 'pending',
-        sale_date: getNowISO(),
+        sale_date: saleDate, // Kullanıcının seçtiği tarih
         notes: `Satış - ${saleItems.length} ürün`,
         items: saleItems.map(item => ({
           product_id: item.productId,
@@ -1195,13 +1199,13 @@ const CustomerDetail: React.FC = () => {
                 Toplam Alışveriş
               </Typography>
               <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem' }}>
-                ₺{(stats.totalPurchasesTRY || 0).toLocaleString('tr-TR')}
+                ₺{(stats.totalSalesTRY || 0).toLocaleString('tr-TR')}
               </Typography>
               <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem' }}>
-                ${(stats.totalPurchasesUSD || 0).toLocaleString('tr-TR')}
+                ${(stats.totalSalesUSD || 0).toLocaleString('tr-TR')}
               </Typography>
               <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem' }}>
-                €{(stats.totalPurchasesEUR || 0).toLocaleString('tr-TR')}
+                €{(stats.totalSalesEUR || 0).toLocaleString('tr-TR')}
               </Typography>
             </CardContent>
           </Card>
@@ -1305,15 +1309,6 @@ const CustomerDetail: React.FC = () => {
               >
                 Temizle
               </Button>
-              <Button
-                variant="contained"
-                onClick={handleDownloadPDF}
-                size="small"
-                startIcon={<PictureAsPdf />}
-                color="error"
-              >
-                PDF İndir
-              </Button>
             </Box>
           </CardContent>
         </Card>
@@ -1396,6 +1391,7 @@ const CustomerDetail: React.FC = () => {
 
                     {/* Geçmiş Aylardan Kalan Bakiye */}
                     {startDate && (() => {
+                      console.log('🎨 UI Render - previousBalance:', previousBalance);
                       // Bu dönemdeki ödemelerin önceki bakiyeye uygulanan kısmını hesapla
                       let remainingPrevBalanceTRY = previousBalance.TRY;
                       let remainingPrevBalanceUSD = previousBalance.USD;

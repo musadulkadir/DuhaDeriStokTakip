@@ -163,7 +163,7 @@ async function createTables() {
     await query(`
       CREATE TABLE IF NOT EXISTS material_movements (
         id SERIAL PRIMARY KEY,
-        material_id INTEGER NOT NULL,
+        material_id INTEGER NOT NULL REFERENCES materials(id) ON DELETE CASCADE,
         movement_type VARCHAR(50) NOT NULL,
         quantity INTEGER NOT NULL,
         previous_stock INTEGER,
@@ -865,51 +865,8 @@ ipcMain.handle('products:create', async (_, product) => {
   }
 });
 
-// Categories handlers
-ipcMain.handle('categories:get-all', async () => {
-  try {
-    // Sabit kategorileri koddan döndür
-    const { DEFAULT_CATEGORIES } = require('./constants/options');
-    
-    // Veritabanından özel kategorileri al (eğer varsa)
-    const customCategories = await queryAll('SELECT * FROM categories ORDER BY name');
-    
-    // Sabit + özel kategorileri birleştir
-    const allCategories = [
-      ...DEFAULT_CATEGORIES,
-      ...customCategories.map(c => ({ id: c.id, name: c.name }))
-    ];
-    
-    return { success: true, data: allCategories };
-  } catch (error) {
-    // Veritabanı hatası olsa bile sabit kategorileri döndür
-    const { DEFAULT_CATEGORIES } = require('./constants/options');
-    return { success: true, data: DEFAULT_CATEGORIES };
-  }
-});
-
-// Colors handlers
-ipcMain.handle('colors:get-all', async () => {
-  try {
-    // Sabit renkleri koddan döndür
-    const { DEFAULT_COLORS } = require('./constants/options');
-    
-    // Veritabanından özel renkleri al (eğer varsa)
-    const customColors = await queryAll('SELECT * FROM colors ORDER BY name');
-    
-    // Sabit + özel renkleri birleştir
-    const allColors = [
-      ...DEFAULT_COLORS,
-      ...customColors.map(c => ({ id: c.id, name: c.name, hex_code: c.hex_code }))
-    ];
-    
-    return { success: true, data: allColors };
-  } catch (error) {
-    // Veritabanı hatası olsa bile sabit renkleri döndür
-    const { DEFAULT_COLORS } = require('./constants/options');
-    return { success: true, data: DEFAULT_COLORS };
-  }
-});
+// NOT: Categories ve Colors handler'ları kaldırıldı
+// Artık kategoriler ve renkler koddan geliyor (ProductManagement.tsx)
 
 // Sales handlers
 ipcMain.handle('sales:get-all', async (_, startDate, endDate) => {
@@ -1355,21 +1312,28 @@ ipcMain.handle('materials:update', async (_, id, material) => {
 
 ipcMain.handle('materials:delete', async (_, id) => {
   try {
+    // Start transaction
+    await query('BEGIN');
+
     // Önce purchase_items'ları sil
     await query('DELETE FROM purchase_items WHERE product_id = $1', [id]);
 
-    // Sonra stock_movements'ları sil
-    await query('DELETE FROM stock_movements WHERE product_id = $1', [id]);
-
+    // material_movements CASCADE ile otomatik silinecek
     // En son malzemeyi sil
     const result = await query('DELETE FROM materials WHERE id = $1', [id]);
 
     if (result.rowCount === 0) {
+      await query('ROLLBACK');
       return { success: false, error: 'Malzeme bulunamadı' };
     }
 
+    // Commit transaction
+    await query('COMMIT');
+
     return { success: true };
   } catch (error) {
+    // Rollback transaction
+    await query('ROLLBACK');
     return { success: false, error: error.message };
   }
 });
@@ -1725,6 +1689,11 @@ ipcMain.handle('sales:create', async (_, sale) => {
     // Start transaction
     await query('BEGIN');
 
+    // Tarih kontrolü ve düzeltmesi
+    console.log('🛒 Satış tarihi (frontend):', sale.sale_date, typeof sale.sale_date);
+    const saleDate = sale.sale_date ? new Date(sale.sale_date) : new Date();
+    console.log('🛒 Satış tarihi (backend):', saleDate);
+
     // Create sale record
     const saleResult = await queryOne(`
       INSERT INTO sales (customer_id, total_amount, currency, payment_status, sale_date, notes) 
@@ -1735,7 +1704,7 @@ ipcMain.handle('sales:create', async (_, sale) => {
       sale.total_amount,
       sale.currency || 'TRY',
       sale.payment_status || 'pending',
-      sale.sale_date || new Date(),
+      saleDate,
       sale.notes || null
     ]);
 
@@ -1978,6 +1947,11 @@ ipcMain.handle('customer-payments:create', async (_, payment) => {
     // Start transaction
     await query('BEGIN');
 
+    // Tarih kontrolü ve düzeltmesi
+    console.log('💰 Ödeme tarihi (frontend):', payment.payment_date, typeof payment.payment_date);
+    const paymentDate = payment.payment_date ? new Date(payment.payment_date) : new Date();
+    console.log('💰 Ödeme tarihi (backend):', paymentDate);
+
     // Create payment record
     const paymentResult = await queryOne(`
       INSERT INTO customer_payments (customer_id, amount, currency, payment_type, payment_date, notes) 
@@ -1988,7 +1962,7 @@ ipcMain.handle('customer-payments:create', async (_, payment) => {
       payment.amount,
       payment.currency || 'TRY',
       payment.payment_type || 'cash',
-      payment.payment_date || new Date(),
+      paymentDate,
       payment.notes || null
     ]);
 
@@ -2162,6 +2136,11 @@ ipcMain.handle('employee-payments:get-by-employee', async (_, employeeId, page =
 
 ipcMain.handle('employee-payments:create', async (_, payment) => {
   try {
+    // Tarih kontrolü ve düzeltmesi
+    console.log('👷 Çalışan ödemesi tarihi (frontend):', payment.payment_date, typeof payment.payment_date);
+    const paymentDate = payment.payment_date ? new Date(payment.payment_date) : new Date();
+    console.log('👷 Çalışan ödemesi tarihi (backend):', paymentDate);
+
     const result = await queryOne(`
       INSERT INTO employee_payments (employee_id, amount, currency, payment_type, payment_date, notes) 
       VALUES ($1, $2, $3, $4, $5, $6)
@@ -2171,7 +2150,7 @@ ipcMain.handle('employee-payments:create', async (_, payment) => {
       payment.amount,
       payment.currency || 'USD',
       payment.payment_type || 'salary',
-      payment.payment_date || new Date(),
+      paymentDate,
       payment.notes || null
     ]);
 
@@ -2195,35 +2174,8 @@ ipcMain.handle('employee-payments:delete', async (_, id) => {
   }
 });
 
-// Categories create handler
-ipcMain.handle('categories:create', async (_, category) => {
-  try {
-    const result = await queryOne(`
-      INSERT INTO categories (name, description) 
-      VALUES ($1, $2)
-      RETURNING *
-    `, [category.name, category.description || null]);
-
-    return { success: true, data: result };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-});
-
-// Colors create handler
-ipcMain.handle('colors:create', async (_, color) => {
-  try {
-    const result = await queryOne(`
-      INSERT INTO colors (name, hex_code) 
-      VALUES ($1, $2)
-      RETURNING *
-    `, [color.name, color.hex_code || null]);
-
-    return { success: true, data: result };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-});
+// NOT: Categories ve Colors create handler'ları kaldırıldı
+// Artık kategoriler ve renkler koddan geliyor
 
 // Settings handlers
 ipcMain.handle('settings:get', async (_, key) => {
@@ -2273,48 +2225,7 @@ ipcMain.handle('settings:setPassword', async (_, password) => {
   }
 });
 
-// Returns handler
-ipcMain.handle('returns:create', async (_, returnData) => {
-  try {
-    // Start transaction
-    await query('BEGIN');
-
-    // Create return record
-    const returnResult = await queryOne(`
-      INSERT INTO returns (
-        sale_id, customer_id, product_id, quantity, unit_price, 
-        total_amount, return_date, notes
-      ) 
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      RETURNING *
-    `, [
-      returnData.sale_id,
-      returnData.customer_id,
-      returnData.product_id,
-      returnData.quantity,
-      returnData.unit_price,
-      returnData.total_amount,
-      returnData.return_date || new Date(),
-      returnData.notes || null
-    ]);
-
-    // Update product stock (add back returned quantity)
-    await query(`
-      UPDATE products 
-      SET stock_quantity = stock_quantity + $1, updated_at = CURRENT_TIMESTAMP 
-      WHERE id = $2
-    `, [returnData.quantity, returnData.product_id]);
-
-    // Commit transaction
-    await query('COMMIT');
-
-    return { success: true, data: returnResult };
-  } catch (error) {
-    // Rollback transaction
-    await query('ROLLBACK');
-    return { success: false, error: error.message };
-  }
-});
+// NOT: Returns handler kaldırıldı - İade özelliği kullanılmıyor
 
 // Additional Cash handlers
 ipcMain.handle('cash:create', async (_, transaction) => {
@@ -2414,6 +2325,11 @@ ipcMain.handle('purchases:create', async (_, purchase) => {
     // Start transaction
     await query('BEGIN');
 
+    // Tarih kontrolü ve düzeltmesi
+    console.log('📦 Alım tarihi (frontend):', purchase.purchase_date, typeof purchase.purchase_date);
+    const purchaseDate = purchase.purchase_date ? new Date(purchase.purchase_date) : new Date();
+    console.log('📦 Alım tarihi (backend):', purchaseDate);
+
     // Create purchase record
     const purchaseResult = await queryOne(`
       INSERT INTO purchases (supplier_id, total_amount, currency, purchase_date, notes, status) 
@@ -2423,7 +2339,7 @@ ipcMain.handle('purchases:create', async (_, purchase) => {
       purchase.supplier_id,
       purchase.total_amount,
       purchase.currency || 'TRY',
-      purchase.purchase_date || new Date(),
+      purchaseDate,
       purchase.notes || null,
       purchase.status || 'completed'
     ]);

@@ -235,23 +235,7 @@ class DatabaseAPI {
     return window.require("electron").ipcRenderer.invoke('employees:get-by-status', status, page, limit, searchTerm);
   }
 
-  // Categories operations
-  async getCategories(): Promise<ApiResponse<Category[]>> {
-    return window.require("electron").ipcRenderer.invoke('categories:get-all');
-  }
-
-  async createCategory(category: Omit<Category, 'id' | 'created_at' | 'updated_at'>): Promise<ApiResponse<Category>> {
-    return window.require("electron").ipcRenderer.invoke('categories:create', category);
-  }
-
-  // Colors operations
-  async getColors(): Promise<ApiResponse<Color[]>> {
-    return window.require("electron").ipcRenderer.invoke('colors:get-all');
-  }
-
-  async createColor(color: Omit<Color, 'id' | 'created_at' | 'updated_at'>): Promise<ApiResponse<Color>> {
-    return window.require("electron").ipcRenderer.invoke('colors:create', color);
-  }
+  // Categories ve Colors artık koddan geliyor, API metodları kaldırıldı
 
   // Returns operations
   async createReturn(returnData: Omit<Return, 'id' | 'created_at' | 'updated_at'>): Promise<ApiResponse<Return>> {

@@ -241,6 +241,13 @@ const SupplierDetail: React.FC = () => {
           });
         }
 
+        // Tarihe göre sırala (en yeni en üstte)
+        supplierPurchases.sort((a: any, b: any) => {
+          const dateA = new Date(a.purchase_date || a.date || a.created_at).getTime();
+          const dateB = new Date(b.purchase_date || b.date || b.created_at).getTime();
+          return dateB - dateA;
+        });
+
         console.log('Alım verileri:', supplierPurchases);
         setPurchases(supplierPurchases);
       } else {
@@ -344,6 +351,13 @@ const SupplierDetail: React.FC = () => {
             return paymentDate >= start && paymentDate <= end;
           });
         }
+
+        // Tarihe göre sırala (en yeni en üstte)
+        allPayments.sort((a: any, b: any) => {
+          const dateA = new Date(a.payment_date || a.date || a.created_at).getTime();
+          const dateB = new Date(b.payment_date || b.date || b.created_at).getTime();
+          return dateB - dateA;
+        });
 
         setPayments(allPayments);
       }

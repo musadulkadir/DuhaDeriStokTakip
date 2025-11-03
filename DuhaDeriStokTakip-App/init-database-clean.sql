@@ -180,7 +180,7 @@ CREATE TABLE stock_movements (
 -- Material Movements
 CREATE TABLE material_movements (
   id SERIAL PRIMARY KEY,
-  material_id INTEGER REFERENCES materials(id),
+  material_id INTEGER REFERENCES materials(id) ON DELETE CASCADE,
   movement_type VARCHAR(20) CHECK (movement_type IN ('in', 'out', 'adjustment')),
   quantity DECIMAL(10,2) NOT NULL,
   previous_stock DECIMAL(10,2),

@@ -298,8 +298,8 @@ const StockMovements: React.FC = () => {
     }
   };
 
-  const totalIn = filteredMovements.filter(m => m.movement_type === 'in').reduce((sum, m) => sum + (m.quantity || 0), 0);
-  const totalOut = filteredMovements.filter(m => m.movement_type === 'out').reduce((sum, m) => sum + Math.abs(m.quantity || 0), 0);
+  const totalIn = filteredMovements.filter(m => m.movement_type === 'in').reduce((sum, m) => sum + (Number(m.quantity) || 0), 0);
+  const totalOut = filteredMovements.filter(m => m.movement_type === 'out').reduce((sum, m) => sum + Math.abs(Number(m.quantity) || 0), 0);
   const netChange = totalIn - totalOut; // Çıkışlar negatif etki yapar
 
   const handleAddMovement = async () => {

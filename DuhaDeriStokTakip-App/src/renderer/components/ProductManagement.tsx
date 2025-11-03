@@ -86,8 +86,10 @@ const ProductManagement: React.FC = () => {
   const [materialsCurrentPage, setMaterialsCurrentPage] = useState(1);
   const [materialsItemsPerPage, setMaterialsItemsPerPage] = useState(10);
 
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [colors, setColors] = useState<Color[]>([]);
+  // Kategoriler ve renkler artık koddan geliyor (veritabanından değil)
+  const PRODUCT_CATEGORIES = ['Keçi', 'Koyun', 'Keçi-Oğlak', 'Keçi-Palto', 'Çoraplık', 'Baskılık'];
+  const MATERIAL_CATEGORIES = ['Boya', 'Cila', 'Binder'];
+  
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [newProduct, setNewProduct] = useState<NewProduct>({
     category: '',
@@ -132,28 +134,7 @@ const ProductManagement: React.FC = () => {
   };
 
 
-  // Kategoriler ve renkleri yükle
-  const loadCategories = async () => {
-    try {
-      const response = await dbAPI.getCategories();
-      if (response.success && response.data) {
-        setCategories(response.data);
-      }
-    } catch (error) {
-      console.error('Error loading categories:', error);
-    }
-  };
-
-  const loadColors = async () => {
-    try {
-      const response = await dbAPI.getColors();
-      if (response.success && response.data) {
-        setColors(response.data);
-      }
-    } catch (error) {
-      console.error('Error loading colors:', error);
-    }
-  };
+  // Kategoriler ve renkler artık koddan geliyor, API çağrısı yok
 
   // Ürünleri yükle
   const loadProducts = async (page = productsCurrentPage, limit = productsItemsPerPage) => {
@@ -202,8 +183,6 @@ const ProductManagement: React.FC = () => {
   useEffect(() => {
     loadProducts();
     loadMaterials();
-    loadCategories();
-    loadColors();
     loadSuppliers();
   }, []);
 
@@ -682,17 +661,7 @@ const ProductManagement: React.FC = () => {
     return { label: 'Normal', color: 'success' };
   };
 
-  const getColorDisplay = (colorName: string) => {
-    // Renk verisi hem string hem de Color object array formatını destekle
-    if (!colors || colors.length === 0 || typeof colors[0] === 'string') {
-      // Eğer colors boş veya string array ise, varsayılan renk döndür
-      return '#F5F5DC';
-    }
 
-    // Color object array formatı
-    const color = colors.find(c => c.name === colorName);
-    return color?.hex_code || '#F5F5DC';
-  };
 
   return (
     <Box sx={{ mt: 2, mr: 2 }}>
@@ -1073,15 +1042,11 @@ const ProductManagement: React.FC = () => {
                     label="Deri Türü"
                     onChange={(e) => setNewProduct({ ...newProduct, category: e.target.value })}
                   >
-                    {categories
-                      .filter(cat => ['Keçi', 'Koyun'].includes(cat.name))
-                      .map(category => {
-                        console.log(category);
-
-                        return (
-                          <MenuItem key={category.id} value={category.name}>{category.name}</MenuItem>
-                        )
-                      })}
+                    {PRODUCT_CATEGORIES
+                      .filter(cat => ['Keçi', 'Koyun'].includes(cat))
+                      .map(category => (
+                        <MenuItem key={category} value={category}>{category}</MenuItem>
+                      ))}
                   </Select>
                 </FormControl>
               </Box>
@@ -1228,51 +1193,20 @@ const ProductManagement: React.FC = () => {
             ) : (
               /* Ürün Düzenleme */
               <>
-                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                  <Box sx={{ flex: '1 1 200px', minWidth: '200px' }}>
-                    <FormControl fullWidth>
-                      <InputLabel>Deri Türü</InputLabel>
-                      <Select
-                        value={selectedProduct?.category || ''}
-                        label="Deri Türü"
-                        onChange={(e) => setSelectedProduct(prev => prev ? { ...prev, category: e.target.value as any } : null)}
-                      >
-                        {categories
-                          .filter(cat => ['Keçi', 'Koyun'].includes(cat.name))
-                          .map(cat => (
-                            <MenuItem key={cat.id} value={cat.name}>{cat.name}</MenuItem>
-                          ))}
-                      </Select>
-                    </FormControl>
-                  </Box>
-                  <Box sx={{ flex: '1 1 200px', minWidth: '200px' }}>
-                    <FormControl fullWidth>
-                      <InputLabel>Deri Rengi</InputLabel>
-                      <Select
-                        value={selectedProduct?.color || ''}
-                        label="Deri Rengi"
-                        onChange={(e) => setSelectedProduct(prev => prev ? { ...prev, color: e.target.value } : null)}
-                      >
-                        {colors.map(color => (
-                          <MenuItem key={color.id} value={color.name}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                              <Box
-                                sx={{
-                                  width: 16,
-                                  height: 16,
-                                  borderRadius: '50%',
-                                  bgcolor: color.hex_code || '#F5F5DC',
-                                  border: '1px solid rgba(0,0,0,0.2)',
-                                }}
-                              />
-                              {color.name}
-                            </Box>
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Box>
-                </Box>
+                <FormControl fullWidth>
+                  <InputLabel>Deri Türü</InputLabel>
+                  <Select
+                    value={selectedProduct?.category || ''}
+                    label="Deri Türü"
+                    onChange={(e) => setSelectedProduct(prev => prev ? { ...prev, category: e.target.value as any } : null)}
+                  >
+                    {PRODUCT_CATEGORIES
+                      .filter(cat => ['Keçi', 'Koyun'].includes(cat))
+                      .map(cat => (
+                        <MenuItem key={cat} value={cat}>{cat}</MenuItem>
+                      ))}
+                  </Select>
+                </FormControl>
                 <TextField
                   fullWidth
                   label="Stok Miktarı (Adet)"
