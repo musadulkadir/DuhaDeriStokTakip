@@ -636,12 +636,14 @@ const Reports: React.FC = () => {
                   <Assessment sx={{ color: 'primary.main', mr: 1 }} />
                   <Typography variant="h6">Toplam Satış</Typography>
                 </Box>
-                <Typography variant="h4" sx={{ mb: 1 }}>
-                  {salesStats.totalSales}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  adet işlem
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
+                  <Typography variant="h4">
+                    {salesStats.totalSales}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    adet işlem
+                  </Typography>
+                </Box>
               </CardContent>
             </Card>
           </Grid>
@@ -696,12 +698,14 @@ const Reports: React.FC = () => {
                   <Assessment sx={{ color: 'primary.main', mr: 1 }} />
                   <Typography variant="h6">Toplam Alım</Typography>
                 </Box>
-                <Typography variant="h4" sx={{ mb: 1 }}>
-                  {purchasesStats.totalPurchases}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  adet işlem
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
+                  <Typography variant="h4">
+                    {purchasesStats.totalPurchases}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    adet işlem
+                  </Typography>
+                </Box>
               </CardContent>
             </Card>
           </Grid>
@@ -756,12 +760,14 @@ const Reports: React.FC = () => {
                   <Assessment sx={{ color: 'primary.main', mr: 1 }} />
                   <Typography variant="h6">Toplam Satış</Typography>
                 </Box>
-                <Typography variant="h4" sx={{ mb: 1 }}>
-                  {incomeStats.totalPayments}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  adet işlem
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
+                  <Typography variant="h4">
+                    {incomeStats.totalPayments}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    adet işlem
+                  </Typography>
+                </Box>
               </CardContent>
             </Card>
           </Grid>
@@ -816,12 +822,14 @@ const Reports: React.FC = () => {
                   <Assessment sx={{ color: 'primary.main', mr: 1 }} />
                   <Typography variant="h6">Toplam Gider</Typography>
                 </Box>
-                <Typography variant="h4" sx={{ mb: 1 }}>
-                  {expenseStats.totalPayments}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  adet işlem
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
+                  <Typography variant="h4">
+                    {expenseStats.totalPayments}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    adet işlem
+                  </Typography>
+                </Box>
               </CardContent>
             </Card>
           </Grid>
