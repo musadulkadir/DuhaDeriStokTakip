@@ -89,7 +89,7 @@ const ProductManagement: React.FC = () => {
   // Kategoriler ve renkler artık koddan geliyor (veritabanından değil)
   const PRODUCT_CATEGORIES = ['Keçi', 'Koyun', 'Keçi-Oğlak', 'Keçi-Palto', 'Çoraplık', 'Baskılık'];
   const MATERIAL_CATEGORIES = ['Boya', 'Cila', 'Binder'];
-  
+
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [newProduct, setNewProduct] = useState<NewProduct>({
     category: '',
@@ -1407,6 +1407,7 @@ const ProductManagement: React.FC = () => {
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         onClose={() => setSnackbar({ ...snackbar, open: false })}
         sx={{ zIndex: 9999 }}
       >
