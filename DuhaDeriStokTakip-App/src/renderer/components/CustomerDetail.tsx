@@ -265,61 +265,86 @@ const CustomerDetail: React.FC = () => {
         setPayments(formattedPayments);
       }
 
-      // Satış verilerini yükle (bu müşteriye ait)
+      // -------- DEĞİŞİKLİK BAŞLANGICI --------
+
+      // Satış verilerini yükle (TÜMÜ)
+      // NOT: dbAPI.getSales fonksiyonunuzu 'startDate' ve 'endDate' alacak şekilde güncelleyin.
+      // Örnek: const salesResponse = await dbAPI.getSales(startDate, endDate);
+      // Şimdilik, eski haliyle (tüm veriyi çekerek) devam ediyoruz:
       const salesResponse = await dbAPI.getSales();
+      let allUniqueSalesForStats: any[] = [];
+      let customerSalesForUI: CustomerSale[] = [];
+
       if (salesResponse.success && salesResponse.data) {
-        // Tarih filtresi için start ve end date
-        const start = startDate ? new Date(startDate) : null;
-        const end = endDate ? new Date(endDate) : null;
-        if (start) start.setHours(0, 0, 0, 0);
-        if (end) end.setHours(23, 59, 59, 999);
 
-        // Bu müşteriye ait satışları filtrele ve detaylarını çek
-        const customerSalesPromises = salesResponse.data
-          .filter((sale: any) => {
-            // Sadece bu müşteriye ait satışları al - tarih filtresi kaldırıldı (frontend'de yapılacak)
-            return sale.customer_id === customerId;
-          })
-          .map(async (sale: any) => {
-            // Her satış için detayları çek
-            const saleDetailResponse = await dbAPI.getSaleById(sale.id);
+        // Bu iki Map, hem UI hem de istatistik sorununu çözecek
+        const salesMap = new Map<number, CustomerSale>(); // UI için (sadece bu müşteri, gruplanmış)
+        const allSalesForStatsMap = new Map<number, any>(); // Stats için (tüm müşteriler, tekilleştirilmiş)
 
-            let items: Array<{
-              productName: string;
-              quantity: number;
-              unitPrice: number;
-              total: number;
-              unit?: 'desi' | 'ayak';
-            }> = [];
-            if (saleDetailResponse.success && saleDetailResponse.data) {
-              items = (saleDetailResponse.data.items || []).map((item: any) => ({
-                productName: item.color ? `${item.productName} - ${item.color}` : item.productName,
-                quantity: item.quantityDesi,
-                unitPrice: item.unitPricePerDesi,
-                total: item.total,
-                unit: item.unit || 'desi'
-              }));
+        salesResponse.data.forEach((row: any) => {
+          if (!row || !row.id) return; // Bozuk veri
+
+          // --- 1. İSTATİSTİK İÇİN TEKİL LİSTE (TÜM MÜŞTERİLER) ---
+          // 'allSales' listesini (tüm müşteriler) tekilleştir
+          if (!allSalesForStatsMap.has(row.id)) {
+            // Sadece ana satış bilgilerini al
+            allSalesForStatsMap.set(row.id, {
+              id: row.id,
+              customer_id: row.customer_id,
+              total_amount: row.total_amount,
+              currency: row.currency,
+              sale_date: row.sale_date,
+              payment_status: row.payment_status,
+            });
+          }
+
+          // --- 2. UI İÇİN GRUPLANMIŞ LİSTE (SADECE BU MÜŞTERİ) ---
+          // Sadece mevcut müşterinin satışlarını işle
+          if (row.customer_id === customerId) {
+            let sale = salesMap.get(row.id);
+
+            // Eğer bu satıştaki ilk ürünse, ana satış objesini oluştur
+            if (!sale) {
+              sale = {
+                id: row.id,
+                date: row.sale_date,
+                totalAmount: row.total_amount,
+                currency: row.currency || 'TRY',
+                status: row.payment_status,
+                items: [] // Ürün listesini boş başlat
+              };
+              salesMap.set(row.id, sale);
             }
 
-            return {
-              id: sale.id,
-              date: sale.sale_date,
-              totalAmount: sale.total_amount,
-              currency: sale.currency || 'TRY',
-              status: sale.payment_status,
-              items: items
-            };
-          });
+            // Bu satırdaki ürün bilgisini 'items' dizisine ekle
+            // (LEFT JOIN'den dolayı ürün yoksa product_id null gelebilir)
+            if (row.product_id) {
+              sale.items.push({
+                productName: row.color
+                  ? `${row.product_name || row.category || 'Bilinmiyor'} - ${row.color}`
+                  : (row.product_name || row.category || 'Bilinmiyor'),
+                quantity: row.quantity_desi,
+                unitPrice: row.unit_price_per_desi,
+                total: row.total_price,
+                unit: row.unit || 'desi'
+              });
+            }
+          }
+        });
 
-        const customerSales = await Promise.all(customerSalesPromises);
-        setSales(customerSales);
+        // Map'leri dizilere çevir
+        customerSalesForUI = Array.from(salesMap.values());
+        allUniqueSalesForStats = Array.from(allSalesForStatsMap.values());
+
       }
 
+      // UI state'ini (setSales) gruplanmış ve doğru veriyle güncelle
+      setSales(customerSalesForUI);
+
       // İstatistikleri hesapla
-      if (customerResponse.data && salesResponse.data) {
+      if (customerResponse.data) {
         const formattedPaymentsForStats = paymentsResponse.data || [];
-        const allSalesForStats = salesResponse.data || [];
-        calculateStats(customerResponse.data, formattedPaymentsForStats, allSalesForStats);
+        calculateStats(customerResponse.data, formattedPaymentsForStats, allUniqueSalesForStats);
       }
 
     } catch (error) {
@@ -2048,6 +2073,7 @@ const CustomerDetail: React.FC = () => {
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         sx={{ zIndex: 9999 }}
         onClose={() => setSnackbar({ ...snackbar, open: false })}
       >

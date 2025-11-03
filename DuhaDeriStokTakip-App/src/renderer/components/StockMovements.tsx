@@ -54,7 +54,9 @@ interface MovementDisplay extends StockMovement {
   productCategory?: string;
   productColor?: string;
   customerName?: string;
+  supplierName?: string;
   supplier_id?: number;
+  material_id?: number;
   date?: string;
   time?: string;
 }
@@ -119,9 +121,16 @@ const StockMovements: React.FC = () => {
       if (allMovements.length > 0) {
         // Ürün ve müşteri bilgilerini ekleyerek movements'ı zenginleştir
         const enrichedMovements = allMovements.map((movement: any) => {
-          // product_id veya material_id'ye göre ürün bul
-          const itemId = movement.product_id || movement.material_id;
-          const product = products.find(p => p.id === itemId);
+          // product_id veya material_id'ye göre ürün/malzeme bul
+          let product;
+          if (movement.material_id) {
+            // Malzeme hareketi - material_id ile malzeme ara
+            product = products.find((p: any) => p.id === movement.material_id && p.itemType === 'material');
+          } else if (movement.product_id) {
+            // Ürün hareketi - product_id ile ürün ara
+            product = products.find((p: any) => p.id === movement.product_id && p.itemType === 'product');
+          }
+
           const customer = customers.find(c => c.id === movement.customer_id);
           const supplier = customers.find(c => c.id === movement.supplier_id);
 
@@ -129,8 +138,7 @@ const StockMovements: React.FC = () => {
             id: movement.id,
             product_id: movement.product_id,
             material_id: movement.material_id,
-            itemId: itemId,
-            found_product: product ? `${product.category} - ${product.color || product.name}` : 'NOT FOUND',
+            found_product: product ? `${product.category || product.name} - ${product.color || product.color_shade || ''}` : 'NOT FOUND',
             product_details: product,
             notes: movement.notes
           });
@@ -156,11 +164,12 @@ const StockMovements: React.FC = () => {
 
           return {
             ...movement,
-            product_id: itemId,
+            product_id: movement.product_id || movement.material_id,
             productName: parsedProductName || 'Bilinmeyen Ürün',
             productCategory: product?.category,
             productColor: parsedProductColor,
             customerName: customer?.name,
+            supplierName: supplier?.name,
             supplier_id: movement.supplier_id, // Material movements için
             notes: movement.notes,
             date: formatDate(movement.created_at),
@@ -194,10 +203,14 @@ const StockMovements: React.FC = () => {
 
       const allProducts = [];
       if (productsResponse.success) {
-        allProducts.push(...productsResponse.data);
+        // Ürünlere type flag'i ekle
+        const productsWithType = productsResponse.data.map((p: any) => ({ ...p, itemType: 'product' }));
+        allProducts.push(...productsWithType);
       }
       if (materialsResponse.success && materialsResponse.data) {
-        allProducts.push(...materialsResponse.data);
+        // Malzemelere type flag'i ekle
+        const materialsWithType = materialsResponse.data.map((m: any) => ({ ...m, itemType: 'material' }));
+        allProducts.push(...materialsWithType);
       }
 
       setProducts(allProducts);
@@ -645,7 +658,7 @@ const StockMovements: React.FC = () => {
                   });
 
                   return (
-                    <TableRow key={movement.id} hover>
+                    <TableRow key={`${movement.material_id ? 'material' : 'product'}-${movement.id}`} hover>
                       <TableCell>
                         <Typography variant="body2" sx={{ fontWeight: 600 }}>
                           {productName}
@@ -866,6 +879,7 @@ const StockMovements: React.FC = () => {
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         sx={{ zIndex: 9999 }}
         onClose={() => setSnackbar({ ...snackbar, open: false })}
       >

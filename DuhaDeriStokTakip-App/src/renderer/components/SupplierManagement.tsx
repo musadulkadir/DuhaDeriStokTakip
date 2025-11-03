@@ -230,7 +230,7 @@ const SupplierManagement: React.FC = () => {
     };
 
     return (
-        <Box>
+        <Box sx={{ mt: 2, mr: 2 }}>
             {/* Header */}
             <Box sx={{ mb: 4 }}>
                 <Typography variant="h3" sx={{ fontWeight: 700, mb: 1 }}>
@@ -242,69 +242,105 @@ const SupplierManagement: React.FC = () => {
             </Box>
 
             {/* Quick Stats */}
-            <Grid container spacing={3} sx={{ mb: 4 }}>
-                <Grid item xs={12} sm={6} md={3}>
-                    <Card>
-                        <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
-                            <Avatar sx={{ bgcolor: 'primary.main', mr: 2 }}>
-                                <Business />
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 2fr', gap: 2, mb: 4 }}>
+                <Card variant="outlined">
+                    <CardContent sx={{ p: 2 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                            <Avatar sx={{ bgcolor: 'primary.main', width: 40, height: 40 }}>
+                                <Business sx={{ fontSize: 20 }} />
                             </Avatar>
-                            <Box>
-                                <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                                    {suppliers.length}
-                                </Typography>
-                                <Typography variant="body2" color="text.secondary">
+                            <Box sx={{ flex: 1 }}>
+                                <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem', mb: 0.3 }}>
                                     Toplam Tedarikçi
                                 </Typography>
-                            </Box>
-                        </CardContent>
-                    </Card>
-                </Grid>
-                <Grid item xs={12} sm={6} md={3}>
-                    <Card>
-                        <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
-                            <Avatar sx={{ bgcolor: 'error.main', mr: 2 }}>
-                                <TrendingUp />
-                            </Avatar>
-                            <Box>
-                                <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                                    {suppliers.filter(s => ((s.balanceTRY || 0) + (s.balanceUSD || 0) + (s.balanceEUR || 0)) > 0).length}
+                                <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                                    {suppliers.length}
                                 </Typography>
-                                <Typography variant="body2" color="text.secondary">
+                            </Box>
+                        </Box>
+                    </CardContent>
+                </Card>
+
+                <Card variant="outlined">
+                    <CardContent sx={{ p: 2 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                            <Avatar sx={{ bgcolor: 'error.main', width: 40, height: 40 }}>
+                                <TrendingUp sx={{ fontSize: 20 }} />
+                            </Avatar>
+                            <Box sx={{ flex: 1 }}>
+                                <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem', mb: 0.3 }}>
                                     Alacaklı Tedarikçi
                                 </Typography>
-                            </Box>
-                        </CardContent>
-                    </Card>
-                </Grid>
-                <Grid item xs={12} sm={6} md={3}>
-                    <Card>
-                        <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
-                            <Avatar sx={{ bgcolor: 'success.main', mr: 2 }}>
-                                <TrendingDown />
-                            </Avatar>
-                            <Box>
-                                <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                                    {suppliers.filter(s => ((s.balanceTRY || 0) + (s.balanceUSD || 0) + (s.balanceEUR || 0)) < 0).length}
+                                <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                                    {suppliers.filter(s => ((s.balanceTRY || 0) + (s.balanceUSD || 0) + (s.balanceEUR || 0)) > 0).length}
                                 </Typography>
-                                <Typography variant="body2" color="text.secondary">
+                            </Box>
+                        </Box>
+                    </CardContent>
+                </Card>
+
+                <Card variant="outlined">
+                    <CardContent sx={{ p: 2 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                            <Avatar sx={{ bgcolor: 'success.main', width: 40, height: 40 }}>
+                                <TrendingDown sx={{ fontSize: 20 }} />
+                            </Avatar>
+                            <Box sx={{ flex: 1 }}>
+                                <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem', mb: 0.3 }}>
                                     Borçlu Tedarikçi
                                 </Typography>
+                                <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                                    {suppliers.filter(s => ((s.balanceTRY || 0) + (s.balanceUSD || 0) + (s.balanceEUR || 0)) < 0).length}
+                                </Typography>
                             </Box>
-                        </CardContent>
-                    </Card>
-                </Grid>
+                        </Box>
+                    </CardContent>
+                </Card>
 
-            </Grid>
+                <Card variant="outlined">
+                    <CardContent sx={{ p: 2 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                            <Avatar sx={{ bgcolor: 'warning.main', width: 40, height: 40 }}>
+                                <AccountBalance sx={{ fontSize: 20 }} />
+                            </Avatar>
+                            <Box sx={{ flex: 1 }}>
+                                <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem', mb: 0.5 }}>
+                                    Toplam Borç
+                                </Typography>
+                                <Box sx={{ display: 'flex', gap: 3, alignItems: 'center' }}>
+                                    <Typography variant="h6" sx={{ fontWeight: 700, color: 'error.main' }}>
+                                        ₺{suppliers
+                                            .filter(s => (s.balanceTRY || 0) > 0)
+                                            .reduce((sum, s) => sum + (Number(s.balanceTRY) || 0), 0)
+                                            .toLocaleString()}
+                                    </Typography>
+                                    <Typography variant="h6" sx={{ fontWeight: 700, color: 'error.main' }}>
+                                        ${suppliers
+                                            .filter(s => (s.balanceUSD || 0) > 0)
+                                            .reduce((sum, s) => sum + (Number(s.balanceUSD) || 0), 0)
+                                            .toLocaleString()}
+                                    </Typography>
+                                    <Typography variant="h6" sx={{ fontWeight: 700, color: 'error.main' }}>
+                                        €{suppliers
+                                            .filter(s => (s.balanceEUR || 0) > 0)
+                                            .reduce((sum, s) => sum + (Number(s.balanceEUR) || 0), 0)
+                                            .toLocaleString()}
+                                    </Typography>
+                                </Box>
+                            </Box>
+                        </Box>
+                    </CardContent>
+                </Card>
+            </Box>
 
             {/* Search and Add */}
             <Card sx={{ mb: 3 }}>
                 <CardContent>
-                    <Grid container spacing={3} alignItems="center">
-                        <Grid size={{ xs: 12, md: 4 }}>
+                    <Grid container spacing={3} alignItems="center" justifyContent='space-between'>
+                        <Grid size={{ xs: 12, md: 6 }}>
                             <TextField
                                 fullWidth
-                                size="large"
+                                size="medium"
                                 placeholder="Tedarikçi adı, telefon veya email ara..."
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -327,7 +363,7 @@ const SupplierManagement: React.FC = () => {
                                 }}
                             />
                         </Grid>
-                        <Grid item xs={12} md={4}>
+                        <Grid size={{ xs: 12, md: 3, }}>
                             <Button
                                 fullWidth
                                 variant="contained"
@@ -335,7 +371,7 @@ const SupplierManagement: React.FC = () => {
                                 onClick={() => setAddDialogOpen(true)}
                                 size="large"
                             >
-                                Yeni Tedarikçi Ekle
+                                Tedarikçi Ekle
                             </Button>
                         </Grid>
                     </Grid>
@@ -442,7 +478,7 @@ const SupplierManagement: React.FC = () => {
                 <DialogTitle>Yeni Tedarikçi Ekle</DialogTitle>
                 <DialogContent>
                     <Grid container spacing={2} sx={{ mt: 1 }}>
-                        <Grid item xs={12}>
+                        <Grid size={{ xs: 12 }}>
                             <TextField
                                 fullWidth
                                 label="Tedarikçi Adı"
@@ -450,7 +486,7 @@ const SupplierManagement: React.FC = () => {
                                 onChange={(e) => setNewSupplier({ ...newSupplier, name: e.target.value })}
                             />
                         </Grid>
-                        <Grid item xs={12} sm={6}>
+                        <Grid size={{ xs: 12, sm: 6 }}>
                             <TextField
                                 fullWidth
                                 label="Telefon"
@@ -458,7 +494,7 @@ const SupplierManagement: React.FC = () => {
                                 onChange={(e) => setNewSupplier({ ...newSupplier, phone: e.target.value })}
                             />
                         </Grid>
-                        <Grid item xs={12} sm={6}>
+                        <Grid size={{ xs: 12, sm: 6 }}>
                             <TextField
                                 fullWidth
                                 label="Email"
@@ -467,7 +503,7 @@ const SupplierManagement: React.FC = () => {
                                 onChange={(e) => setNewSupplier({ ...newSupplier, email: e.target.value })}
                             />
                         </Grid>
-                        <Grid item xs={12}>
+                        <Grid size={{ xs: 12 }}>
                             <TextField
                                 fullWidth
                                 label="Adres"
@@ -498,7 +534,7 @@ const SupplierManagement: React.FC = () => {
                 <DialogTitle>Tedarikçi Düzenle</DialogTitle>
                 <DialogContent>
                     <Grid container spacing={2} sx={{ mt: 1 }}>
-                        <Grid item xs={12}>
+                        <Grid size={{ xs: 12 }}>
                             <TextField
                                 fullWidth
                                 label="Tedarikçi Adı"
@@ -506,7 +542,7 @@ const SupplierManagement: React.FC = () => {
                                 onChange={(e) => setSelectedSupplier(prev => prev ? { ...prev, name: e.target.value } : null)}
                             />
                         </Grid>
-                        <Grid item xs={12} sm={6}>
+                        <Grid size={{ xs: 12, sm: 6 }}>
                             <TextField
                                 fullWidth
                                 label="Telefon"
@@ -514,7 +550,7 @@ const SupplierManagement: React.FC = () => {
                                 onChange={(e) => setSelectedSupplier(prev => prev ? { ...prev, phone: e.target.value } : null)}
                             />
                         </Grid>
-                        <Grid item xs={12} sm={6}>
+                        <Grid size={{ xs: 12, sm: 6 }}>
                             <TextField
                                 fullWidth
                                 label="Email"
@@ -523,7 +559,7 @@ const SupplierManagement: React.FC = () => {
                                 onChange={(e) => setSelectedSupplier(prev => prev ? { ...prev, email: e.target.value } : null)}
                             />
                         </Grid>
-                        <Grid item xs={12}>
+                        <Grid size={{ xs: 12 }}>
                             <TextField
                                 fullWidth
                                 label="Adres"
@@ -590,6 +626,7 @@ const SupplierManagement: React.FC = () => {
             <Snackbar
                 open={snackbar.open}
                 autoHideDuration={6000}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
                 sx={{ zIndex: 9999 }}
                 onClose={() => setSnackbar({ ...snackbar, open: false })}
             >
@@ -601,7 +638,7 @@ const SupplierManagement: React.FC = () => {
                     {snackbar.message}
                 </Alert>
             </Snackbar>
-        </Box>
+        </Box >
     );
 };
 

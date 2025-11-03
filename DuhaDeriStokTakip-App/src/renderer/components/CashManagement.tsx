@@ -684,7 +684,7 @@ const CashManagement: React.FC = () => {
       {/* Summary Cards */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         {/* TL Kasa Bakiyesi */}
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Card>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -702,7 +702,7 @@ const CashManagement: React.FC = () => {
         </Grid>
 
         {/* USD Kasa Bakiyesi */}
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Card>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -720,7 +720,7 @@ const CashManagement: React.FC = () => {
         </Grid>
 
         {/* EUR Kasa Bakiyesi */}
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Card>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -738,7 +738,7 @@ const CashManagement: React.FC = () => {
         </Grid>
 
         {/* Toplam Alacaklar */}
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Card>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -761,7 +761,7 @@ const CashManagement: React.FC = () => {
 
       {/* Action Buttons */}
       <Grid container spacing={2} sx={{ mb: 4 }}>
-        <Grid item>
+        <Grid>
           <Button
             variant="contained"
             startIcon={<Add />}
@@ -771,7 +771,7 @@ const CashManagement: React.FC = () => {
             Yeni İşlem
           </Button>
         </Grid>
-        <Grid item>
+        <Grid>
           <Button
             variant="outlined"
             startIcon={<SwapHoriz />}
@@ -924,8 +924,8 @@ const CashManagement: React.FC = () => {
           )}
 
           <Grid container spacing={3} sx={{ mt: 1 }}>
-            <Grid item xs={12}>
-              <FormControl fullWidth size="large">
+            <Grid size={{ xs: 12, }}>
+              <FormControl fullWidth size="medium">
                 <InputLabel>İşlem Tipi</InputLabel>
                 <Select
                   value={transactionType}
@@ -941,10 +941,10 @@ const CashManagement: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6, }}>
               <TextField
                 fullWidth
-                size="large"
+                size="medium"
                 label="Tutar"
                 value={amount}
                 onChange={(e) => {
@@ -953,7 +953,7 @@ const CashManagement: React.FC = () => {
                 }}
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6, }}>
               <CurrencySelect
                 value={currency}
                 onChange={setCurrency}
@@ -962,10 +962,10 @@ const CashManagement: React.FC = () => {
                 size="large"
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6, }}>
               <TextField
                 fullWidth
-                size="large"
+                size="medium"
                 label="İşlem Tarihi"
                 type="date"
                 value={transactionDate}
@@ -975,7 +975,7 @@ const CashManagement: React.FC = () => {
                 }}
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6, }}>
               <FormControl fullWidth>
                 <InputLabel>Kategori</InputLabel>
                 <Select
@@ -989,7 +989,7 @@ const CashManagement: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid item xs={12}>
+            <Grid size={{ xs: 12, }}>
               <TextField
                 fullWidth
                 label="Açıklama"
@@ -1030,8 +1030,8 @@ const CashManagement: React.FC = () => {
           )}
 
           <Grid container spacing={3} sx={{ mt: 1 }}>
-            <Grid item xs={12}>
-              <FormControl fullWidth size="large">
+            <Grid size={{ xs: 12 }}>
+              <FormControl fullWidth size="medium">
                 <InputLabel>İşlem Tipi</InputLabel>
                 <Select
                   value={transactionType}
@@ -1047,10 +1047,10 @@ const CashManagement: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6, }}>
               <TextField
                 fullWidth
-                size="large"
+                size="medium"
                 label="Tutar"
                 value={amount}
                 onChange={(e) => {
@@ -1059,7 +1059,7 @@ const CashManagement: React.FC = () => {
                 }}
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6, }}>
               <CurrencySelect
                 value={currency}
                 onChange={setCurrency}
@@ -1068,10 +1068,10 @@ const CashManagement: React.FC = () => {
                 size="large"
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6, }}>
               <TextField
                 fullWidth
-                size="large"
+                size="medium"
                 label="İşlem Tarihi"
                 type="date"
                 value={transactionDate}
@@ -1081,8 +1081,8 @@ const CashManagement: React.FC = () => {
                 }}
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth size="large">
+            <Grid size={{ xs: 12, sm: 6, }}>
+              <FormControl fullWidth size="medium">
                 <InputLabel>Kategori</InputLabel>
                 <Select
                   value={category}
@@ -1096,7 +1096,7 @@ const CashManagement: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid item xs={12}>
+            <Grid size={{ xs: 12 }}>
               <TextField
                 fullWidth
                 label="Açıklama"
@@ -1175,7 +1175,7 @@ const CashManagement: React.FC = () => {
               </Grid>
 
               {/* Swap Icon */}
-              <Grid item xs={12} sx={{ display: 'flex', justifyContent: 'center', my: 1 }}>
+              <Grid size={{ xs: 12, }} sx={{ display: 'flex', justifyContent: 'center', my: 1 }}>
                 <SwapHoriz sx={{ fontSize: 40, color: 'primary.main' }} />
               </Grid>
 
@@ -1259,6 +1259,7 @@ const CashManagement: React.FC = () => {
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         sx={{ zIndex: 9999 }}
         onClose={() => setSnackbar({ ...snackbar, open: false })}
       >

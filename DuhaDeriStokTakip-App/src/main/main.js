@@ -181,7 +181,7 @@ async function createTables() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
-    
+
     // Mevcut tabloya currency kolonunu ekle (eğer yoksa)
     try {
       await query(`ALTER TABLE material_movements ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'TRY'`);
@@ -438,7 +438,7 @@ async function createTables() {
     // Migration 5: Move material movements from stock_movements to material_movements
     try {
       console.log('Starting material movements migration...');
-      
+
       // Check if migration is needed (are there any records in stock_movements that belong to materials ONLY?)
       // Important: Only migrate if the ID exists in materials but NOT in products
       const materialMovementsInStock = await query(`
@@ -739,7 +739,7 @@ function createWindow() {
     console.log('PRODUCTION MODU: Yükleniyor:', htmlPath);
     console.log('__dirname:', __dirname);
     console.log('Index path exists:', fs.existsSync(indexPath));
-    
+
     // Production'da da DevTools aç (hata ayıklama için)
     mainWindow.webContents.openDevTools();
   }
@@ -819,7 +819,7 @@ ipcMain.handle('products:create', async (_, product) => {
     // Keçi veya Koyun için sadece kategori kontrolü yap (renk kontrolü yok)
     // Diğer kategoriler için hem kategori hem renk kontrolü yap
     let existing = null;
-    
+
     if (product.category === 'Keçi' || product.category === 'Koyun') {
       // Keçi veya Koyun için sadece kategori kontrolü
       existing = await queryOne(`
@@ -874,7 +874,7 @@ ipcMain.handle('products:create', async (_, product) => {
 ipcMain.handle('sales:get-all', async (_, startDate, endDate) => {
   try {
     console.log('📊 sales:get-all çağrıldı, tarih aralığı:', { startDate, endDate });
-    
+
     let queryText = `
       SELECT 
         s.*,
@@ -904,7 +904,7 @@ ipcMain.handle('sales:get-all', async (_, startDate, endDate) => {
     queryText += whereClause + ' ORDER BY s.created_at DESC';
 
     const result = await queryAll(queryText, params);
-    
+
     console.log('📊 İlk 3 satış kaydı:', result.slice(0, 3).map(r => ({
       id: r.id,
       product_name: r.product_name,
@@ -1082,12 +1082,34 @@ ipcMain.handle('purchases:get-all', async (_, page = 1, limit = 50) => {
   try {
     const offset = (page - 1) * limit;
     const result = await queryAll(`
-      SELECT p.*, c.name as supplier_name 
+      SELECT 
+        p.id,
+        p.supplier_id,
+        p.total_amount,
+        p.currency,
+        p.purchase_date,
+        p.notes,
+        p.status,
+        p.created_at,
+        p.updated_at,
+        c.name as supplier_name,
+        pi.product_id,
+        pi.quantity,
+        pi.unit_price,
+        pi.total_price,
+        COALESCE(m.name, pr.name) as material_name,
+        COALESCE(m.unit, pr.unit) as unit
       FROM purchases p 
       LEFT JOIN customers c ON p.supplier_id = c.id 
+      LEFT JOIN purchase_items pi ON p.id = pi.purchase_id
+      LEFT JOIN materials m ON pi.product_id = m.id
+      LEFT JOIN products pr ON pi.product_id = pr.id
       ORDER BY p.created_at DESC 
       LIMIT $1 OFFSET $2
     `, [limit, offset]);
+
+    console.log('📦 Backend - İlk 2 alım verisi:', JSON.stringify(result.slice(0, 2), null, 2));
+
     const countResult = await queryOne('SELECT COUNT(*) as total FROM purchases');
 
     return {
@@ -1098,6 +1120,7 @@ ipcMain.handle('purchases:get-all', async (_, page = 1, limit = 50) => {
       limit
     };
   } catch (error) {
+    console.error('❌ Backend - Alım verileri hatası:', error);
     return {
       success: false,
       data: [],
@@ -1687,7 +1710,7 @@ ipcMain.handle('material-movements:create', async (_, movement) => {
 ipcMain.handle('sales:create', async (_, sale) => {
   try {
     console.log('📥 Backend - Gelen satış verisi:', JSON.stringify(sale, null, 2));
-    
+
     // Start transaction
     await query('BEGIN');
 
@@ -1722,7 +1745,7 @@ ipcMain.handle('sales:create', async (_, sale) => {
           color: item.color,
           quantity_pieces: item.quantity_pieces
         });
-        
+
         await query(`
           INSERT INTO sale_items (
             sale_id, product_id, product_name, color, quantity_pieces, quantity_desi, 
@@ -1740,24 +1763,24 @@ ipcMain.handle('sales:create', async (_, sale) => {
           item.total_price,
           item.unit || 'desi'
         ]);
-        
+
         console.log('✅ Satış kalemi eklendi');
 
         // Get product info including category
         const productInfo = await queryOne('SELECT id, category, color, stock_quantity FROM products WHERE id = $1', [item.product_id]);
-        
+
         // Keçi alt kategorileri için Keçi stoğundan düşülecek
         const keciSubCategories = ['Keçi-Oğlak', 'Keçi-Palto', 'Çoraplık', 'Baskılık'];
         let stockProductId = item.product_id;
         let stockCategory = productInfo.category;
-        
+
         // Eğer Keçi alt kategorisiyse, Keçi stoğunu bul (renk olmadan)
         if (keciSubCategories.includes(productInfo.category)) {
           const keciProduct = await queryOne(
             'SELECT id, stock_quantity FROM products WHERE category = $1 LIMIT 1',
             ['Keçi']
           );
-          
+
           if (keciProduct) {
             stockProductId = keciProduct.id;
             stockCategory = 'Keçi';

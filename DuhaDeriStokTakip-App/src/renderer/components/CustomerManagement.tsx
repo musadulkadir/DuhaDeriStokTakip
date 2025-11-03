@@ -236,12 +236,16 @@ const CustomerManagement: React.FC = () => {
   // Debug: Müşteri tiplerini kontrol et
   console.log('Tüm müşteriler ve tipleri:', customers.map(c => ({ name: c.name, type: c.type })));
 
+  // Önce sadece müşterileri filtrele (tedarikçileri hariç tut)
+  const onlyCustomers = customers.filter(customer =>
+    !customer.type || customer.type !== 'supplier' // Tedarikçileri hariç tut (type yoksa müşteri kabul et)
+  );
+
   // Müşterileri filtrele ve paginate et
-  const allFilteredCustomers = customers.filter(customer =>
-    (!customer.type || customer.type !== 'supplier') && // Tedarikçileri hariç tut (type yoksa müşteri kabul et)
-    (customer.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      customer.phone?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      customer.email?.toLowerCase().includes(searchTerm.toLowerCase()))
+  const allFilteredCustomers = onlyCustomers.filter(customer =>
+    customer.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    customer.phone?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    customer.email?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const customersStartIndex = (customersCurrentPage - 1) * customersItemsPerPage;
@@ -281,7 +285,7 @@ const CustomerManagement: React.FC = () => {
                   Toplam Müşteri
                 </Typography>
                 <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                  {customers.length}
+                  {onlyCustomers.length}
                 </Typography>
               </Box>
             </Box>
@@ -299,7 +303,7 @@ const CustomerManagement: React.FC = () => {
                   Alacaklı Müşteri
                 </Typography>
                 <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                  {customers.filter(c => ((c.balanceTRY || 0) + (c.balanceUSD || 0) + (c.balanceEUR || 0)) < 0).length}
+                  {onlyCustomers.filter(c => ((c.balanceTRY || 0) + (c.balanceUSD || 0) + (c.balanceEUR || 0)) < 0).length}
                 </Typography>
               </Box>
             </Box>
@@ -317,7 +321,7 @@ const CustomerManagement: React.FC = () => {
                   Borçlu Müşteri
                 </Typography>
                 <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                  {customers.filter(c => ((c.balanceTRY || 0) + (c.balanceUSD || 0) + (c.balanceEUR || 0)) > 0).length}
+                  {onlyCustomers.filter(c => ((c.balanceTRY || 0) + (c.balanceUSD || 0) + (c.balanceEUR || 0)) > 0).length}
                 </Typography>
               </Box>
             </Box>
@@ -332,17 +336,17 @@ const CustomerManagement: React.FC = () => {
               </Avatar>
               <Box sx={{ flex: 1 }}>
                 <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem', mb: 0.5 }}>
-                  Net Bakiye
+                  Net Bakiye (Sadece Müşteriler)
                 </Typography>
                 <Box sx={{ display: 'flex', gap: 3, alignItems: 'center' }}>
                   <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                    ₺{customers.reduce((sum, c) => sum + (Number(c.balanceTRY) || 0), 0).toLocaleString()}
+                    ₺{onlyCustomers.reduce((sum, c) => sum + (Number(c.balanceTRY) || 0), 0).toLocaleString()}
                   </Typography>
                   <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                    ${customers.reduce((sum, c) => sum + (Number(c.balanceUSD) || 0), 0).toLocaleString()}
+                    ${onlyCustomers.reduce((sum, c) => sum + (Number(c.balanceUSD) || 0), 0).toLocaleString()}
                   </Typography>
                   <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                    €{customers.reduce((sum, c) => sum + (Number(c.balanceEUR) || 0), 0).toLocaleString()}
+                    €{onlyCustomers.reduce((sum, c) => sum + (Number(c.balanceEUR) || 0), 0).toLocaleString()}
                   </Typography>
                 </Box>
               </Box>
@@ -662,6 +666,7 @@ const CustomerManagement: React.FC = () => {
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         sx={{ zIndex: 9999 }}
         onClose={() => setSnackbar({ ...snackbar, open: false })}
       >

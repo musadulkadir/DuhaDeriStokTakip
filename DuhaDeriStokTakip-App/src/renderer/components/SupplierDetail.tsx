@@ -429,7 +429,7 @@ const SupplierDetail: React.FC = () => {
           console.error('Kasa işlemi oluşturulamadı:', error);
         }
 
-        setSnackbar({ open: true, message: 'Ödeme başarıyla yapıldı ve kasadan düşürüldü', severity: 'success' });
+        setSnackbar({ open: true, message: 'Ödeme başarıyla yapıldı ve kasadan düşürüldü', severity: 'success', });
         setPaymentDialogOpen(false);
         setNewPayment({
           amount: '',
@@ -1052,7 +1052,7 @@ const SupplierDetail: React.FC = () => {
   const balance = getSupplierBalance();
 
   return (
-    <Box>
+    <Box sx={{ mt: 2, mr: 2, }}>
       {/* Header */}
       <Box sx={{ mb: 4, display: 'flex', alignItems: 'center', gap: 2 }}>
         <IconButton onClick={() => navigate('/suppliers')} size="large">
@@ -1087,7 +1087,7 @@ const SupplierDetail: React.FC = () => {
 
       {/* Supplier Info Cards */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} md={8}>
+        <Grid size={{ xs: 12, md: 8, }}>
           <Card>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
@@ -1104,19 +1104,19 @@ const SupplierDetail: React.FC = () => {
                 </Box>
               </Box>
               <Grid container spacing={2}>
-                <Grid item xs={12} sm={6}>
+                <Grid size={{ xs: 12, sm: 6, }}>
                   <Typography variant="body2" color="text.secondary">Telefon</Typography>
                   <Typography variant="body1" sx={{ fontWeight: 500 }}>
                     {supplier.phone || 'Belirtilmemiş'}
                   </Typography>
                 </Grid>
-                <Grid item xs={12} sm={6}>
+                <Grid size={{ xs: 12, sm: 6, }}>
                   <Typography variant="body2" color="text.secondary">Email</Typography>
                   <Typography variant="body1" sx={{ fontWeight: 500 }}>
                     {supplier.email || 'Belirtilmemiş'}
                   </Typography>
                 </Grid>
-                <Grid item xs={12}>
+                <Grid size={{ xs: 12, }}>
                   <Typography variant="body2" color="text.secondary">Adres</Typography>
                   <Typography variant="body1" sx={{ fontWeight: 500 }}>
                     {supplier.address || 'Belirtilmemiş'}
@@ -1126,7 +1126,7 @@ const SupplierDetail: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} md={4}>
+        <Grid size={{ xs: 12, md: 4, }}>
           <Card>
             <CardContent>
               <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
@@ -1288,7 +1288,7 @@ const SupplierDetail: React.FC = () => {
         </Grid>
 
         {/* Payment History */}
-        <Grid item xs={12} md={6}>
+        <Grid size={{ xs: 12, md: 6, }}>
           <Card>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -1390,7 +1390,7 @@ const SupplierDetail: React.FC = () => {
         <DialogTitle>Tedarikçiye Ödeme Yap</DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6, }}>
               <TextField
                 fullWidth
                 label="Tutar"
@@ -1431,7 +1431,7 @@ const SupplierDetail: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6, }}>
               <TextField
                 fullWidth
                 label="Ödeme Tarihi"
@@ -1443,7 +1443,7 @@ const SupplierDetail: React.FC = () => {
                 }}
               />
             </Grid>
-            <Grid item xs={12}>
+            <Grid size={{ xs: 12, }}>
               <TextField
                 fullWidth
                 label="Açıklama (Opsiyonel)"
@@ -1748,7 +1748,7 @@ const SupplierDetail: React.FC = () => {
             )}
 
             {/* Açıklama */}
-            <Grid item xs={12}>
+            <Grid size={{ xs: 12, }}>
               <TextField
                 fullWidth
                 label="Açıklama (Opsiyonel)"
@@ -1786,6 +1786,7 @@ const SupplierDetail: React.FC = () => {
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         sx={{ zIndex: 9999 }}
         onClose={() => setSnackbar({ ...snackbar, open: false })}
       >
