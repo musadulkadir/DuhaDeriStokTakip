@@ -24,6 +24,7 @@ import Settings from './components/Settings';
 import ErrorBoundary from './components/ErrorBoundary';
 import LoginScreen from './components/LoginScreen';
 import SplashScreen from './components/SplashScreen';
+import BackupScreen from './components/BackupScreen';
 
 // Deri temalı açık tasarım
 const leatherTheme = createTheme({
@@ -201,6 +202,8 @@ export default function App() {
   const [open, setOpen] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isBackingUp, setIsBackingUp] = useState(false);
+  const [backupChecked, setBackupChecked] = useState(false);
 
   useEffect(() => {
     // Uygulama başlangıcında kısa bir yükleme süresi
@@ -222,6 +225,34 @@ export default function App() {
 
     return () => clearTimeout(timer);
   }, []);
+
+  // Backup kontrolü - sadece authenticated olduktan sonra
+  useEffect(() => {
+    if (isAuthenticated && !backupChecked) {
+      checkAndPerformBackup();
+    }
+  }, [isAuthenticated, backupChecked]);
+
+  const checkAndPerformBackup = async () => {
+    try {
+      const ipcRenderer = window.require('electron').ipcRenderer;
+      const result = await ipcRenderer.invoke('backup:check-needed');
+      
+      if (result.needed) {
+        setIsBackingUp(true);
+      } else {
+        setBackupChecked(true);
+      }
+    } catch (error) {
+      console.error('Backup check error:', error);
+      setBackupChecked(true); // Hata olsa bile devam et
+    }
+  };
+
+  const handleBackupComplete = () => {
+    setIsBackingUp(false);
+    setBackupChecked(true);
+  };
 
   const toggleSidebar = () => {
     setOpen(!open);
@@ -249,6 +280,16 @@ export default function App() {
       <ThemeProvider theme={leatherTheme}>
         <CssBaseline />
         <LoginScreen onLogin={handleLogin} />
+      </ThemeProvider>
+    );
+  }
+
+  // Backup ekranı (authenticated olduktan sonra, backup gerekiyorsa)
+  if (isAuthenticated && isBackingUp) {
+    return (
+      <ThemeProvider theme={leatherTheme}>
+        <CssBaseline />
+        <BackupScreen onComplete={handleBackupComplete} />
       </ThemeProvider>
     );
   }

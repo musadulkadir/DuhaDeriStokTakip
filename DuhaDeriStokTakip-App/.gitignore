@@ -1,17 +1,30 @@
-
-# Windows
-Thumbs.db
-ehthumbs.db
-Desktop.ini
-$RECYCLE.BIN/
-*.lnk
+# Dependencies
+node_modules/
 
 # Build outputs
 dist/
 dist-react/
-*.exe
-*.msi
+build/
+
+# Environment variables
+.env
+.env.local
+
+# AWS credentials (already in .env, but just in case)
+.aws/
+aws-credentials.json
+
+# Backup files
+.duha-deri-backups/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
 
 # Logs
 *.log
-logs/
+npm-debug.log*

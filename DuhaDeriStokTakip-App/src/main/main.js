@@ -3,12 +3,14 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { initializeDatabase, query, queryOne, queryAll } = require('./database');
+const S3Backup = require('./backup/s3Backup');
 
 // Environment detection
 const isDev = !app.isPackaged; // Build edilmişse false, dev modda true
 
 let db;
 let mainWindow;
+let s3Backup = new S3Backup();
 
 // Create database tables
 async function createTables() {
@@ -2596,5 +2598,53 @@ ipcMain.handle('purchases:getById', async (event, purchaseId) => {
   } catch (error) {
     console.error('Error processing purchase data:', error);
     return { success: false, error: error.message || 'Veri işleme hatası' };
+  }
+});
+
+
+// ============================================
+// BACKUP HANDLERS
+// ============================================
+
+// Backup işlemini başlat
+ipcMain.handle('backup:start', async (event) => {
+  try {
+    const result = await s3Backup.performBackup((message, progress) => {
+      // Progress güncellemelerini frontend'e gönder
+      event.sender.send('backup:progress', { message, progress });
+    });
+
+    if (result.success) {
+      await s3Backup.saveLastBackupDate();
+    }
+
+    return result;
+  } catch (error) {
+    console.error('Backup handler error:', error);
+    return {
+      success: false,
+      message: error.message
+    };
+  }
+});
+
+// Bugün yedekleme gerekli mi kontrol et
+ipcMain.handle('backup:check-needed', async () => {
+  try {
+    const needed = await s3Backup.isBackupNeededToday();
+    return { needed };
+  } catch (error) {
+    console.error('Backup check error:', error);
+    return { needed: false };
+  }
+});
+
+// Son yedekleme tarihini al
+ipcMain.handle('backup:get-last-date', async () => {
+  try {
+    const lastDate = await s3Backup.getLastBackupDate();
+    return { lastDate };
+  } catch (error) {
+    return { lastDate: null };
   }
 });

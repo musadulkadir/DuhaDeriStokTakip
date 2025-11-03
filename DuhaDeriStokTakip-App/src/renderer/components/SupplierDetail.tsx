@@ -403,9 +403,9 @@ const SupplierDetail: React.FC = () => {
         customer_id: supplier.id!,
         amount: parseFloat(newPayment.amount.replace(/,/g, '')),
         currency: newPayment.currency,
-        payment_method: newPayment.payment_method,
-        description: newPayment.description || undefined,
-        date: new Date(newPayment.payment_date).toISOString(),
+        payment_type: newPayment.payment_method,
+        payment_date: newPayment.payment_date, // Kullanıcının seçtiği tarih
+        notes: newPayment.description || undefined,
       };
 
       const response = await dbAPI.createPayment(paymentData);
@@ -416,12 +416,11 @@ const SupplierDetail: React.FC = () => {
           amount: paymentData.amount,
           currency: paymentData.currency,
           category: 'Tedarikçi Ödemesi',
-          description: `${supplier.name} tedarikçisine ödeme - ${paymentData.description || 'Tedarikçi ödemesi'}`,
+          description: `${supplier.name} tedarikçisine ödeme - ${paymentData.notes || 'Tedarikçi ödemesi'}`,
           reference_type: 'supplier_payment',
           reference_id: response.data?.id,
           customer_id: supplier.id,
           user: 'Sistem Kullanıcısı',
-          date: new Date(newPayment.payment_date).toISOString(),
         };
 
         try {
