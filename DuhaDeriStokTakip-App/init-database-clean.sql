@@ -11,14 +11,11 @@ DROP TABLE IF EXISTS purchases CASCADE;
 DROP TABLE IF EXISTS customer_payments CASCADE;
 DROP TABLE IF EXISTS sale_items CASCADE;
 DROP TABLE IF EXISTS sales CASCADE;
-DROP TABLE IF EXISTS returns CASCADE;
 DROP TABLE IF EXISTS employees CASCADE;
 DROP TABLE IF EXISTS materials CASCADE;
 DROP TABLE IF EXISTS products CASCADE;
 DROP TABLE IF EXISTS customers CASCADE;
 DROP TABLE IF EXISTS settings CASCADE;
-DROP TABLE IF EXISTS colors CASCADE;
-DROP TABLE IF EXISTS categories CASCADE;
 
 -- Customers (Müşteriler ve Tedarikçiler)
 CREATE TABLE customers (
@@ -54,7 +51,6 @@ CREATE TABLE materials (
   name VARCHAR(255) NOT NULL,
   category VARCHAR(100) NOT NULL,
   color VARCHAR(50),
-  color_shade VARCHAR(100),
   brand VARCHAR(100),
   code VARCHAR(100),
   stock_quantity INTEGER DEFAULT 0,
@@ -190,6 +186,7 @@ CREATE TABLE material_movements (
   previous_stock DECIMAL(10,2),
   new_stock DECIMAL(10,2),
   reference_type VARCHAR(50),
+  reference_id INTEGER,
   supplier_id INTEGER REFERENCES customers(id),
   unit_price DECIMAL(15,2),
   total_amount DECIMAL(15,2),
@@ -208,20 +205,6 @@ CREATE TABLE employee_payments (
   payment_type VARCHAR(50),
   payment_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   notes TEXT,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Returns
-CREATE TABLE returns (
-  id SERIAL PRIMARY KEY,
-  sale_id INTEGER REFERENCES sales(id),
-  customer_id INTEGER REFERENCES customers(id),
-  product_id INTEGER REFERENCES products(id),
-  quantity INTEGER NOT NULL,
-  reason TEXT,
-  return_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  refund_amount DECIMAL(15,2),
-  status VARCHAR(20) DEFAULT 'pending',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

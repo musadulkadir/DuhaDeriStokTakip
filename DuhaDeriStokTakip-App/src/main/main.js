@@ -173,11 +173,19 @@ async function createTables() {
         supplier_id INTEGER REFERENCES customers(id),
         unit_price DECIMAL(15,2),
         total_amount DECIMAL(15,2),
+        currency VARCHAR(10) DEFAULT 'TRY',
         notes TEXT,
         "user" VARCHAR(255),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    
+    // Mevcut tabloya currency kolonunu ekle (eğer yoksa)
+    try {
+      await query(`ALTER TABLE material_movements ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'TRY'`);
+    } catch (err) {
+      // Kolon zaten varsa hata vermez
+    }
 
     // Create indexes for material_movements
     await query(`CREATE INDEX IF NOT EXISTS idx_material_movements_material_id ON material_movements(material_id)`);
@@ -1237,13 +1245,13 @@ ipcMain.handle('materials:get-all', async () => {
 ipcMain.handle('materials:create', async (_, material) => {
   try {
     const result = await queryOne(`
-      INSERT INTO materials (name, category, color_shade, brand, code, stock_quantity, unit, description, supplier_id, supplier_name)
+      INSERT INTO materials (name, category, color, brand, code, stock_quantity, unit, description, supplier_id, supplier_name)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING *
     `, [
       material.name,
       material.category,
-      material.color_shade || null,
+      material.color || null,
       material.brand || null,
       material.code || null,
       material.stock_quantity || 0,
@@ -1252,6 +1260,27 @@ ipcMain.handle('materials:create', async (_, material) => {
       material.supplier_id || null,
       material.supplier_name || null
     ]);
+
+    // İlk stok girişi varsa material_movements kaydı oluştur
+    if (result && result.stock_quantity > 0) {
+      await query(`
+        INSERT INTO material_movements (
+          material_id, movement_type, quantity, previous_stock, new_stock,
+          reference_type, supplier_id, notes, "user", created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      `, [
+        result.id,
+        'in',
+        result.stock_quantity,
+        0,
+        result.stock_quantity,
+        'initial_stock',
+        material.supplier_id || null,
+        `İlk stok girişi - ${result.name}`,
+        'Sistem Kullanıcısı',
+        new Date().toISOString()
+      ]);
+    }
 
     return { success: true, data: result };
   } catch (error) {
