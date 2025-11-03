@@ -126,7 +126,9 @@ const Reports: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await dbAPI.getPurchases();
+      const response = await dbAPI.getPurchases(1, 1000); // Tüm verileri çek
+      console.log('📦 Alım verileri backend\'den geldi:', response.data?.slice(0, 3));
+
       if (response.success && response.data) {
         // Tarih filtresini uygula
         const filtered = response.data.filter((purchase: any) => {
@@ -135,6 +137,8 @@ const Reports: React.FC = () => {
           const end = new Date(endDate);
           return purchaseDate >= start && purchaseDate <= end;
         });
+
+        console.log('📦 Filtrelenmiş alım verileri:', filtered.slice(0, 3));
         setPurchasesData(filtered);
       } else {
         setPurchasesData([]);
@@ -248,11 +252,11 @@ const Reports: React.FC = () => {
             'Tarih': new Date(p.purchase_date || p.created_at).toLocaleDateString('tr-TR'),
             'Tedarikçi': p.supplier_name || 'Bilinmeyen',
             'Malzeme': p.material_name || 'Malzeme',
-            'Miktar': p.quantity || 0,
+            'Miktar': Number(p.quantity) || 0,
             'Birim': p.unit || 'kg',
-            'Birim Fiyat': p.unit_price || 0,
+            'Birim Fiyat': Number(p.unit_price) || 0,
             'Para Birimi': p.currency || 'TRY',
-            'Toplam': p.total_amount || 0,
+            'Toplam': Number(p.total_price || p.total_amount) || 0,
           }));
 
           const ws = XLSX.utils.json_to_sheet(data);
@@ -410,9 +414,9 @@ const Reports: React.FC = () => {
           new Date(p.purchase_date || p.created_at).toLocaleDateString('tr-TR'),
           toAscii(p.supplier_name || 'Bilinmeyen'),
           toAscii(p.material_name || 'Malzeme'),
-          `${(p.quantity || 0).toLocaleString('tr-TR')} ${p.unit || 'kg'}`,
-          `${p.currency || 'TRY'} ${(p.unit_price || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`,
-          `${p.currency || 'TRY'} ${(p.total_amount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`,
+          `${(Number(p.quantity) || 0).toLocaleString('tr-TR')} ${p.unit || 'kg'}`,
+          `${p.currency || 'TRY'} ${(Number(p.unit_price) || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`,
+          `${p.currency || 'TRY'} ${(Number(p.total_price || p.total_amount) || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`,
         ]);
 
         autoTable(doc, {
@@ -519,9 +523,9 @@ const Reports: React.FC = () => {
   // Alım istatistikleri
   const purchasesStats = {
     totalPurchases: purchasesData?.length || 0,
-    totalPurchasesTRY: purchasesData?.filter((p: any) => (p.currency || 'TRY') === 'TRY').reduce((sum: number, p: any) => sum + (Number(p?.total_amount) || 0), 0) || 0,
-    totalPurchasesUSD: purchasesData?.filter((p: any) => (p.currency || 'TRY') === 'USD').reduce((sum: number, p: any) => sum + (Number(p?.total_amount) || 0), 0) || 0,
-    totalPurchasesEUR: purchasesData?.filter((p: any) => (p.currency || 'TRY') === 'EUR').reduce((sum: number, p: any) => sum + (Number(p?.total_amount) || 0), 0) || 0,
+    totalPurchasesTRY: purchasesData?.filter((p: any) => (p.currency || 'TRY') === 'TRY').reduce((sum: number, p: any) => sum + (Number(p?.total_price || p?.total_amount) || 0), 0) || 0,
+    totalPurchasesUSD: purchasesData?.filter((p: any) => (p.currency || 'TRY') === 'USD').reduce((sum: number, p: any) => sum + (Number(p?.total_price || p?.total_amount) || 0), 0) || 0,
+    totalPurchasesEUR: purchasesData?.filter((p: any) => (p.currency || 'TRY') === 'EUR').reduce((sum: number, p: any) => sum + (Number(p?.total_price || p?.total_amount) || 0), 0) || 0,
   };
 
   // Gelir istatistikleri (SADECE Kasa Girişleri - Para Çevirme Hariç)
@@ -810,7 +814,7 @@ const Reports: React.FC = () => {
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                   <Assessment sx={{ color: 'primary.main', mr: 1 }} />
-                  <Typography variant="h6">Toplam Alım</Typography>
+                  <Typography variant="h6">Toplam Gider</Typography>
                 </Box>
                 <Typography variant="h4" sx={{ mb: 1 }}>
                   {expenseStats.totalPayments}
@@ -1025,15 +1029,15 @@ const Reports: React.FC = () => {
                         <TableCell>{purchase.supplier_name || 'Bilinmeyen'}</TableCell>
                         <TableCell>{purchase.material_name || 'Malzeme'}</TableCell>
                         <TableCell align="right">
-                          {(purchase.quantity || 0).toLocaleString('tr-TR')} {purchase.unit || 'kg'}
+                          {(Number(purchase.quantity) || 0).toLocaleString('tr-TR')} {purchase.unit || 'kg'}
                         </TableCell>
                         <TableCell align="right">
                           {purchase.currency === 'USD' ? '$' : purchase.currency === 'EUR' ? '€' : '₺'}
-                          {(purchase.unit_price || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                          {(Number(purchase.unit_price) || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
                         </TableCell>
                         <TableCell align="right">
                           {purchase.currency === 'USD' ? '$' : purchase.currency === 'EUR' ? '€' : '₺'}
-                          {(purchase.total_amount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                          {(Number(purchase.total_price || purchase.total_amount) || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
                         </TableCell>
                       </TableRow>
                     ));
