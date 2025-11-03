@@ -83,7 +83,7 @@ const Reports: React.FC = () => {
         color: r.color,
         category: r.category
       })));
-      
+
       if (response.success && response.data) {
         // Veriyi uygun formata dönüştür
         const formattedData: SaleReport[] = response.data.map((row: any) => {
@@ -94,7 +94,7 @@ const Reports: React.FC = () => {
             raw_category: row.category,
             formatted_productName: productName
           });
-          
+
           return {
             date: row.sale_date || new Date().toISOString(),
             customerName: row.customer_name || row.name || 'Bilinmeyen Müşteri',
@@ -548,7 +548,7 @@ const Reports: React.FC = () => {
   };
 
   return (
-    <Box>
+    <Box sx={{ mt: 2, mr: 2 }}>
       {/* Header */}
       <Box sx={{ mb: 4 }}>
         <Typography variant="h3" sx={{ fontWeight: 700, mb: 1 }}>
@@ -563,7 +563,7 @@ const Reports: React.FC = () => {
       <Card sx={{ mb: 3 }}>
         <CardContent>
           <Grid container spacing={3} alignItems="center">
-            <Grid xs={12} md={3}>
+            <Grid size={{ xs: 12, md: 3, }}>
               <FormControl fullWidth>
                 <InputLabel>Rapor Tipi</InputLabel>
                 <Select
@@ -579,7 +579,7 @@ const Reports: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid xs={12} md={3}>
+            <Grid size={{ xs: 12, md: 3, }}>
               <TextField
                 fullWidth
                 label="Başlangıç Tarihi"
@@ -589,7 +589,7 @@ const Reports: React.FC = () => {
                 InputLabelProps={{ shrink: true }}
               />
             </Grid>
-            <Grid xs={12} md={3}>
+            <Grid size={{ xs: 12, md: 3, }}>
               <TextField
                 fullWidth
                 label="Bitiş Tarihi"
@@ -599,7 +599,7 @@ const Reports: React.FC = () => {
                 InputLabelProps={{ shrink: true }}
               />
             </Grid>
-            <Grid xs={12} md={3}>
+            <Grid size={{ xs: 12, md: 3, }}>
               <Box sx={{ display: 'flex', gap: 1 }}>
                 <Button
                   variant="outlined"
@@ -625,7 +625,7 @@ const Reports: React.FC = () => {
       {/* Stats Cards */}
       {reportType === 'sales' && (
         <Grid container spacing={3} sx={{ mb: 3 }}>
-          <Grid xs={12} sm={6} md={3}>
+          <Grid size={{ xs: 12, sm: 6, md: 3, }}>
             <Card>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -641,7 +641,7 @@ const Reports: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid xs={12} sm={6} md={3}>
+          <Grid size={{ xs: 12, sm: 6, md: 3, }}>
             <Card>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -654,7 +654,7 @@ const Reports: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid xs={12} sm={6} md={3}>
+          <Grid size={{ xs: 12, sm: 6, md: 3, }}>
             <Card>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -667,7 +667,7 @@ const Reports: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid xs={12} sm={6} md={3}>
+          <Grid size={{ xs: 12, sm: 6, md: 3, }}>
             <Card>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -685,7 +685,7 @@ const Reports: React.FC = () => {
 
       {reportType === 'purchases' && (
         <Grid container spacing={3} sx={{ mb: 3 }}>
-          <Grid xs={12} sm={6} md={3}>
+          <Grid size={{ xs: 12, sm: 6, md: 3, }}>
             <Card>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -701,7 +701,7 @@ const Reports: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid xs={12} sm={6} md={3}>
+          <Grid size={{ xs: 12, sm: 6, md: 3, }}>
             <Card>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -714,7 +714,7 @@ const Reports: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid xs={12} sm={6} md={3}>
+          <Grid size={{ xs: 12, sm: 6, md: 3, }}>
             <Card>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -727,7 +727,7 @@ const Reports: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid xs={12} sm={6} md={3}>
+          <Grid size={{ xs: 12, sm: 6, md: 3, }}>
             <Card>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -745,7 +745,7 @@ const Reports: React.FC = () => {
 
       {reportType === 'income' && (
         <Grid container spacing={3} sx={{ mb: 3 }}>
-          <Grid xs={12} sm={6} md={3}>
+          <Grid size={{ xs: 12, sm: 6, md: 3, }}>
             <Card>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -761,7 +761,7 @@ const Reports: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid xs={12} sm={6} md={3}>
+          <Grid size={{ xs: 12, sm: 6, md: 3, }}>
             <Card>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -774,7 +774,7 @@ const Reports: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid xs={12} sm={6} md={3}>
+          <Grid size={{ xs: 12, sm: 6, md: 3, }}>
             <Card>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -787,7 +787,7 @@ const Reports: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid xs={12} sm={6} md={3}>
+          <Grid size={{ xs: 12, sm: 6, md: 3, }}>
             <Card>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -805,7 +805,7 @@ const Reports: React.FC = () => {
 
       {reportType === 'expense' && (
         <Grid container spacing={3} sx={{ mb: 3 }}>
-          <Grid xs={12} sm={6} md={3}>
+          <Grid size={{ xs: 12, sm: 6, md: 3, }}>
             <Card>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -821,7 +821,7 @@ const Reports: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid xs={12} sm={6} md={3}>
+          <Grid size={{ xs: 12, sm: 6, md: 3, }}>
             <Card>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -834,7 +834,7 @@ const Reports: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid xs={12} sm={6} md={3}>
+          <Grid size={{ xs: 12, sm: 6, md: 3, }}>
             <Card>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -847,7 +847,7 @@ const Reports: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid xs={12} sm={6} md={3}>
+          <Grid size={{ xs: 12, sm: 6, md: 3, }}>
             <Card>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -865,7 +865,7 @@ const Reports: React.FC = () => {
 
       {reportType === 'net' && (
         <Grid container spacing={3} sx={{ mb: 3 }}>
-          <Grid xs={12} sm={6} md={4}>
+          <Grid size={{ xs: 12, sm: 6, md: 4, }}>
             <Card>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -881,7 +881,7 @@ const Reports: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid xs={12} sm={6} md={4}>
+          <Grid size={{ xs: 12, sm: 6, md: 4, }}>
             <Card>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -897,7 +897,7 @@ const Reports: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid xs={12} sm={6} md={4}>
+          <Grid size={{ xs: 12, sm: 6, md: 4, }}>
             <Card>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -1260,7 +1260,7 @@ const Reports: React.FC = () => {
               Bu bakiye, başlangıçtan bugüne kadar olan tüm kasa işlemlerinin toplamıdır.
             </Alert>
             <Grid container spacing={3}>
-              <Grid item xs={12} md={4}>
+              <Grid size={{ xs: 12, md: 4, }}>
                 <Card sx={{ background: cashBalance.TRY >= 0 ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' }}>
                   <CardContent>
                     <Typography variant="body2" sx={{ color: 'white', opacity: 0.9 }}>
@@ -1272,7 +1272,7 @@ const Reports: React.FC = () => {
                   </CardContent>
                 </Card>
               </Grid>
-              <Grid item xs={12} md={4}>
+              <Grid size={{ xs: 12, md: 4, }}>
                 <Card sx={{ background: cashBalance.USD >= 0 ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' }}>
                   <CardContent>
                     <Typography variant="body2" sx={{ color: 'white', opacity: 0.9 }}>
@@ -1284,7 +1284,7 @@ const Reports: React.FC = () => {
                   </CardContent>
                 </Card>
               </Grid>
-              <Grid item xs={12} md={4}>
+              <Grid size={{ xs: 12, md: 4, }}>
                 <Card sx={{ background: cashBalance.EUR >= 0 ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' }}>
                   <CardContent>
                     <Typography variant="body2" sx={{ color: 'white', opacity: 0.9 }}>
