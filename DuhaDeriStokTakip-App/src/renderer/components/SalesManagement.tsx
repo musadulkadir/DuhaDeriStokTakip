@@ -37,6 +37,7 @@ import Pagination from './common/Pagination';
 import { dbAPI } from '../services/api';
 import { Product, Customer } from '../../main/database/models';
 import { useNavigate } from 'react-router-dom';
+import { formatDate, formatDateTime, getNowISO } from '../utils/dateUtils';
 import CurrencySelect from './common/CurrencySelect';
 import { DEFAULT_CURRENCIES } from '../constants/currencies';
 import SaleDetailModal from './SaleDetailModal';
@@ -317,7 +318,7 @@ const SalesManagement: React.FC = () => {
         total_amount: totalAmount,
         currency: saleCurrency,
         payment_status: 'pending',
-        sale_date: new Date().toISOString(),
+        sale_date: getNowISO(),
         notes: `Satış - ${saleItems.length} ürün`,
         items: saleItems.map(item => ({
           product_id: item.productId,

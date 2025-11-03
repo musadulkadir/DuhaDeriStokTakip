@@ -50,6 +50,7 @@ import { dbAPI } from '../services/api';
 import CurrencyInput from './CurrencyInput';
 import CurrencySelect from './common/CurrencySelect';
 import { DEFAULT_CURRENCIES } from '../constants/currencies';
+import { formatDate, formatDateTime, formatDateForInput } from '../utils/dateUtils';
 
 interface CashTransaction {
   id: number;
@@ -598,7 +599,7 @@ const CashManagement: React.FC = () => {
     setCurrency(transaction.currency || 'USD');
     setCategory(transaction.category);
     setDescription(transaction.description);
-    setTransactionDate(new Date(transaction.created_at).toISOString().split('T')[0]);
+    setTransactionDate(formatDateForInput(transaction.created_at));
     setEditTransactionDialogOpen(true);
   };
 
@@ -813,7 +814,7 @@ const CashManagement: React.FC = () => {
                   return paginatedTransactions.map((transaction) => (
                     <TableRow key={transaction.id} hover>
                       <TableCell>
-                        {new Date(transaction.created_at).toLocaleDateString('tr-TR')}
+                        {formatDateTime(transaction.created_at)}
                       </TableCell>
                       <TableCell>
                         <Chip

@@ -44,6 +44,7 @@ import {
 import { dbAPI } from '../services/api';
 import { Customer, Product } from '../../main/database/models';
 import jsPDF from 'jspdf';
+import { formatDate, formatDateForInput, getNowISO } from '../utils/dateUtils';
 import autoTable from 'jspdf-autotable';
 
 // YENİ: Alım detay modalını import et
@@ -120,7 +121,7 @@ const SupplierDetail: React.FC = () => {
     currency: 'TRY',
     notes: '',
     items: [],
-    purchase_date: new Date().toISOString().split('T')[0],
+    purchase_date: formatDateForInput(new Date()),
   });
 
   const [currentItem, setCurrentItem] = useState({
@@ -138,7 +139,7 @@ const SupplierDetail: React.FC = () => {
     currency: 'TRY',
     payment_method: 'cash',
     description: '',
-    payment_date: new Date().toISOString().split('T')[0],
+    payment_date: formatDateForInput(new Date()),
   });
 
   // Tarih filtresi - Default: Bugünden 1 ay öncesi ile bugün

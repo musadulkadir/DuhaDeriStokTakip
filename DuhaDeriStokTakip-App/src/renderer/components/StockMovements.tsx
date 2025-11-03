@@ -47,6 +47,7 @@ import {
 } from '@mui/icons-material';
 import { dbAPI } from '../services/api';
 import { Product, StockMovement } from '../../main/database/models';
+import { formatDate, formatTime, formatDateTime } from '../utils/dateUtils';
 
 interface MovementDisplay extends StockMovement {
   productName?: string;
@@ -138,7 +139,7 @@ const StockMovements: React.FC = () => {
           // Format: "Satış - Keçi-Palto Bej - 10 adet"
           let parsedProductName = product?.name || product?.category;
           let parsedProductColor = product?.color;
-          
+
           if (movement.notes && (movement.notes.includes('Satış - ') || movement.notes.includes('Alım - '))) {
             const parts = movement.notes.split(' - ');
             if (parts.length >= 2) {
@@ -162,8 +163,8 @@ const StockMovements: React.FC = () => {
             customerName: customer?.name,
             supplier_id: movement.supplier_id, // Material movements için
             notes: movement.notes,
-            date: movement.created_at ? new Date(movement.created_at).toISOString().split('T')[0] : '',
-            time: movement.created_at ? new Date(movement.created_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : '',
+            date: formatDate(movement.created_at),
+            time: formatTime(movement.created_at),
           };
         });
 
@@ -631,10 +632,10 @@ const StockMovements: React.FC = () => {
               <TableBody>
                 {paginatedMovements.map((movement) => {
                   // Reports sayfasındaki gibi format: productName - color
-                  const productName = movement.productColor 
-                    ? `${movement.productName || movement.productCategory || 'Ürün'} - ${movement.productColor}` 
+                  const productName = movement.productColor
+                    ? `${movement.productName || movement.productCategory || 'Ürün'} - ${movement.productColor}`
                     : (movement.productName || movement.productCategory || 'Ürün');
-                  
+
                   console.log('🔄 Stok hareketi formatlanıyor:', {
                     raw_productName: movement.productName,
                     raw_productCategory: movement.productCategory,
@@ -642,7 +643,7 @@ const StockMovements: React.FC = () => {
                     formatted_productName: productName,
                     notes: movement.notes
                   });
-                  
+
                   return (
                     <TableRow key={movement.id} hover>
                       <TableCell>
@@ -652,7 +653,7 @@ const StockMovements: React.FC = () => {
                       </TableCell>
                       <TableCell align="center">
                         <Chip
-                          label={`${(movement.quantity || 0) >= 0 ? '+' : ''}${(movement.quantity || 0).toLocaleString('tr-TR')}`}
+                          label={`${movement.movement_type === 'out' ? '-' : '+'}${(movement.quantity || 0).toLocaleString('tr-TR')}`}
                           color={movement.movement_type === 'out' ? 'error' : 'success'}
                           size="small"
                           sx={{ fontWeight: 600 }}
@@ -672,7 +673,7 @@ const StockMovements: React.FC = () => {
                       <TableCell>
                         <Box>
                           <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                            {movement.date ? new Date(movement.date).toLocaleDateString('tr-TR') : '-'}
+                            {movement.date}
                           </Typography>
                           <Typography variant="caption" color="text.secondary">
                             {movement.time || '-'}
@@ -683,32 +684,32 @@ const StockMovements: React.FC = () => {
                         <Typography variant="body2" sx={{ maxWidth: 250 }}>
                           {(() => {
                             if (!movement.notes) return '-';
-                            
+
                             console.log('📝 Açıklama formatlanıyor:', {
                               notes: movement.notes,
                               supplier_id: movement.supplier_id,
                               customerName: movement.customerName,
                               reference_type: movement.reference_type
                             });
-                            
+
                             // "Satış - Keçi-Palto Bej - 10 adet" -> "Satış - Müşteri Adı"
                             if (movement.notes.includes('Satış - ')) {
                               return movement.customerName ? `Satış - ${movement.customerName}` : 'Satış';
                             }
-                            
+
                             // "Alım - Boya Kahverengi - 100 kg" -> "Alım - Tedarikçi Adı"
                             if (movement.notes.includes('Alım - ')) {
                               const supplier = movement.supplier_id ? customers.find((c: any) => c.id === movement.supplier_id) : null;
                               console.log('🏢 Tedarikçi bulundu:', supplier);
                               return supplier ? `Alım - ${supplier.name}` : 'Alım';
                             }
-                            
+
                             // "İlk stok girişi" veya "Stok ekleme" -> Tedarikçi adını göster
                             if (movement.supplier_id && (movement.notes.includes('İlk stok') || movement.notes.includes('Stok ekleme'))) {
                               const supplier = customers.find((c: any) => c.id === movement.supplier_id);
                               return supplier ? `Alım - ${supplier.name}` : movement.notes;
                             }
-                            
+
                             return movement.notes;
                           })()}
                         </Typography>

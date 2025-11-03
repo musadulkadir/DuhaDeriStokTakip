@@ -17,6 +17,7 @@ import {
 import CloseIcon from '@mui/icons-material/Close';
 import { Product } from '../../main/database/models';
 import { dbAPI } from '../services/api';
+import { formatDate } from '../utils/dateUtils';
 
 interface ProductMovementsModalProps {
   open: boolean;
@@ -144,7 +145,7 @@ const ProductMovementsModal: React.FC<ProductMovementsModalProps> = ({ open, onC
                 movements.map((movement) => (
                   <TableRow key={movement.id}>
                     <TableCell>
-                      {new Date(movement.created_at).toLocaleDateString('tr-TR')}
+                      {formatDate(movement.created_at)}
                     </TableCell>
                     <TableCell>
                       <Chip

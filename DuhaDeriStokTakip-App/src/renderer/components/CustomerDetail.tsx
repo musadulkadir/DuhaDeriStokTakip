@@ -52,6 +52,7 @@ import TablePagination from '@mui/material/TablePagination';
 import { dbAPI } from '../services/api';
 import { Customer, Product } from '../../main/database/models';
 import { DEFAULT_CURRENCIES } from '../constants/currencies';
+import { formatDate, formatDateTime, getNowISO } from '../utils/dateUtils';
 import CurrencySelect from './common/CurrencySelect';
 import { Autocomplete, Divider, Paper } from '@mui/material';
 import jsPDF from 'jspdf';
@@ -523,7 +524,7 @@ const CustomerDetail: React.FC = () => {
         amount,
         currency: paymentCurrency,
         payment_type: paymentType,
-        payment_date: new Date(paymentDate).toISOString(),
+        payment_date: getNowISO(),
         notes: paymentNotes || `Müşteri ödemesi - ${customer.name}`,
       };
 
@@ -907,7 +908,7 @@ const CustomerDetail: React.FC = () => {
         total_amount: totalAmount,
         currency: saleCurrency,
         payment_status: 'pending',
-        sale_date: new Date(saleDate).toISOString(),
+        sale_date: getNowISO(),
         notes: `Satış - ${saleItems.length} ürün`,
         items: saleItems.map(item => ({
           product_id: item.productId,

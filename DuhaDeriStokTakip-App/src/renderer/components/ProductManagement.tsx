@@ -43,6 +43,7 @@ import ProductMovementsModal from './ProductMovementsModal';
 import Pagination from './common/Pagination';
 import { dbAPI } from '../services/api';
 import { Product, Category, Color } from '../../main/database/models';
+import { getNowISO } from '../utils/dateUtils';
 
 interface NewProduct {
   category: string;
@@ -300,7 +301,7 @@ const ProductManagement: React.FC = () => {
               ? `Stok ekleme - ${productData.category}`
               : `İlk stok girişi - ${productData.category}`,
             user: 'Sistem Kullanıcısı',
-            created_at: newProduct.entry_date ? new Date(newProduct.entry_date).toISOString() : new Date().toISOString(),
+            created_at: getNowISO(),
           };
 
           try {

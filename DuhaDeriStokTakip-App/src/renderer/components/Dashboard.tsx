@@ -19,6 +19,7 @@ import {
 } from '@mui/icons-material';
 import { dbAPI } from '../services/api';
 import { Product } from '../../main/database/models';
+import { formatDateTime } from '../utils/dateUtils';
 
 interface DashboardStats {
   totalStock: number;
@@ -85,7 +86,7 @@ const Dashboard: React.FC = () => {
           action: t.type === 'in' ? 'Gelir' : 'Gider',
           item: t.description || 'İşlem',
           amount: `${t.currency === 'USD' ? '$' : '₺'}${safeToLocaleString(t.amount)}`,
-          time: t.created_at || new Date().toISOString(),
+          time: formatDateTime(t.created_at),
           type: t.type,
         }));
 

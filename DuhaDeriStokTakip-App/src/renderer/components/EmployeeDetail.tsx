@@ -48,6 +48,7 @@ import {
 import { dbAPI } from '../services/api';
 import CurrencySelect from './common/CurrencySelect';
 import { DEFAULT_CURRENCIES } from '../constants/currencies';
+import { formatDate, getNowISO } from '../utils/dateUtils';
 import { CashTransaction } from '@/main/database/models';
 import Pagination from './common/Pagination';
 
@@ -251,7 +252,7 @@ const EmployeeDetail: React.FC = () => {
         amount,
         currency: paymentCurrency,
         payment_type: paymentType,
-        payment_date: new Date(paymentDate).toISOString(),
+        payment_date: getNowISO(),
         notes: paymentNotes || `Çalışan ödemesi - ${employee.name}`,
       };
 
