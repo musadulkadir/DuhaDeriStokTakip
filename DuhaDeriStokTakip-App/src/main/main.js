@@ -273,24 +273,25 @@ async function createTables() {
         unit_price DECIMAL(15,2) NOT NULL,
         total_price DECIMAL(15,2) NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        brand Text,
       )
     `);
 
-    // Returns table
-    await query(`
-      CREATE TABLE IF NOT EXISTS returns (
-        id SERIAL PRIMARY KEY,
-        sale_id INTEGER REFERENCES sales(id),
-        customer_id INTEGER REFERENCES customers(id),
-        product_id INTEGER REFERENCES products(id),
-        quantity DECIMAL(10,2) NOT NULL,
-        unit_price DECIMAL(15,2) NOT NULL,
-        total_amount DECIMAL(15,2) NOT NULL,
-        return_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        notes TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
+    // // Returns table
+    // await query(`
+    //   CREATE TABLE IF NOT EXISTS returns (
+    //     id SERIAL PRIMARY KEY,
+    //     sale_id INTEGER REFERENCES sales(id),
+    //     customer_id INTEGER REFERENCES customers(id),
+    //     product_id INTEGER REFERENCES products(id),
+    //     quantity DECIMAL(10,2) NOT NULL,
+    //     unit_price DECIMAL(15,2) NOT NULL,
+    //     total_amount DECIMAL(15,2) NOT NULL,
+    //     return_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    //     notes TEXT,
+    //     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    //   )
+    // `);
 
     // NOT: Default categories ve colors kaldırıldı
     // Artık bunlar koddan geliyor (ProductManagement.tsx)
