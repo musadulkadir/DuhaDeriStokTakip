@@ -271,12 +271,12 @@ const CustomerDetail: React.FC = () => {
       // NOT: dbAPI.getSales fonksiyonunuzu 'startDate' ve 'endDate' alacak şekilde güncelleyin.
       // Örnek: const salesResponse = await dbAPI.getSales(startDate, endDate);
       // Şimdilik, eski haliyle (tüm veriyi çekerek) devam ediyoruz:
-      const salesResponse = await dbAPI.getSales(); 
+      const salesResponse = await dbAPI.getSales();
       let allUniqueSalesForStats: any[] = [];
       let customerSalesForUI: CustomerSale[] = [];
 
       if (salesResponse.success && salesResponse.data) {
-        
+
         // Bu iki Map, hem UI hem de istatistik sorununu çözecek
         const salesMap = new Map<number, CustomerSale>(); // UI için (sadece bu müşteri, gruplanmış)
         const allSalesForStatsMap = new Map<number, any>(); // Stats için (tüm müşteriler, tekilleştirilmiş)
@@ -337,7 +337,7 @@ const CustomerDetail: React.FC = () => {
         allUniqueSalesForStats = Array.from(allSalesForStatsMap.values());
 
       }
-      
+
       // UI state'ini (setSales) gruplanmış ve doğru veriyle güncelle
       setSales(customerSalesForUI);
 
@@ -1099,7 +1099,7 @@ const CustomerDetail: React.FC = () => {
   }
 
   return (
-    <Box sx={{ p: 3 }}>
+    <Box sx={{ mt: 2, mr: 2, }}>
       {/* Header */}
       <Box sx={{ mb: 4, display: 'flex', alignItems: 'center', gap: 2 }}>
         <IconButton onClick={() => navigate('/customers')}>
