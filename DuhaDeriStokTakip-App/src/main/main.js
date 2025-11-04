@@ -142,6 +142,7 @@ async function createTables() {
     }
 
     // Stock movements table (for products only)
+    // main.js -> createTables -> stock_movements (yaklaşık 178. satır)
     await query(`
       CREATE TABLE IF NOT EXISTS stock_movements (
         id SERIAL PRIMARY KEY,
@@ -155,27 +156,7 @@ async function createTables() {
         customer_id INTEGER,
         unit_price DECIMAL(15,2),
         total_amount DECIMAL(15,2),
-        notes TEXT,
-        "user" VARCHAR(255),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // Material movements table (for materials only)
-    await query(`
-      CREATE TABLE IF NOT EXISTS material_movements (
-        id SERIAL PRIMARY KEY,
-        material_id INTEGER NOT NULL REFERENCES materials(id) ON DELETE CASCADE,
-        movement_type VARCHAR(50) NOT NULL,
-        quantity INTEGER NOT NULL,
-        previous_stock INTEGER,
-        new_stock INTEGER,
-        reference_type VARCHAR(50),
-        reference_id INTEGER,
-        supplier_id INTEGER REFERENCES customers(id),
-        unit_price DECIMAL(15,2),
-        total_amount DECIMAL(15,2),
-        currency VARCHAR(10) DEFAULT 'TRY',
+        currency VARCHAR(10) DEFAULT 'TRY', -- <<< BU SATIRI EKLEYİN
         notes TEXT,
         "user" VARCHAR(255),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -188,6 +169,14 @@ async function createTables() {
     } catch (err) {
       // Kolon zaten varsa hata vermez
     }
+
+    // --- YENİ EKLENECEK KOD BAŞLANGICI ---
+    try {
+      await query(`ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'TRY'`);
+    } catch (err) {
+      // Kolon zaten varsa hata vermez
+    }
+    // --- YENİ EKLENECEK KOD SONU ---
 
     // Create indexes for material_movements
     await query(`CREATE INDEX IF NOT EXISTS idx_material_movements_material_id ON material_movements(material_id)`);
