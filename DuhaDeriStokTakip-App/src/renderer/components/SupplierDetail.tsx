@@ -440,6 +440,7 @@ const SupplierDetail: React.FC = () => {
         });
         await loadSupplier(); // Bakiyeyi güncelle
         await loadPayments();
+        await calculatePreviousBalance(); // Önceki bakiyeyi güncelle
       } else {
         setSnackbar({ open: true, message: response.error || 'Ödeme kaydedilemedi', severity: 'error' });
       }
@@ -495,6 +496,7 @@ const SupplierDetail: React.FC = () => {
         setSnackbar({ open: true, message: 'Ödeme ve ilgili kasa işlemi başarıyla silindi', severity: 'success' });
         await loadSupplier(); // Bakiyeyi güncelle
         await loadPayments();
+        await calculatePreviousBalance(); // Önceki bakiyeyi güncelle
       } else {
         setSnackbar({ open: true, message: response.error || 'Ödeme silinemedi', severity: 'error' });
       }
@@ -515,6 +517,7 @@ const SupplierDetail: React.FC = () => {
         setSnackbar({ open: true, message: 'Alım başarıyla silindi', severity: 'success' });
         await loadSupplier(); // Bakiyeyi güncelle
         await loadPurchases();
+        await calculatePreviousBalance(); // Önceki bakiyeyi güncelle
       } else {
         setSnackbar({ open: true, message: response.error || 'Alım silinemedi', severity: 'error' });
       }
@@ -727,6 +730,7 @@ const SupplierDetail: React.FC = () => {
       await loadMaterials();
       await loadSupplier();
       await loadPurchases();
+      await calculatePreviousBalance(); // Önceki bakiyeyi güncelle
     } catch (error) {
       setSnackbar({ open: true, message: 'Alım kaydedilirken hata oluştu', severity: 'error' });
       console.error('Alım kaydetme hatası:', error);
@@ -737,6 +741,58 @@ const SupplierDetail: React.FC = () => {
 
   const handleDownloadPDF = async () => {
     if (!supplier) return;
+
+    // PDF için önceki bakiyeyi yeniden hesapla
+    let pdfPreviousBalance = { TRY: 0, USD: 0, EUR: 0 };
+    if (startDate) {
+      try {
+        const filterDate = new Date(startDate);
+        filterDate.setHours(0, 0, 0, 0);
+
+        // Tüm alımları ve ödemeleri al
+        const purchasesResponse = await dbAPI.getPurchases();
+        const paymentsResponse = await dbAPI.getCustomerPayments(parseInt(id!));
+
+        if (purchasesResponse.success) {
+          const supplierPurchases = purchasesResponse.data.filter((purchase: any) => {
+            if (purchase.supplier_id !== parseInt(id!)) return false;
+            const purchaseDate = new Date(purchase.purchase_date || purchase.date || purchase.created_at);
+            return purchaseDate < filterDate;
+          });
+
+          supplierPurchases.forEach((purchase: any) => {
+            const amount = parseFloat(purchase.total_amount) || 0;
+            if (purchase.currency === 'USD') {
+              pdfPreviousBalance.USD += amount;
+            } else if (purchase.currency === 'EUR') {
+              pdfPreviousBalance.EUR += amount;
+            } else {
+              pdfPreviousBalance.TRY += amount;
+            }
+          });
+        }
+
+        if (paymentsResponse.success && paymentsResponse.data) {
+          const previousPayments = paymentsResponse.data.filter((payment: any) => {
+            const paymentDate = new Date(payment.payment_date || payment.date || payment.created_at);
+            return paymentDate < filterDate;
+          });
+
+          previousPayments.forEach((payment: any) => {
+            const amount = parseFloat(payment.amount) || 0;
+            if (payment.currency === 'USD') {
+              pdfPreviousBalance.USD -= amount;
+            } else if (payment.currency === 'EUR') {
+              pdfPreviousBalance.EUR -= amount;
+            } else {
+              pdfPreviousBalance.TRY -= amount;
+            }
+          });
+        }
+      } catch (error) {
+        console.error('PDF için önceki bakiye hesaplanırken hata:', error);
+      }
+    }
 
     // Sayı formatla (NaN kontrolü ile)
     const formatNumber = (num: any) => {
@@ -808,7 +864,7 @@ const SupplierDetail: React.FC = () => {
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(100, 100, 100);
       doc.setFontSize(7);
-      const prevText = `TL ${formatNumber(previousBalance.TRY)} | USD ${formatNumber(previousBalance.USD)} | EUR ${formatNumber(previousBalance.EUR)}`;
+      const prevText = `TL ${formatNumber(pdfPreviousBalance.TRY)} | USD ${formatNumber(pdfPreviousBalance.USD)} | EUR ${formatNumber(pdfPreviousBalance.EUR)}`;
       doc.text(prevText, 18, yPos + 8);
 
       // Ayırıcı çizgi
@@ -1227,46 +1283,130 @@ const SupplierDetail: React.FC = () => {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      purchases
-                        .slice(purchasePage * rowsPerPage, purchasePage * rowsPerPage + rowsPerPage)
-                        .map((purchase) => (
-                          <TableRow key={purchase.id} hover>
-                            <TableCell
-                              sx={{ cursor: 'pointer' }}
-                              onClick={() => handlePurchaseRowClick(purchase)}
-                            >
-                              {(() => {
-                                try {
-                                  const dateValue = purchase.purchase_date || purchase.date || purchase.created_at;
-                                  if (!dateValue) return 'Tarih Belirtilmemiş';
-                                  const date = new Date(dateValue);
-                                  return isNaN(date.getTime()) ? 'Geçersiz Tarih' : date.toLocaleDateString('tr-TR');
-                                } catch (error) {
-                                  return 'Geçersiz Tarih';
-                                }
-                              })()}
-                            </TableCell>
-                            <TableCell
-                              sx={{ cursor: 'pointer' }}
-                              onClick={() => handlePurchaseRowClick(purchase)}
-                            >
-                              {formatCurrency(purchase.total_amount, purchase.currency)}
-                            </TableCell>
-                            <TableCell align="center">
-                              <IconButton
-                                size="small"
-                                color="error"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDeletePurchase(purchase.id);
-                                }}
-                                title="Sil"
+                      <>
+                        {purchases
+                          .slice(purchasePage * rowsPerPage, purchasePage * rowsPerPage + rowsPerPage)
+                          .map((purchase) => (
+                            <TableRow key={purchase.id} hover>
+                              <TableCell
+                                sx={{ cursor: 'pointer' }}
+                                onClick={() => handlePurchaseRowClick(purchase)}
                               >
-                                <Delete />
-                              </IconButton>
-                            </TableCell>
-                          </TableRow>
-                        ))
+                                {(() => {
+                                  try {
+                                    const dateValue = purchase.purchase_date || purchase.date || purchase.created_at;
+                                    if (!dateValue) return 'Tarih Belirtilmemiş';
+                                    const date = new Date(dateValue);
+                                    return isNaN(date.getTime()) ? 'Geçersiz Tarih' : date.toLocaleDateString('tr-TR');
+                                  } catch (error) {
+                                    return 'Geçersiz Tarih';
+                                  }
+                                })()}
+                              </TableCell>
+                              <TableCell
+                                sx={{ cursor: 'pointer' }}
+                                onClick={() => handlePurchaseRowClick(purchase)}
+                              >
+                                {formatCurrency(purchase.total_amount, purchase.currency)}
+                              </TableCell>
+                              <TableCell align="center">
+                                <IconButton
+                                  size="small"
+                                  color="error"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeletePurchase(purchase.id);
+                                  }}
+                                  title="Sil"
+                                >
+                                  <Delete />
+                                </IconButton>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        {/* Toplam Satırı */}
+                        <TableRow sx={{ backgroundColor: '#f5f5f5', fontWeight: 'bold' }}>
+                          <TableCell sx={{ fontWeight: 'bold' }}>TOPLAM</TableCell>
+                          <TableCell sx={{ fontWeight: 'bold' }}>
+                            {(() => {
+                              const totals = { TRY: 0, USD: 0, EUR: 0 };
+                              purchases.forEach(purchase => {
+                                const amount = Number(purchase.total_amount) || 0;
+                                if (purchase.currency === 'USD') {
+                                  totals.USD += amount;
+                                } else if (purchase.currency === 'EUR') {
+                                  totals.EUR += amount;
+                                } else {
+                                  totals.TRY += amount;
+                                }
+                              });
+                              const parts = [];
+                              if (totals.TRY > 0) parts.push(`₺${totals.TRY.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`);
+                              if (totals.USD > 0) parts.push(`$${totals.USD.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`);
+                              if (totals.EUR > 0) parts.push(`€${totals.EUR.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`);
+                              return parts.join(' | ');
+                            })()}
+                          </TableCell>
+                          <TableCell></TableCell>
+                        </TableRow>
+
+                        {/* Önceki Bakiye Satırı */}
+                        {startDate && (
+                          <>
+                            <TableRow>
+                              <TableCell colSpan={3} sx={{ py: 1 }} />
+                            </TableRow>
+                            <TableRow sx={{ bgcolor: 'action.hover' }}>
+                              <TableCell sx={{ fontWeight: 600 }}>
+                                Önceki Bakiye ({startDate} öncesi)
+                              </TableCell>
+                              <TableCell sx={{ fontWeight: 700 }}>
+                                <Box>
+                                  {previousBalance.TRY !== 0 && (
+                                    <Typography
+                                      variant="body2"
+                                      sx={{
+                                        color: previousBalance.TRY > 0 ? 'error.main' : previousBalance.TRY < 0 ? 'success.main' : 'text.secondary',
+                                        fontWeight: 600
+                                      }}
+                                    >
+                                      {previousBalance.TRY > 0 ? '+' : ''}₺{previousBalance.TRY.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                                    </Typography>
+                                  )}
+                                  {previousBalance.USD !== 0 && (
+                                    <Typography
+                                      variant="body2"
+                                      sx={{
+                                        color: previousBalance.USD > 0 ? 'error.main' : previousBalance.USD < 0 ? 'success.main' : 'text.secondary',
+                                        fontWeight: 600
+                                      }}
+                                    >
+                                      {previousBalance.USD > 0 ? '+' : ''}${previousBalance.USD.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                                    </Typography>
+                                  )}
+                                  {previousBalance.EUR !== 0 && (
+                                    <Typography
+                                      variant="body2"
+                                      sx={{
+                                        color: previousBalance.EUR > 0 ? 'error.main' : previousBalance.EUR < 0 ? 'success.main' : 'text.secondary',
+                                        fontWeight: 600
+                                      }}
+                                    >
+                                      {previousBalance.EUR > 0 ? '+' : ''}€{previousBalance.EUR.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                                    </Typography>
+                                  )}
+                                  {previousBalance.TRY === 0 && previousBalance.USD === 0 && previousBalance.EUR === 0 && (
+                                    <Typography variant="body2" color="text.secondary">
+                                      Bakiye yok
+                                    </Typography>
+                                  )}
+                                </Box>
+                              </TableCell>
+                              <TableCell></TableCell>
+                            </TableRow>
+                          </>
+                        )}
+                      </>
                     )}
                   </TableBody>
                 </Table>
@@ -1315,49 +1455,78 @@ const SupplierDetail: React.FC = () => {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      payments
-                        .slice(paymentPage * rowsPerPage, paymentPage * rowsPerPage + rowsPerPage)
-                        .map((payment) => (
-                          <TableRow key={payment.id} hover>
-                            <TableCell>
-                              {(() => {
-                                try {
-                                  // Önce payment_date, sonra date, sonra created_at kontrol et
-                                  const dateValue = payment.payment_date || payment.date || payment.created_at;
-                                  if (!dateValue) return 'Tarih Belirtilmemiş';
-                                  const date = new Date(dateValue);
-                                  return isNaN(date.getTime()) ? 'Geçersiz Tarih' : date.toLocaleDateString('tr-TR');
-                                } catch (error) {
-                                  return 'Geçersiz Tarih';
+                      <>
+                        {payments
+                          .slice(paymentPage * rowsPerPage, paymentPage * rowsPerPage + rowsPerPage)
+                          .map((payment) => (
+                            <TableRow key={payment.id} hover>
+                              <TableCell>
+                                {(() => {
+                                  try {
+                                    // Önce payment_date, sonra date, sonra created_at kontrol et
+                                    const dateValue = payment.payment_date || payment.date || payment.created_at;
+                                    if (!dateValue) return 'Tarih Belirtilmemiş';
+                                    const date = new Date(dateValue);
+                                    return isNaN(date.getTime()) ? 'Geçersiz Tarih' : date.toLocaleDateString('tr-TR');
+                                  } catch (error) {
+                                    return 'Geçersiz Tarih';
+                                  }
+                                })()}
+                              </TableCell>
+                              <TableCell>
+                                {formatCurrency(payment.amount, payment.currency)}
+                              </TableCell>
+                              <TableCell>
+                                <Chip
+                                  label={payment.payment_type === 'cash' ? 'Nakit' :
+                                    payment.payment_type === 'card' ? 'Kart' :
+                                      payment.payment_type === 'transfer' ? 'Banka Transferi' :
+                                        payment.payment_type === 'check' ? 'Çek' :
+                                          payment.payment_type || 'Belirtilmemiş'}
+                                  size="small"
+                                  color="primary"
+                                />
+                              </TableCell>
+                              <TableCell align="center">
+                                <IconButton
+                                  size="small"
+                                  color="error"
+                                  onClick={() => handleDeletePayment(payment.id)}
+                                  title="Sil"
+                                >
+                                  <Delete />
+                                </IconButton>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        {/* Toplam Satırı */}
+                        <TableRow sx={{ backgroundColor: '#f5f5f5', fontWeight: 'bold' }}>
+                          <TableCell sx={{ fontWeight: 'bold' }}>TOPLAM</TableCell>
+                          <TableCell sx={{ fontWeight: 'bold' }}>
+                            {(() => {
+                              const totals = { TRY: 0, USD: 0, EUR: 0 };
+                              payments.forEach(payment => {
+                                const amount = Number(payment.amount) || 0;
+                                const currency = payment.currency || 'TRY';
+                                if (currency === 'USD') {
+                                  totals.USD += amount;
+                                } else if (currency === 'EUR') {
+                                  totals.EUR += amount;
+                                } else {
+                                  totals.TRY += amount;
                                 }
-                              })()}
-                            </TableCell>
-                            <TableCell>
-                              {formatCurrency(payment.amount, payment.currency)}
-                            </TableCell>
-                            <TableCell>
-                              <Chip
-                                label={payment.payment_type === 'cash' ? 'Nakit' :
-                                  payment.payment_type === 'card' ? 'Kart' :
-                                    payment.payment_type === 'transfer' ? 'Banka Transferi' :
-                                      payment.payment_type === 'check' ? 'Çek' :
-                                        payment.payment_type || 'Belirtilmemiş'}
-                                size="small"
-                                color="primary"
-                              />
-                            </TableCell>
-                            <TableCell align="center">
-                              <IconButton
-                                size="small"
-                                color="error"
-                                onClick={() => handleDeletePayment(payment.id)}
-                                title="Sil"
-                              >
-                                <Delete />
-                              </IconButton>
-                            </TableCell>
-                          </TableRow>
-                        ))
+                              });
+                              const parts = [];
+                              if (totals.TRY > 0) parts.push(`₺${totals.TRY.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`);
+                              if (totals.USD > 0) parts.push(`$${totals.USD.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`);
+                              if (totals.EUR > 0) parts.push(`€${totals.EUR.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`);
+                              return parts.join(' | ');
+                            })()}
+                          </TableCell>
+                          <TableCell></TableCell>
+                          <TableCell></TableCell>
+                        </TableRow>
+                      </>
                     )}
                   </TableBody>
                 </Table>
