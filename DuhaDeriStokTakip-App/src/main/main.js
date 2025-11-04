@@ -1958,10 +1958,36 @@ ipcMain.handle('customer-payments:get-all', async () => {
   }
 });
 
-ipcMain.handle('customer-payments:get-by-customer', async (_, customerId) => {
+ipcMain.handle('customer-payments:get-by-customer', async (_, customerId, startDate, endDate) => {
   try {
-    const result = await queryAll('SELECT * FROM customer_payments WHERE customer_id = $1 ORDER BY created_at DESC', [customerId]);
-    return { success: true, data: result };
+    let queryText = 'SELECT * FROM customer_payments WHERE customer_id = $1';
+    const params = [customerId];
+
+    // Tarih filtresi ekle
+    if (startDate && endDate) {
+      queryText += ' AND DATE(payment_date) BETWEEN $2 AND $3';
+      params.push(startDate, endDate);
+    }
+
+    queryText += ' ORDER BY created_at DESC';
+
+    const result = await queryAll(queryText, params);
+
+    // Toplam hesapla (para birimi bazında)
+    const totals = result.reduce((acc, payment) => {
+      const currency = payment.currency || 'TRY';
+      if (!acc[currency]) {
+        acc[currency] = 0;
+      }
+      acc[currency] += parseFloat(payment.amount) || 0;
+      return acc;
+    }, {});
+
+    return {
+      success: true,
+      data: result,
+      totals: totals // { TRY: 1000, USD: 500, EUR: 200 }
+    };
   } catch (error) {
     return { success: false, error: error.message };
   }
@@ -2669,5 +2695,68 @@ ipcMain.handle('backup:get-last-date', async () => {
     return { lastDate };
   } catch (error) {
     return { lastDate: null };
+  }
+});
+
+
+// Müşteriye özel satışları getir (toplam ile)
+ipcMain.handle('sales:get-by-customer', async (_, customerId, startDate, endDate) => {
+  try {
+    let queryText = `
+      SELECT 
+        s.*,
+        c.name as customer_name,
+        si.product_id,
+        si.product_name,
+        si.color,
+        si.quantity_pieces,
+        si.quantity_desi,
+        si.unit_price_per_desi,
+        si.total_price,
+        si.unit,
+        p.category
+      FROM sales s
+      LEFT JOIN customers c ON s.customer_id = c.id
+      LEFT JOIN sale_items si ON s.id = si.sale_id
+      LEFT JOIN products p ON si.product_id = p.id
+      WHERE s.customer_id = $1
+    `;
+
+    const params = [customerId];
+
+    // Tarih filtresi ekle
+    if (startDate && endDate) {
+      queryText += ' AND DATE(s.sale_date) BETWEEN $2 AND $3';
+      params.push(startDate, endDate);
+    }
+
+    queryText += ' ORDER BY s.created_at DESC';
+
+    const result = await queryAll(queryText, params);
+
+    // Toplam hesapla (para birimi bazında)
+    const totals = {};
+    const processedSales = new Set();
+
+    result.forEach(row => {
+      // Her satışı sadece bir kez say (sale_items join'i nedeniyle tekrar edebilir)
+      if (!processedSales.has(row.id)) {
+        processedSales.add(row.id);
+        const currency = row.currency || 'TRY';
+        if (!totals[currency]) {
+          totals[currency] = 0;
+        }
+        totals[currency] += parseFloat(row.total_amount) || 0;
+      }
+    });
+
+    return {
+      success: true,
+      data: result,
+      totals: totals // { TRY: 5000, USD: 1000, EUR: 500 }
+    };
+  } catch (error) {
+    console.error('sales:get-by-customer error:', error);
+    return { success: false, error: error.message };
   }
 });

@@ -175,6 +175,8 @@ const CustomerDetail: React.FC = () => {
   const [filteredSales, setFilteredSales] = useState<CustomerSale[]>([]);
   const [filteredPayments, setFilteredPayments] = useState<CustomerPayment[]>([]);
   const [previousBalance, setPreviousBalance] = useState({ TRY: 0, USD: 0, EUR: 0 });
+  const [salesTotals, setSalesTotals] = useState<Record<string, number>>({});
+  const [paymentsTotals, setPaymentsTotals] = useState<Record<string, number>>({});
 
   // Pagination states
   const [salesPage, setSalesPage] = useState(0);
@@ -535,6 +537,33 @@ const CustomerDetail: React.FC = () => {
 
     setFilteredSales(filtered);
     setFilteredPayments(filteredPaymentsData);
+    
+    // Toplam hesapla (backend'den gelen verilerle)
+    const salesTotalsCalc: Record<string, number> = {};
+    const processedSales = new Set<number>();
+    
+    filtered.forEach(sale => {
+      if (!processedSales.has(sale.id)) {
+        processedSales.add(sale.id);
+        const currency = sale.currency || 'TRY';
+        if (!salesTotalsCalc[currency]) {
+          salesTotalsCalc[currency] = 0;
+        }
+        salesTotalsCalc[currency] += Number(sale.totalAmount) || 0;
+      }
+    });
+    
+    const paymentsTotalsCalc: Record<string, number> = {};
+    filteredPaymentsData.forEach(payment => {
+      const currency = payment.currency || 'TRY';
+      if (!paymentsTotalsCalc[currency]) {
+        paymentsTotalsCalc[currency] = 0;
+      }
+      paymentsTotalsCalc[currency] += Number(payment.amount) || 0;
+    });
+    
+    setSalesTotals(salesTotalsCalc);
+    setPaymentsTotals(paymentsTotalsCalc);
   }, [sales, payments, startDate, endDate]);
 
   // Ödeme ekle
@@ -752,6 +781,19 @@ const CustomerDetail: React.FC = () => {
         `${formatNumber(sale.totalAmount)} ${currencySymbol}`
       ];
     });
+    
+    // Toplam satırı ekle
+    if (salesTableData.length > 0) {
+      const totalText = Object.entries(salesTotals)
+        .filter(([_, value]) => value > 0)
+        .map(([currency, value]) => {
+          const symbol = currency === 'TRY' ? 'TL' : currency;
+          return `${symbol} ${formatNumber(value)}`;
+        })
+        .join(' | ');
+      
+      salesTableData.push(['', 'TOPLAM SATIS', totalText]);
+    }
 
     autoTable(doc, {
       startY: yPos + 3,
@@ -778,6 +820,14 @@ const CustomerDetail: React.FC = () => {
       },
       alternateRowStyles: {
         fillColor: [245, 245, 245]
+      },
+      didParseCell: function(data: any) {
+        // Son satır (TOPLAM) için özel stil
+        if (data.row.index === salesTableData.length - 1 && salesTableData.length > 1) {
+          data.cell.styles.fillColor = [52, 73, 94];
+          data.cell.styles.textColor = [255, 255, 255];
+          data.cell.styles.fontStyle = 'bold';
+        }
       }
     });
 
@@ -802,6 +852,19 @@ const CustomerDetail: React.FC = () => {
         toAscii(payment.notes || '-')
       ];
     });
+    
+    // Toplam satırı ekle
+    if (paymentsTableData.length > 0) {
+      const totalText = Object.entries(paymentsTotals)
+        .filter(([_, value]) => value > 0)
+        .map(([currency, value]) => {
+          const symbol = currency === 'TRY' ? 'TL' : currency;
+          return `${symbol} ${formatNumber(value)}`;
+        })
+        .join(' | ');
+      
+      paymentsTableData.push(['', 'TOPLAM ODEME', totalText, '']);
+    }
 
     autoTable(doc, {
       startY: finalY + 13,
@@ -1414,6 +1477,39 @@ const CustomerDetail: React.FC = () => {
                       </TableRow>
                     )}
 
+                    {/* Toplam Satır */}
+                    {filteredSales.length > 0 && (
+                      <>
+                        <TableRow>
+                          <TableCell colSpan={4} sx={{ py: 0.5 }} />
+                        </TableRow>
+                        <TableRow sx={{ bgcolor: 'primary.light', '& td': { borderTop: '2px solid', borderColor: 'primary.main' } }}>
+                          <TableCell colSpan={3} sx={{ fontWeight: 700, fontSize: '1rem' }}>
+                            TOPLAM SATIŞ
+                          </TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 700, fontSize: '1rem' }}>
+                            <Box>
+                              {salesTotals.TRY > 0 && (
+                                <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                                  ₺{salesTotals.TRY.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                                </Typography>
+                              )}
+                              {salesTotals.USD > 0 && (
+                                <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                                  ${salesTotals.USD.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                                </Typography>
+                              )}
+                              {salesTotals.EUR > 0 && (
+                                <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                                  €{salesTotals.EUR.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                                </Typography>
+                              )}
+                            </Box>
+                          </TableCell>
+                        </TableRow>
+                      </>
+                    )}
+
                     {/* Geçmiş Aylardan Kalan Bakiye */}
                     {startDate && (() => {
                       console.log('🎨 UI Render - previousBalance:', previousBalance);
@@ -1605,6 +1701,39 @@ const CustomerDetail: React.FC = () => {
                           Henüz ödeme kaydı bulunmuyor
                         </TableCell>
                       </TableRow>
+                    )}
+                    
+                    {/* Toplam Satır */}
+                    {filteredPayments.length > 0 && (
+                      <>
+                        <TableRow>
+                          <TableCell colSpan={5} sx={{ py: 0.5 }} />
+                        </TableRow>
+                        <TableRow sx={{ bgcolor: 'success.light', '& td': { borderTop: '2px solid', borderColor: 'success.main' } }}>
+                          <TableCell colSpan={2} sx={{ fontWeight: 700, fontSize: '1rem' }}>
+                            TOPLAM ÖDEME
+                          </TableCell>
+                          <TableCell align="right" colSpan={3} sx={{ fontWeight: 700, fontSize: '1rem' }}>
+                            <Box>
+                              {paymentsTotals.TRY > 0 && (
+                                <Typography variant="body2" sx={{ fontWeight: 700, color: 'success.dark' }}>
+                                  ₺{paymentsTotals.TRY.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                                </Typography>
+                              )}
+                              {paymentsTotals.USD > 0 && (
+                                <Typography variant="body2" sx={{ fontWeight: 700, color: 'success.dark' }}>
+                                  ${paymentsTotals.USD.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                                </Typography>
+                              )}
+                              {paymentsTotals.EUR > 0 && (
+                                <Typography variant="body2" sx={{ fontWeight: 700, color: 'success.dark' }}>
+                                  €{paymentsTotals.EUR.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                                </Typography>
+                              )}
+                            </Box>
+                          </TableCell>
+                        </TableRow>
+                      </>
                     )}
                   </TableBody>
                 </Table>
