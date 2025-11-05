@@ -1289,33 +1289,16 @@ ipcMain.handle('materials:create', async (_, material) => {
       material.color || null,
       material.brand || null,
       material.code || null,
-      material.stock_quantity || 0,
+      material.stock_quantity || 0, // ✅ DÜZELTME: Kullanıcının girdiği stok miktarını kullan
       material.unit || 'kg',
       material.description || null,
       material.supplier_id || null,
       material.supplier_name || null
     ]);
 
-    // İlk stok girişi varsa material_movements kaydı oluştur
-    if (result && result.stock_quantity > 0) {
-      await query(`
-        INSERT INTO material_movements (
-          material_id, movement_type, quantity, previous_stock, new_stock,
-          reference_type, supplier_id, notes, "user", created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-      `, [
-        result.id,
-        'in',
-        result.stock_quantity,
-        0,
-        result.stock_quantity,
-        'initial_stock',
-        material.supplier_id || null,
-        `İlk stok girişi - ${result.name}`,
-        'Sistem Kullanıcısı',
-        new Date().toISOString()
-      ]);
-    }
+    // ✅ DÜZELTME: Otomatik stok hareketi oluşturma kaldırıldı
+    // Stok hareketi sadece gerçek alım yapıldığında (purchases:create) oluşturulacak
+    // Bu sayede çift kayıt sorunu çözülüyor
 
     return { success: true, data: result };
   } catch (error) {
@@ -1325,6 +1308,12 @@ ipcMain.handle('materials:create', async (_, material) => {
 
 ipcMain.handle('materials:update', async (_, id, material) => {
   try {
+    console.log('🔧 materials:update çağrıldı:', {
+      id,
+      stock_quantity: material.stock_quantity,
+      timestamp: new Date()
+    });
+
     // Dinamik olarak güncellenecek alanları belirle
     const updates = [];
     const values = [];
@@ -1381,9 +1370,17 @@ ipcMain.handle('materials:update', async (_, id, material) => {
       return { success: false, error: 'Malzeme bulunamadı' };
     }
 
+    console.log('✅ materials:update tamamlandı:', {
+      id: result.id,
+      new_stock: result.stock_quantity
+    });
+
+    // ⚠️ DİKKAT: Burada stok hareketi OLUŞTURULMAMALI
+    // Stok hareketi sadece purchases:create'de oluşturulmalı
+
     return { success: true, data: result };
   } catch (error) {
-    console.error('materials:update error:', error);
+    console.error('❌ materials:update error:', error);
     return { success: false, error: error.message };
   }
 });
@@ -2426,6 +2423,12 @@ ipcMain.handle('purchases:get-by-id', async (_, id) => {
 
 ipcMain.handle('purchases:create', async (_, purchase) => {
   try {
+    console.log('🚀 purchases:create BAŞLADI:', {
+      supplier_id: purchase.supplier_id,
+      items_count: purchase.items?.length,
+      timestamp: new Date()
+    });
+
     // Start transaction
     await query('BEGIN');
 
@@ -2533,6 +2536,18 @@ ipcMain.handle('purchases:create', async (_, purchase) => {
 
         // Create movement record - use material_movements for materials, stock_movements for products
         if (isMaterial) {
+          console.log('📦 Material movement oluşturuluyor:', {
+            material_id: item.product_id,
+            productName,
+            quantity: item.quantity,
+            previousStock,
+            newStock,
+            purchase_id: purchaseResult.id,
+            timestamp: new Date()
+          });
+
+          // ✅ created_at açıkça belirtilmedi - PostgreSQL DEFAULT CURRENT_TIMESTAMP kullanacak
+          // Bu sayede timezone tutarlı olacak
           await query(`
             INSERT INTO material_movements (
               material_id, movement_type, quantity, previous_stock, new_stock, 
@@ -2554,6 +2569,8 @@ ipcMain.handle('purchases:create', async (_, purchase) => {
             `Alım - ${productName} - Tedarikçi: ${supplierName}`,
             'Sistem'
           ]);
+
+          console.log('✅ Material movement oluşturuldu');
         } else {
           await query(`
             INSERT INTO stock_movements (
@@ -2748,6 +2765,96 @@ ipcMain.handle('backup:get-last-date', async () => {
     return { lastDate };
   } catch (error) {
     return { lastDate: null };
+  }
+});
+
+// Yedek geri yükleme
+ipcMain.handle('backup:restore', async (_, filePath) => {
+  try {
+    const { exec } = require('child_process');
+    const path = require('path');
+    const fs = require('fs');
+
+    const dbHost = process.env.DB_HOST || 'localhost';
+    const dbPort = process.env.DB_PORT || '5432';
+    const dbName = process.env.DB_NAME || 'duha_deri_db';
+    const dbUser = process.env.DB_USER || 'postgres';
+    const dbPassword = process.env.DB_PASSWORD || '';
+
+    // Dosya uzantısını kontrol et
+    const fileExtension = path.extname(filePath).toLowerCase();
+    const isSqlFile = fileExtension === '.sql';
+
+    // Windows için PostgreSQL araçları
+    const pgRestorePath = `"C:\\Program Files\\PostgreSQL\\16\\bin\\pg_restore.exe"`;
+    const psqlPath = `"C:\\Program Files\\PostgreSQL\\16\\bin\\psql.exe"`;
+
+    // Veritabanı yönetim komutları
+    const dropCommand = `${psqlPath} -h ${dbHost} -p ${dbPort} -U ${dbUser} -d postgres -c "DROP DATABASE IF EXISTS ${dbName};"`;
+    const createCommand = `${psqlPath} -h ${dbHost} -p ${dbPort} -U ${dbUser} -d postgres -c "CREATE DATABASE ${dbName};"`;
+
+    const env = { ...process.env };
+    if (dbPassword) env.PGPASSWORD = dbPassword;
+
+    return new Promise((resolve, reject) => {
+      console.log(`📦 Yedek geri yükleniyor: ${filePath}`);
+      console.log(`📄 Dosya formatı: ${isSqlFile ? 'SQL' : 'Custom (binary)'}`);
+
+      // 1. Veritabanını sil
+      exec(dropCommand, { env }, (error) => {
+        if (error) {
+          console.error('Drop database error:', error);
+          // Devam et, veritabanı zaten yoksa hata verir
+        }
+
+        // 2. Yeni veritabanı oluştur
+        exec(createCommand, { env }, (error) => {
+          if (error) {
+            console.error('Create database error:', error);
+            reject(new Error('Veritabanı oluşturulamadı'));
+            return;
+          }
+
+          // 3. Yedeği geri yükle - dosya formatına göre
+          let restoreCommand;
+
+          if (isSqlFile) {
+            // SQL dosyası için psql kullan
+            restoreCommand = `${psqlPath} -h ${dbHost} -p ${dbPort} -U ${dbUser} -d ${dbName} -f "${filePath}"`;
+            console.log('🔄 SQL dosyası geri yükleniyor (psql)...');
+          } else {
+            // Custom format için pg_restore kullan
+            restoreCommand = `${pgRestorePath} -h ${dbHost} -p ${dbPort} -U ${dbUser} -d ${dbName} -v "${filePath}"`;
+            console.log('🔄 Custom format geri yükleniyor (pg_restore)...');
+          }
+
+          exec(restoreCommand, { env, maxBuffer: 50 * 1024 * 1024 }, (error, stdout, stderr) => {
+            if (error) {
+              console.error('Restore error:', error);
+              console.error('stderr:', stderr);
+              reject(new Error('Yedek geri yüklenemedi: ' + error.message));
+              return;
+            }
+
+            if (stderr && !stderr.includes('WARNING')) {
+              console.warn('⚠️ Restore warnings:', stderr);
+            }
+
+            console.log('✅ Yedek başarıyla geri yüklendi');
+            resolve({
+              success: true,
+              message: 'Yedek başarıyla geri yüklendi'
+            });
+          });
+        });
+      });
+    });
+  } catch (error) {
+    console.error('Restore handler error:', error);
+    return {
+      success: false,
+      message: error.message
+    };
   }
 });
 

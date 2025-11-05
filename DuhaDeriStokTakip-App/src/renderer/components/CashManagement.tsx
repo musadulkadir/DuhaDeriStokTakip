@@ -50,7 +50,7 @@ import { dbAPI } from '../services/api';
 import CurrencyInput from './CurrencyInput';
 import CurrencySelect from './common/CurrencySelect';
 import { DEFAULT_CURRENCIES } from '../constants/currencies';
-import { formatDate, formatDateTime, formatDateForInput } from '../utils/dateUtils';
+import { formatDate, formatDateTime, formatDateForInput, getTodayDateString, getCurrentMonthString, dateStringToISO } from '../utils/dateUtils';
 
 interface CashTransaction {
   id: number;
@@ -132,7 +132,7 @@ const CashManagement: React.FC = () => {
   const [currency, setCurrency] = useState(DEFAULT_CURRENCIES.CASH_TRANSACTION);
   const [category, setCategory] = useState('');
   const [description, setDescription] = useState('');
-  const [transactionDate, setTransactionDate] = useState(new Date().toISOString().split('T')[0]);
+  const [transactionDate, setTransactionDate] = useState(getTodayDateString());
   const [errors, setErrors] = useState<string[]>([]);
 
   // Para çevirme form states
@@ -245,8 +245,8 @@ const CashManagement: React.FC = () => {
 
   // Özet hesapla
   const calculateSummary = async (transactions: CashTransaction[]) => {
-    const today = new Date().toISOString().split('T')[0];
-    const currentMonth = new Date().toISOString().substring(0, 7);
+    const today = getTodayDateString();
+    const currentMonth = getCurrentMonthString();
 
     // Kasa işlemlerini para birimi bazında hesapla
     let cashSummary;
@@ -423,13 +423,14 @@ const CashManagement: React.FC = () => {
       newErrors.push('Geçerli bir tutar girin');
     }
 
-    if (!category) {
-      newErrors.push('Kategori seçin');
-    }
+    // Kategori ve açıklama artık zorunlu değil
+    // if (!category) {
+    //   newErrors.push('Kategori seçin');
+    // }
 
-    if (!description.trim()) {
-      newErrors.push('Açıklama girin');
-    }
+    // if (!description.trim()) {
+    //   newErrors.push('Açıklama girin');
+    // }
 
     if (newErrors.length > 0) {
       setErrors(newErrors);
@@ -442,11 +443,11 @@ const CashManagement: React.FC = () => {
         type: transactionType,
         amount: parseFormattedNumber(amount),
         currency,
-        category,
-        description: description.trim(),
+        category: category || 'Diğer', // Boşsa varsayılan kategori
+        description: description.trim() || '-', // Boşsa tire
         reference_type: 'other',
         user: 'Kasa Kullanıcısı',
-        date: new Date(transactionDate).toISOString(),
+        date: dateStringToISO(transactionDate),
       };
 
       const response = await dbAPI.createCashTransaction(transactionData);
@@ -588,7 +589,7 @@ const CashManagement: React.FC = () => {
     setCurrency(DEFAULT_CURRENCIES.CASH_TRANSACTION);
     setCategory('');
     setDescription('');
-    setTransactionDate(new Date().toISOString().split('T')[0]);
+    setTransactionDate(getTodayDateString());
     setErrors([]);
   };
 
@@ -618,13 +619,14 @@ const CashManagement: React.FC = () => {
       newErrors.push('Geçerli bir tutar girin');
     }
 
-    if (!category) {
-      newErrors.push('Kategori seçin');
-    }
+    // Kategori ve açıklama artık zorunlu değil
+    // if (!category) {
+    //   newErrors.push('Kategori seçin');
+    // }
 
-    if (!description.trim()) {
-      newErrors.push('Açıklama girin');
-    }
+    // if (!description.trim()) {
+    //   newErrors.push('Açıklama girin');
+    // }
 
     if (newErrors.length > 0) {
       setErrors(newErrors);
@@ -637,9 +639,9 @@ const CashManagement: React.FC = () => {
         type: transactionType,
         amount: parseFormattedNumber(amount),
         currency,
-        category,
-        description: description.trim(),
-        date: new Date(transactionDate).toISOString(),
+        category: category || 'Diğer', // Boşsa varsayılan kategori
+        description: description.trim() || '-', // Boşsa tire
+        date: dateStringToISO(transactionDate),
       };
 
       const response = await dbAPI.updateCashTransaction(selectedTransaction.id, transactionData);
@@ -665,7 +667,7 @@ const CashManagement: React.FC = () => {
     setCurrency(DEFAULT_CURRENCIES.CASH_TRANSACTION);
     setCategory('');
     setDescription('');
-    setTransactionDate(new Date().toISOString().split('T')[0]);
+    setTransactionDate(getTodayDateString());
     setErrors([]);
   };
 

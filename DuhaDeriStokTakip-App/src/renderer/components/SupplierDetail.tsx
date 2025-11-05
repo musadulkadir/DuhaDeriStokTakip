@@ -44,7 +44,7 @@ import {
 import { dbAPI } from '../services/api';
 import { Customer, Product } from '../../main/database/models';
 import jsPDF from 'jspdf';
-import { formatDate, formatDateForInput, getNowISO } from '../utils/dateUtils';
+import { formatDate, formatDateForInput, getNowISO, getTodayDateString, getCurrentMonthString, dateStringToISO } from '../utils/dateUtils';
 import autoTable from 'jspdf-autotable';
 
 // YENİ: Alım detay modalını import et
@@ -146,11 +146,14 @@ const SupplierDetail: React.FC = () => {
   const getDefaultStartDate = () => {
     const date = new Date();
     date.setMonth(date.getMonth() - 1);
-    return date.toISOString().split('T')[0];
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   };
 
   const getDefaultEndDate = () => {
-    return new Date().toISOString().split('T')[0];
+    return getTodayDateString();
   };
 
   const [startDate, setStartDate] = useState(getDefaultStartDate());
@@ -436,7 +439,7 @@ const SupplierDetail: React.FC = () => {
           currency: 'TRY',
           payment_method: 'cash',
           description: '',
-          payment_date: new Date().toISOString().split('T')[0],
+          payment_date: getTodayDateString(),
         });
         await loadSupplier(); // Bakiyeyi güncelle
         await loadPayments();
@@ -689,7 +692,7 @@ const SupplierDetail: React.FC = () => {
         currency: newPurchase.currency,
         notes: newPurchase.notes,
         items: newPurchase.items,
-        purchase_date: new Date(newPurchase.purchase_date).toISOString(),
+        purchase_date: dateStringToISO(newPurchase.purchase_date),
       };
 
       const purchaseResponse = await dbAPI.createPurchase(purchaseData);
@@ -724,7 +727,7 @@ const SupplierDetail: React.FC = () => {
         currency: 'TRY',
         notes: '',
         items: [],
-        purchase_date: new Date().toISOString().split('T')[0],
+        purchase_date: getTodayDateString(),
       });
 
       await loadMaterials();
@@ -967,10 +970,12 @@ const SupplierDetail: React.FC = () => {
     doc.text('Odeme Gecmisi', 20, finalY + 10);
 
     // Bu ayki ödemeleri filtrele
-    const currentMonth = new Date().toISOString().substring(0, 7); // YYYY-MM formatı
+    const currentMonth = getCurrentMonthString(); // YYYY-MM formatı
     const thisMonthPayments = payments.filter(payment => {
       const paymentDate = new Date(payment.payment_date || payment.date || payment.created_at || '');
-      const paymentMonth = paymentDate.toISOString().substring(0, 7);
+      const year = paymentDate.getFullYear();
+      const month = String(paymentDate.getMonth() + 1).padStart(2, '0');
+      const paymentMonth = `${year}-${month}`;
       return paymentMonth === currentMonth;
     });
 

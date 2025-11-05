@@ -1,619 +1,424 @@
 import React, { useState, useEffect } from 'react';
-import { dbAPI } from '../services/api';
 import {
   Box,
   Typography,
-  Paper,
-  FormControlLabel,
-  Switch,
-  Button,
-  Grid,
   Card,
   CardContent,
-  TextField,
-  MenuItem,
+  Button,
+  Alert,
   Divider,
-  Avatar,
   List,
   ListItem,
   ListItemIcon,
   ListItemText,
-  ListItemSecondaryAction,
-  IconButton,
+  TextField,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
-  Alert,
-  Chip,
+  IconButton,
+  InputAdornment,
+  Switch,
+  FormControlLabel,
 } from '@mui/material';
 import {
-  Save as SaveIcon,
-  Notifications,
   Security,
-  Backup,
-  Palette,
-  Language,
-  Storage,
-  Info,
-  Edit,
-  Delete,
-  Add,
   CloudUpload,
   Download,
-  Refresh,
+  Info,
+  Lock,
+  LockOpen,
+  Visibility,
+  VisibilityOff,
+  Edit,
+  Save,
 } from '@mui/icons-material';
 
 const Settings: React.FC = () => {
-  const [settings, setSettings] = useState({
-    notifications: true,
-    autoBackup: false,
-    darkMode: true,
-    language: 'tr',
-    currency: 'TRY',
-    lowStockThreshold: 20,
-    autoSave: true,
-    soundEffects: false,
-    passwordEnabled: localStorage.getItem('passwordEnabled') === 'true', // Default false (kapalı)
-  });
-
-  const [backupDialogOpen, setBackupDialogOpen] = useState(false);
-  const [userDialogOpen, setUserDialogOpen] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
-
-  // Şifre değiştirme
+  const [backupStatus, setBackupStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [backupMessage, setBackupMessage] = useState('');
+  const [restoreStatus, setRestoreStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [restoreMessage, setRestoreMessage] = useState('');
+  
+  // Şifre yönetimi
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
+  const [passwordEnabled, setPasswordEnabled] = useState(false);
+  const [passwordProtectionEnabled, setPasswordProtectionEnabled] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [passwordError, setPasswordError] = useState('');
-  const [passwordSuccess, setPasswordSuccess] = useState(false);
 
-  // Şifre veritabanında saklanıyor
-  const RECOVERY_PASSWORD = '6508';
-  const [storedPassword, setStoredPasswordState] = useState('admin123');
-
-  // Şifreyi veritabanından yükle
   useEffect(() => {
-    const loadPassword = async () => {
-      try {
-        const response = await dbAPI.getPassword();
-        if (response.success && response.data) {
-          setStoredPasswordState(response.data);
-        }
-      } catch (error) {
-        console.error('Şifre yüklenemedi:', error);
-      }
-    };
-    loadPassword();
+    // Şifre durumunu kontrol et
+    const password = localStorage.getItem('app_password');
+    const protectionEnabled = localStorage.getItem('passwordEnabled') !== 'false';
+    setPasswordEnabled(!!password);
+    setPasswordProtectionEnabled(protectionEnabled);
   }, []);
 
-  const handleSettingChange = (setting: string, value: any) => {
-    setSettings(prev => ({
-      ...prev,
-      [setting]: value
-    }));
-
-    // Şifre ayarını localStorage'a kaydet
-    if (setting === 'passwordEnabled') {
-      localStorage.setItem('passwordEnabled', value.toString());
+  const handleTogglePasswordProtection = () => {
+    if (passwordProtectionEnabled) {
+      // Şifre korumasını kapat
+      if (!passwordEnabled) {
+        // Şifre yoksa direkt kapat
+        localStorage.setItem('passwordEnabled', 'false');
+        setPasswordProtectionEnabled(false);
+        alert('Şifre koruması kapatıldı!');
+      } else {
+        // Şifre varsa önce doğrula
+        const password = prompt('Şifre korumasını kapatmak için şifrenizi girin:');
+        const savedPassword = localStorage.getItem('app_password');
+        if (password === savedPassword) {
+          localStorage.setItem('passwordEnabled', 'false');
+          setPasswordProtectionEnabled(false);
+          alert('Şifre koruması kapatıldı!');
+        } else {
+          alert('Hatalı şifre!');
+        }
+      }
+    } else {
+      // Şifre korumasını aç
+      if (!passwordEnabled) {
+        alert('Önce bir şifre ayarlamalısınız!');
+        setPasswordDialogOpen(true);
+      } else {
+        localStorage.setItem('passwordEnabled', 'true');
+        setPasswordProtectionEnabled(true);
+        alert('Şifre koruması açıldı!');
+      }
     }
   };
 
-  const handleSaveSettings = () => {
-    // Ayarları kaydetme mantığı
-    console.log('Ayarlar kaydedildi:', settings);
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 3000);
-  };
-
-  const handleChangePassword = async () => {
+  const handleSetPassword = () => {
     setPasswordError('');
-
-    // Validasyon
-    if (!currentPassword || !newPassword || !confirmPassword) {
-      setPasswordError('Tüm alanları doldurun');
+    
+    if (passwordEnabled && !currentPassword) {
+      setPasswordError('Mevcut şifreyi girin');
       return;
     }
 
-    // Mevcut şifre veya kurtarma şifresi kontrolü
-    if (currentPassword !== storedPassword && currentPassword !== RECOVERY_PASSWORD) {
-      setPasswordError('Mevcut şifre veya kurtarma şifresi hatalı');
-      return;
+    if (passwordEnabled) {
+      const savedPassword = localStorage.getItem('app_password');
+      if (savedPassword !== currentPassword) {
+        setPasswordError('Mevcut şifre yanlış');
+        return;
+      }
     }
 
-    // Yeni şifre kontrolü
-    if (newPassword.length < 4) {
-      setPasswordError('Yeni şifre en az 4 karakter olmalı');
+    if (!newPassword || newPassword.length < 4) {
+      setPasswordError('Şifre en az 4 karakter olmalı');
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      setPasswordError('Yeni şifreler eşleşmiyor');
+      setPasswordError('Şifreler eşleşmiyor');
       return;
     }
 
-    try {
-      // Şifreyi veritabanına kaydet
-      const response = await dbAPI.setPassword(newPassword);
-      if (!response.success) {
-        throw new Error(response.error || 'Şifre kaydedilemedi');
-      }
-
-      setStoredPasswordState(newPassword);
-      setPasswordSuccess(true);
-      setPasswordDialogOpen(false);
-
-      // Formu temizle
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
-
-      setTimeout(() => setPasswordSuccess(false), 3000);
-    } catch (error) {
-      setPasswordError('Şifre kaydedilirken hata oluştu');
-      console.error('Şifre kaydetme hatası:', error);
-    }
+    localStorage.setItem('app_password', newPassword);
+    localStorage.setItem('passwordEnabled', 'true');
+    setPasswordEnabled(true);
+    setPasswordProtectionEnabled(true);
+    setPasswordDialogOpen(false);
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    alert('Şifre başarıyla ayarlandı ve koruma aktif edildi!');
   };
 
-  const users = [
-    { id: 1, name: 'Ahmet Yılmaz', role: 'Admin', email: 'ahmet@example.com', active: true },
-    { id: 2, name: 'Mehmet Demir', role: 'Kullanıcı', email: 'mehmet@example.com', active: true },
-    { id: 3, name: 'Fatma Kaya', role: 'Kullanıcı', email: 'fatma@example.com', active: false },
-  ];
+  const handleRemovePassword = () => {
+    if (!currentPassword) {
+      setPasswordError('Mevcut şifreyi girin');
+      return;
+    }
+
+    const savedPassword = localStorage.getItem('app_password');
+    if (savedPassword !== currentPassword) {
+      setPasswordError('Şifre yanlış');
+      return;
+    }
+
+    localStorage.removeItem('app_password');
+    localStorage.setItem('passwordEnabled', 'false');
+    setPasswordEnabled(false);
+    setPasswordProtectionEnabled(false);
+    setPasswordDialogOpen(false);
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    alert('Şifre kaldırıldı ve koruma kapatıldı!');
+  };
+
+  const handleBackup = async () => {
+    setBackupStatus('loading');
+    setBackupMessage('Yedekleme başlatılıyor...');
+    
+    try {
+      const result = await window.require('electron').ipcRenderer.invoke('backup:start');
+      
+      if (result.success) {
+        setBackupStatus('success');
+        setBackupMessage('Yedekleme başarıyla tamamlandı!');
+      } else {
+        setBackupStatus('error');
+        setBackupMessage(result.message || 'Yedekleme başarısız oldu');
+      }
+    } catch (error: any) {
+      setBackupStatus('error');
+      setBackupMessage('Yedekleme sırasında hata oluştu: ' + error.message);
+    }
+    
+    setTimeout(() => {
+      setBackupStatus('idle');
+    }, 3000);
+  };
+
+  const handleRestore = async (filePath: string) => {
+    const confirmed = window.confirm(
+      '⚠️ UYARI: Yedek geri yükleme işlemi mevcut tüm verileri silecek ve yedeği geri yükleyecektir.\n\n' +
+      'Bu işlem geri alınamaz!\n\n' +
+      'Devam etmek istediğinizden emin misiniz?'
+    );
+
+    if (!confirmed) return;
+
+    setRestoreStatus('loading');
+    setRestoreMessage('Yedek geri yükleniyor... Lütfen bekleyin.');
+
+    try {
+      const result = await window.require('electron').ipcRenderer.invoke('backup:restore', filePath);
+      
+      if (result.success) {
+        setRestoreStatus('success');
+        setRestoreMessage('Yedek başarıyla geri yüklendi! Uygulama yeniden başlatılacak...');
+        
+        // 3 saniye sonra uygulamayı yeniden başlat
+        setTimeout(() => {
+          window.location.reload();
+        }, 3000);
+      } else {
+        setRestoreStatus('error');
+        setRestoreMessage(result.message || 'Yedek geri yüklenemedi');
+      }
+    } catch (error: any) {
+      setRestoreStatus('error');
+      setRestoreMessage('Geri yükleme sırasında hata oluştu: ' + error.message);
+    }
+    
+    setTimeout(() => {
+      if (restoreStatus !== 'success') {
+        setRestoreStatus('idle');
+      }
+    }, 5000);
+  };
 
   return (
-    <Box>
+    <Box sx={{ p: 3 }}>
       {/* Header */}
       <Box sx={{ mb: 4 }}>
         <Typography variant="h3" sx={{ fontWeight: 700, mb: 1 }}>
           Ayarlar
         </Typography>
         <Typography variant="body1" sx={{ color: 'text.secondary' }}>
-          Uygulama ayarlarınızı yönetin
+          Güvenlik ve yedekleme ayarlarını yönetin
         </Typography>
       </Box>
 
-      {saveSuccess && (
-        <Alert severity="success" sx={{ mb: 3 }}>
-          Ayarlar başarıyla kaydedildi!
-        </Alert>
-      )}
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1fr 1fr' }, gap: 3 }}>
+        {/* Güvenlik Ayarları */}
+        <Card>
+          <CardContent>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+              <Security sx={{ color: 'warning.main', mr: 2, fontSize: 32 }} />
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                Güvenlik
+              </Typography>
+            </Box>
 
-      <Grid container spacing={3}>
-        {/* General Settings */}
-        <Grid item xs={12} lg={6}>
-          <Card sx={{ mb: 3 }}>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-                <Avatar sx={{ bgcolor: 'primary.main', mr: 2 }}>
-                  <Notifications />
-                </Avatar>
-                <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                  Genel Ayarlar
-                </Typography>
-              </Box>
-
-              <List>
-                <ListItem>
-                  <ListItemIcon>
-                    <Notifications />
-                  </ListItemIcon>
-                  <ListItemText
-                    primary="Bildirimler"
-                    secondary="Stok uyarıları ve sistem bildirimleri"
-                  />
-                  <ListItemSecondaryAction>
-                    <Switch
-                      checked={settings.notifications}
-                      onChange={(e) => handleSettingChange('notifications', e.target.checked)}
-                    />
-                  </ListItemSecondaryAction>
-                </ListItem>
-
-                <ListItem>
-                  <ListItemIcon>
-                    <Backup />
-                  </ListItemIcon>
-                  <ListItemText
-                    primary="Otomatik Yedekleme"
-                    secondary="Günlük otomatik veri yedekleme"
-                  />
-                  <ListItemSecondaryAction>
-                    <Switch
-                      checked={settings.autoBackup}
-                      onChange={(e) => handleSettingChange('autoBackup', e.target.checked)}
-                    />
-                  </ListItemSecondaryAction>
-                </ListItem>
-
-                <ListItem>
-                  <ListItemIcon>
-                    <Palette />
-                  </ListItemIcon>
-                  <ListItemText
-                    primary="Koyu Tema"
-                    secondary="Koyu renk temasını kullan"
-                  />
-                  <ListItemSecondaryAction>
-                    <Switch
-                      checked={settings.darkMode}
-                      onChange={(e) => handleSettingChange('darkMode', e.target.checked)}
-                    />
-                  </ListItemSecondaryAction>
-                </ListItem>
-
-                <ListItem>
-                  <ListItemIcon>
-                    <Storage />
-                  </ListItemIcon>
-                  <ListItemText
-                    primary="Otomatik Kaydetme"
-                    secondary="Değişiklikleri otomatik kaydet"
-                  />
-                  <ListItemSecondaryAction>
-                    <Switch
-                      checked={settings.autoSave}
-                      onChange={(e) => handleSettingChange('autoSave', e.target.checked)}
-                    />
-                  </ListItemSecondaryAction>
-                </ListItem>
-              </List>
-            </CardContent>
-          </Card>
-
-          {/* Application Settings */}
-          <Card>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-                <Avatar sx={{ bgcolor: 'secondary.main', mr: 2 }}>
-                  <Language />
-                </Avatar>
-                <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                  Uygulama Ayarları
-                </Typography>
-              </Box>
-
-              <Grid container spacing={3}>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    select
-                    label="Dil"
-                    value={settings.language}
-                    onChange={(e) => handleSettingChange('language', e.target.value)}
-                  >
-                    <MenuItem value="tr">Türkçe</MenuItem>
-                    <MenuItem value="en">English</MenuItem>
-                    <MenuItem value="de">Deutsch</MenuItem>
-                  </TextField>
-                </Grid>
-
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    select
-                    label="Para Birimi"
-                    value={settings.currency}
-                    onChange={(e) => handleSettingChange('currency', e.target.value)}
-                  >
-                    <MenuItem value="TRY">₺ Türk Lirası</MenuItem>
-                    <MenuItem value="USD">$ Amerikan Doları</MenuItem>
-                    <MenuItem value="EUR">€ Euro</MenuItem>
-                  </TextField>
-                </Grid>
-
-                <Grid item xs={12}>
-                  <TextField
-                    fullWidth
-                    type="number"
-                    label="Düşük Stok Uyarı Eşiği"
-                    value={settings.lowStockThreshold}
-                    onChange={(e) => handleSettingChange('lowStockThreshold', parseInt(e.target.value))}
-                    helperText="Bu değerin altındaki stoklar için uyarı gösterilir"
-                  />
-                </Grid>
-              </Grid>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* Password Management */}
-        <Grid item xs={12} lg={6}>
-          <Card sx={{ mb: 3 }}>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-                <Avatar sx={{ bgcolor: 'error.main', mr: 2 }}>
-                  <Security />
-                </Avatar>
-                <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                  Güvenlik
-                </Typography>
-              </Box>
-
-              {passwordSuccess && (
-                <Alert severity="success" sx={{ mb: 2 }}>
-                  Şifre başarıyla değiştirildi!
-                </Alert>
-              )}
-
-              <List>
-                <ListItem>
-                  <ListItemIcon>
-                    <Security />
-                  </ListItemIcon>
-                  <ListItemText
-                    primary="Şifre Koruması"
-                    secondary="Uygulama açılışında şifre iste"
-                  />
-                  <ListItemSecondaryAction>
-                    <Switch
-                      checked={settings.passwordEnabled}
-                      onChange={(e) => handleSettingChange('passwordEnabled', e.target.checked)}
-                      color="error"
-                    />
-                  </ListItemSecondaryAction>
-                </ListItem>
-
-                <ListItem disabled={!settings.passwordEnabled}>
-                  <ListItemIcon>
-                    <Security />
-                  </ListItemIcon>
-                  <ListItemText
-                    primary="Şifre Değiştir"
-                    secondary="Giriş şifrenizi değiştirin"
-                  />
-                  <ListItemSecondaryAction>
-                    <Button
-                      variant="outlined"
-                      size="small"
-                      onClick={() => setPasswordDialogOpen(true)}
-                      disabled={!settings.passwordEnabled}
-                    >
-                      Değiştir
-                    </Button>
-                  </ListItemSecondaryAction>
-                </ListItem>
-
-                <Divider sx={{ my: 2 }} />
-
-                <ListItem>
-                  <ListItemText
-                    primary={
-                      <Typography variant="body2" color="text.secondary">
-                        <strong>Kurtarma Şifresi:</strong> 6508
-                      </Typography>
-                    }
-                    secondary="Şifrenizi unutursanız bu kodu kullanabilirsiniz"
-                  />
-                </ListItem>
-
-                {!settings.passwordEnabled && (
-                  <ListItem>
-                    <Alert severity="warning" sx={{ width: '100%' }}>
-                      <Typography variant="body2">
-                        <strong>Uyarı:</strong> Şifre koruması kapalı. Geliştirme modunda kullanın.
-                      </Typography>
-                    </Alert>
-                  </ListItem>
-                )}
-              </List>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* User Management & Backup */}
-        <Grid item xs={12} lg={6}>
-          {/* User Management */}
-          <Card sx={{ mb: 3 }}>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+            {/* Şifre Koruma Açma/Kapama */}
+            <Box sx={{ mb: 3, p: 2, bgcolor: passwordProtectionEnabled ? 'success.light' : 'grey.100', borderRadius: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <Avatar sx={{ bgcolor: 'warning.main', mr: 2 }}>
-                    <Security />
-                  </Avatar>
-                  <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                    Kullanıcı Yönetimi
-                  </Typography>
+                  {passwordProtectionEnabled ? (
+                    <Lock sx={{ color: 'success.main', mr: 1 }} />
+                  ) : (
+                    <LockOpen sx={{ color: 'text.secondary', mr: 1 }} />
+                  )}
+                  <Box>
+                    <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                      Şifre Koruması
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {passwordProtectionEnabled ? 'Açık - Giriş için şifre gerekli' : 'Kapalı - Direkt giriş'}
+                    </Typography>
+                  </Box>
                 </Box>
-                <Button
-                  variant="outlined"
-                  startIcon={<Add />}
-                  onClick={() => setUserDialogOpen(true)}
-                >
-                  Kullanıcı Ekle
-                </Button>
-              </Box>
-
-              <List>
-                {users.map((user) => (
-                  <ListItem key={user.id}>
-                    <ListItemIcon>
-                      <Avatar sx={{ width: 32, height: 32 }}>
-                        {user.name.charAt(0)}
-                      </Avatar>
-                    </ListItemIcon>
-                    <ListItemText
-                      primary={
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          {user.name}
-                          <Chip
-                            label={user.role}
-                            size="small"
-                            color={user.role === 'Admin' ? 'primary' : 'default'}
-                          />
-                          {!user.active && (
-                            <Chip label="Pasif" size="small" color="error" />
-                          )}
-                        </Box>
-                      }
-                      secondary={user.email}
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={passwordProtectionEnabled}
+                      onChange={handleTogglePasswordProtection}
+                      color="success"
                     />
-                    <ListItemSecondaryAction>
-                      <IconButton size="small">
-                        <Edit />
-                      </IconButton>
-                      <IconButton size="small" color="error">
-                        <Delete />
-                      </IconButton>
-                    </ListItemSecondaryAction>
-                  </ListItem>
-                ))}
-              </List>
-            </CardContent>
-          </Card>
-
-          {/* Backup & Data */}
-          <Card>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-                <Avatar sx={{ bgcolor: 'success.main', mr: 2 }}>
-                  <Backup />
-                </Avatar>
-                <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                  Yedekleme & Veri
-                </Typography>
+                  }
+                  label=""
+                />
               </Box>
+              
+              {/* Şifre Ayarlama Butonu */}
+              <Button
+                fullWidth
+                variant={passwordEnabled ? 'outlined' : 'contained'}
+                startIcon={passwordEnabled ? <Edit /> : <Lock />}
+                onClick={() => setPasswordDialogOpen(true)}
+                size="small"
+              >
+                {passwordEnabled ? 'Şifreyi Değiştir' : 'Şifre Ayarla'}
+              </Button>
+            </Box>
 
-              <Grid container spacing={2}>
-                <Grid item xs={12}>
-                  <Button
-                    fullWidth
-                    variant="outlined"
-                    startIcon={<CloudUpload />}
-                    onClick={() => setBackupDialogOpen(true)}
-                  >
-                    Yedek Oluştur
-                  </Button>
-                </Grid>
-                <Grid item xs={12}>
-                  <Button
-                    fullWidth
-                    variant="outlined"
-                    startIcon={<Download />}
-                    onClick={() => {
-                      // Yedek geri yükleme işlemi
-                      const input = document.createElement('input');
-                      input.type = 'file';
-                      input.accept = '.db,.sqlite';
-                      input.onchange = (e) => {
-                        const file = (e.target as HTMLInputElement).files?.[0];
-                        if (file) {
-                          alert(`Yedek dosyası "${file.name}" geri yükleniyor...`);
-                        }
-                      };
-                      input.click();
-                    }}
-                  >
-                    Yedek Geri Yükle
-                  </Button>
-                </Grid>
+            <Divider sx={{ my: 2 }} />
 
-              </Grid>
+            <List>
+              <ListItem>
+                <ListItemIcon>
+                  <Security sx={{ color: 'success.main' }} />
+                </ListItemIcon>
+                <ListItemText
+                  primary="Veritabanı Şifresi"
+                  secondary="PostgreSQL veritabanınız şifre ile korunmaktadır"
+                />
+              </ListItem>
+              <ListItem>
+                <ListItemIcon>
+                  <CloudUpload sx={{ color: 'success.main' }} />
+                </ListItemIcon>
+                <ListItemText
+                  primary="AWS S3 Yedekleme"
+                  secondary="Verileriniz güvenli AWS S3 bulut depolamada yedeklenmektedir"
+                />
+              </ListItem>
+            </List>
 
-              <Divider sx={{ my: 2 }} />
+            <Alert severity="info" sx={{ mt: 2 }}>
+              <Typography variant="body2">
+                <strong>Güvenlik İpucu:</strong> Düzenli olarak yedekleme yapın ve şifrenizi güvenli bir yerde saklayın.
+              </Typography>
+            </Alert>
+          </CardContent>
+        </Card>
 
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                <Info sx={{ fontSize: 16, color: 'text.secondary' }} />
-                <Typography variant="body2" color="text.secondary">
-                  Son yedekleme: 25 Ocak 2024, 14:30
-                </Typography>
-              </Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Storage sx={{ fontSize: 16, color: 'text.secondary' }} />
-                <Typography variant="body2" color="text.secondary">
-                  Veritabanı boyutu: 2.4 MB
-                </Typography>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
+        {/* Yedekleme & Veri */}
+        <Card>
+          <CardContent>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+              <CloudUpload sx={{ color: 'success.main', mr: 2, fontSize: 32 }} />
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                Yedekleme & Veri
+              </Typography>
+            </Box>
 
-      {/* Save Button */}
-      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
-        <Button
-          variant="contained"
-          size="large"
-          startIcon={<SaveIcon />}
-          onClick={handleSaveSettings}
-          sx={{
-            px: 4,
-            py: 1.5,
-            background: 'linear-gradient(135deg, #8D6E63 0%, #6D4C41 100%)',
-          }}
-        >
-          Tüm Ayarları Kaydet
-        </Button>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Button
+                fullWidth
+                variant="contained"
+                startIcon={<CloudUpload />}
+                onClick={handleBackup}
+                disabled={backupStatus === 'loading'}
+                size="large"
+              >
+                {backupStatus === 'loading' ? 'Yedekleniyor...' : 'Yedek Oluştur'}
+              </Button>
+
+              <Button
+                fullWidth
+                variant="outlined"
+                startIcon={<Download />}
+                onClick={() => {
+                  const input = document.createElement('input');
+                  input.type = 'file';
+                  input.accept = '.sql,.backup';
+                  input.onchange = (e: any) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      handleRestore(file.path);
+                    }
+                  };
+                  input.click();
+                }}
+                disabled={restoreStatus === 'loading'}
+                size="large"
+              >
+                {restoreStatus === 'loading' ? 'Geri Yükleniyor...' : 'Yedek Geri Yükle'}
+              </Button>
+            </Box>
+
+            <Divider sx={{ my: 3 }} />
+
+            <List dense>
+              <ListItem>
+                <ListItemIcon>
+                  <Info sx={{ fontSize: 20, color: 'text.secondary' }} />
+                </ListItemIcon>
+                <ListItemText
+                  primary="Yedekleme Konumu"
+                  secondary="C:\Users\Public\duha_deri_backups"
+                  secondaryTypographyProps={{ 
+                    sx: { 
+                      fontSize: '0.75rem',
+                      wordBreak: 'break-all'
+                    } 
+                  }}
+                />
+              </ListItem>
+              <ListItem>
+                <ListItemIcon>
+                  <CloudUpload sx={{ fontSize: 20, color: 'text.secondary' }} />
+                </ListItemIcon>
+                <ListItemText
+                  primary="AWS S3 Yedekleme"
+                  secondary="Otomatik günlük yedekleme aktif"
+                />
+              </ListItem>
+              <ListItem>
+                <ListItemIcon>
+                  <Info sx={{ fontSize: 20, color: 'text.secondary' }} />
+                </ListItemIcon>
+                <ListItemText
+                  primary="Yedek Saklama"
+                  secondary="Son 30 günlük yedekler saklanır"
+                />
+              </ListItem>
+            </List>
+
+            {backupStatus !== 'idle' && (
+              <Alert 
+                severity={backupStatus === 'success' ? 'success' : backupStatus === 'error' ? 'error' : 'info'}
+                sx={{ mt: 2 }}
+              >
+                {backupMessage}
+              </Alert>
+            )}
+
+            {restoreStatus !== 'idle' && (
+              <Alert 
+                severity={restoreStatus === 'success' ? 'success' : restoreStatus === 'error' ? 'error' : 'warning'}
+                sx={{ mt: 2 }}
+              >
+                {restoreMessage}
+              </Alert>
+            )}
+          </CardContent>
+        </Card>
       </Box>
 
-      {/* Backup Dialog */}
-      <Dialog open={backupDialogOpen} onClose={() => setBackupDialogOpen(false)}>
-        <DialogTitle>Yedek Oluştur</DialogTitle>
-        <DialogContent>
-          <Typography variant="body1" sx={{ mb: 2 }}>
-            Tüm verilerinizin yedeğini oluşturmak istediğinizden emin misiniz?
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Bu işlem birkaç dakika sürebilir ve mevcut tüm ürün, stok ve hareket verilerini içerecektir.
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setBackupDialogOpen(false)}>İptal</Button>
-          <Button
-            variant="contained"
-            onClick={() => {
-              // Yedekleme işlemi
-              alert('Yedek oluşturuluyor... Bu işlem birkaç saniye sürebilir.');
-              setTimeout(() => {
-                alert('Yedek başarıyla oluşturuldu!');
-                setBackupDialogOpen(false);
-              }, 2000);
-            }}
-          >
-            Yedek Oluştur
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* User Dialog */}
-      <Dialog open={userDialogOpen} onClose={() => setUserDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Yeni Kullanıcı Ekle</DialogTitle>
-        <DialogContent>
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12}>
-              <TextField fullWidth label="Ad Soyad" />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField fullWidth label="E-posta" type="email" />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                select
-                label="Rol"
-                defaultValue="Kullanıcı"
-              >
-                <MenuItem value="Admin">Admin</MenuItem>
-                <MenuItem value="Kullanıcı">Kullanıcı</MenuItem>
-              </TextField>
-            </Grid>
-            <Grid item xs={12}>
-              <TextField fullWidth label="Şifre" type="password" />
-            </Grid>
-          </Grid>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setUserDialogOpen(false)}>İptal</Button>
-          <Button variant="contained" onClick={() => setUserDialogOpen(false)}>
-            Kullanıcı Ekle
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Password Change Dialog */}
+      {/* Şifre Dialog */}
       <Dialog open={passwordDialogOpen} onClose={() => setPasswordDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Şifre Değiştir</DialogTitle>
+        <DialogTitle>
+          {passwordEnabled ? 'Şifre Değiştir / Kaldır' : 'Uygulama Şifresi Ayarla'}
+        </DialogTitle>
         <DialogContent>
           {passwordError && (
             <Alert severity="error" sx={{ mb: 2 }}>
@@ -621,50 +426,55 @@ const Settings: React.FC = () => {
             </Alert>
           )}
 
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Mevcut Şifre veya Kurtarma Şifresi"
-                type="password"
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-                helperText="Kurtarma şifresi: 6508"
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Yeni Şifre"
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                helperText="En az 4 karakter"
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Yeni Şifre (Tekrar)"
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-              />
-            </Grid>
-          </Grid>
+          {passwordEnabled && (
+            <TextField
+              fullWidth
+              label="Mevcut Şifre"
+              type={showPassword ? 'text' : 'password'}
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              sx={{ mb: 2 }}
+              InputProps={{
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton onClick={() => setShowPassword(!showPassword)} edge="end">
+                      {showPassword ? <VisibilityOff /> : <Visibility />}
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              }}
+            />
+          )}
+
+          <TextField
+            fullWidth
+            label="Yeni Şifre"
+            type={showPassword ? 'text' : 'password'}
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            sx={{ mb: 2 }}
+            helperText="En az 4 karakter"
+          />
+
+          <TextField
+            fullWidth
+            label="Yeni Şifre (Tekrar)"
+            type={showPassword ? 'text' : 'password'}
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+          />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => {
-            setPasswordDialogOpen(false);
-            setPasswordError('');
-            setCurrentPassword('');
-            setNewPassword('');
-            setConfirmPassword('');
-          }}>
+          {passwordEnabled && (
+            <Button onClick={handleRemovePassword} color="error">
+              Şifreyi Kaldır
+            </Button>
+          )}
+          <Button onClick={() => setPasswordDialogOpen(false)}>
             İptal
           </Button>
-          <Button variant="contained" onClick={handleChangePassword}>
-            Şifreyi Değiştir
+          <Button onClick={handleSetPassword} variant="contained" startIcon={<Save />}>
+            Kaydet
           </Button>
         </DialogActions>
       </Dialog>

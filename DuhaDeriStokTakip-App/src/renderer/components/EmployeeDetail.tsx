@@ -48,7 +48,7 @@ import {
 import { dbAPI } from '../services/api';
 import CurrencySelect from './common/CurrencySelect';
 import { DEFAULT_CURRENCIES } from '../constants/currencies';
-import { formatDate, getNowISO } from '../utils/dateUtils';
+import { formatDate, getNowISO, getTodayDateString, dateStringToISO } from '../utils/dateUtils';
 import { CashTransaction } from '@/main/database/models';
 import Pagination from './common/Pagination';
 
@@ -108,7 +108,7 @@ const EmployeeDetail: React.FC = () => {
   const [paymentType, setPaymentType] = useState('salary');
   const [paymentCurrency, setPaymentCurrency] = useState(DEFAULT_CURRENCIES.EMPLOYEE_PAYMENT);
   const [paymentNotes, setPaymentNotes] = useState('');
-  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
+  const [paymentDate, setPaymentDate] = useState(getTodayDateString());
 
   // Çalışan verilerini yükle
   const loadEmployeeData = async () => {
@@ -275,7 +275,7 @@ const EmployeeDetail: React.FC = () => {
         reference_type: 'employee_payment',
         reference_id: paymentResponse.data.id,
         user: 'İK Kullanıcısı',
-        date: new Date(paymentDate).toISOString(),
+        date: dateStringToISO(paymentDate),
       };
 
       await dbAPI.createCashTransaction(cashTransactionData);
@@ -287,7 +287,7 @@ const EmployeeDetail: React.FC = () => {
       setPaymentType('salary');
       setPaymentCurrency(DEFAULT_CURRENCIES.EMPLOYEE_PAYMENT);
       setPaymentNotes('');
-      setPaymentDate(new Date().toISOString().split('T')[0]);
+      setPaymentDate(getTodayDateString());
       setPaymentDialogOpen(false);
 
       // Verileri yeniden yükle

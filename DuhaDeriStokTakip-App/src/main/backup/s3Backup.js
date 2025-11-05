@@ -34,7 +34,9 @@ async saveLastBackupDate() {
     this.bucketName = process.env.AWS_BUCKET_NAME || 'duha-deri-backups';
     this.region = process.env.AWS_REGION || 'eu-central-1'; // Frankfurt
     this.maxBackups = 30; // Son 30 günü tut
-    this.backupFolder = path.join(os.homedir(), '.duha-deri-backups');
+    
+    // Windows için: C:\Users\Public\duha_deri_backups
+    this.backupFolder = path.join('C:', 'Users', 'Public', 'duha_deri_backups');
 
     if (!fs.existsSync(this.backupFolder)) {
       fs.mkdirSync(this.backupFolder, { recursive: true });

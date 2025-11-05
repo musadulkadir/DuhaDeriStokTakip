@@ -29,18 +29,11 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
     setError('');
 
     try {
-      // Şifreyi veritabanından al
-      const { dbAPI } = await import('../services/api');
-      const response = await dbAPI.getPassword();
-      
-      if (!response.success) {
-        throw new Error('Şifre kontrol edilemedi');
-      }
-
-      const correctPassword = response.data || 'admin123';
+      // Şifreyi localStorage'dan al
+      const savedPassword = localStorage.getItem('app_password') || 'admin123';
       
       // Normal şifre veya kurtarma şifresi ile giriş
-      if (password === correctPassword || password === RECOVERY_PASSWORD) {
+      if (password === savedPassword || password === RECOVERY_PASSWORD) {
         setError('');
         onLogin();
       } else {
