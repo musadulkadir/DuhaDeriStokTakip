@@ -89,7 +89,7 @@
           ]
         }
       ],
-      "icon": "assets/Duha-Deri_logo.ico",
+      "icon": "assets/Duha-Deri_icon.ico",
       "artifactName": "${productName}-${version}-${arch}.${ext}",
       "requestedExecutionLevel": "asInvoker"
     },
