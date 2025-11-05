@@ -98,29 +98,17 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
       >
         {/* Logo */}
         <Box
+          component="img"
+          src="./Duha-Deri_logo.png"
+          alt="Duha Deri Logo"
           sx={{
-            width: 100,
-            height: 100,
-            borderRadius: '50%',
-            background: 'linear-gradient(135deg, #8D6E63 0%, #6D4C41 100%)',
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
+            width: 120,
+            height: 120,
+            objectFit: 'contain',
             margin: '0 auto 24px',
-            boxShadow: '0 8px 32px rgba(141, 110, 99, 0.3)',
+            filter: 'drop-shadow(0 8px 32px rgba(141, 110, 99, 0.3))',
           }}
-        >
-          <Typography
-            variant="h2"
-            sx={{
-              color: 'white',
-              fontWeight: 700,
-              fontFamily: 'serif',
-            }}
-          >
-            D
-          </Typography>
-        </Box>
+        />
 
         {/* Başlık */}
         <Typography

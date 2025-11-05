@@ -64,6 +64,7 @@
     "files": [
       "dist-react/**/*",
       "src/main/**/*",
+      "assets/**/*",
       "package.json"
     ],
     "directories": {
@@ -88,7 +89,7 @@
           ]
         }
       ],
-      "icon": "build/icon.ico",
+      "icon": "assets/Duha-Deri_logo.ico",
       "artifactName": "${productName}-${version}-${arch}.${ext}",
       "requestedExecutionLevel": "asInvoker"
     },

@@ -11,5 +11,6 @@ export default defineConfig({
     emptyOutDir: true
   },
   base: './',
-  root: 'src/renderer'
+  root: 'src/renderer',
+  publicDir: '../../assets'
 })
