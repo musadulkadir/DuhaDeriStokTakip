@@ -739,60 +739,20 @@ const SupplierDetail: React.FC = () => {
     }
   };
 
-  const handleDownloadPDF = async () => {
+  const handleDownloadPDF = useCallback(async () => {
     if (!supplier) return;
 
-    // PDF için önceki bakiyeyi yeniden hesapla
-    let pdfPreviousBalance = { TRY: 0, USD: 0, EUR: 0 };
-    if (startDate) {
-      try {
-        const filterDate = new Date(startDate);
-        filterDate.setHours(0, 0, 0, 0);
+    // ✅ DÜZELTME: UI'da zaten hesaplanmış previousBalance state'ini kullan
+    // useCallback dependency'leri sayesinde her previousBalance güncellendiğinde bu fonksiyon yeniden oluşturulur
+    const pdfPreviousBalance = previousBalance;
 
-        // Tüm alımları ve ödemeleri al
-        const purchasesResponse = await dbAPI.getPurchases();
-        const paymentsResponse = await dbAPI.getCustomerPayments(parseInt(id!));
-
-        if (purchasesResponse.success) {
-          const supplierPurchases = purchasesResponse.data.filter((purchase: any) => {
-            if (purchase.supplier_id !== parseInt(id!)) return false;
-            const purchaseDate = new Date(purchase.purchase_date || purchase.date || purchase.created_at);
-            return purchaseDate < filterDate;
-          });
-
-          supplierPurchases.forEach((purchase: any) => {
-            const amount = parseFloat(purchase.total_amount) || 0;
-            if (purchase.currency === 'USD') {
-              pdfPreviousBalance.USD += amount;
-            } else if (purchase.currency === 'EUR') {
-              pdfPreviousBalance.EUR += amount;
-            } else {
-              pdfPreviousBalance.TRY += amount;
-            }
-          });
-        }
-
-        if (paymentsResponse.success && paymentsResponse.data) {
-          const previousPayments = paymentsResponse.data.filter((payment: any) => {
-            const paymentDate = new Date(payment.payment_date || payment.date || payment.created_at);
-            return paymentDate < filterDate;
-          });
-
-          previousPayments.forEach((payment: any) => {
-            const amount = parseFloat(payment.amount) || 0;
-            if (payment.currency === 'USD') {
-              pdfPreviousBalance.USD -= amount;
-            } else if (payment.currency === 'EUR') {
-              pdfPreviousBalance.EUR -= amount;
-            } else {
-              pdfPreviousBalance.TRY -= amount;
-            }
-          });
-        }
-      } catch (error) {
-        console.error('PDF için önceki bakiye hesaplanırken hata:', error);
-      }
-    }
+    console.log('📄 PDF İndiriliyor - Önceki Bakiye:', {
+      previousBalance: pdfPreviousBalance,
+      startDate,
+      endDate,
+      purchasesCount: purchases.length,
+      paymentsCount: payments.length
+    });
 
     // Sayı formatla (NaN kontrolü ile)
     const formatNumber = (num: any) => {
@@ -856,6 +816,25 @@ const SupplierDetail: React.FC = () => {
 
     // Sol taraf: Önceki Bakiye (eğer tarih filtresi varsa)
     if (startDate) {
+      // ✅ Ödemeler uygulandıktan sonra kalan bakiyeyi hesapla (UI ile tutarlı)
+      let remainingPrevBalanceTRY = pdfPreviousBalance.TRY;
+      let remainingPrevBalanceUSD = pdfPreviousBalance.USD;
+      let remainingPrevBalanceEUR = pdfPreviousBalance.EUR;
+
+      payments.forEach(payment => {
+        const currency = payment.currency || 'TRY';
+        if (currency === 'TRY' && remainingPrevBalanceTRY > 0) {
+          const appliedToPrevious = Math.min(payment.amount, remainingPrevBalanceTRY);
+          remainingPrevBalanceTRY -= appliedToPrevious;
+        } else if (currency === 'USD' && remainingPrevBalanceUSD > 0) {
+          const appliedToPrevious = Math.min(payment.amount, remainingPrevBalanceUSD);
+          remainingPrevBalanceUSD -= appliedToPrevious;
+        } else if (currency === 'EUR' && remainingPrevBalanceEUR > 0) {
+          const appliedToPrevious = Math.min(payment.amount, remainingPrevBalanceEUR);
+          remainingPrevBalanceEUR -= appliedToPrevious;
+        }
+      });
+
       doc.setFontSize(8);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(180, 70, 70);
@@ -864,7 +843,7 @@ const SupplierDetail: React.FC = () => {
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(100, 100, 100);
       doc.setFontSize(7);
-      const prevText = `TL ${formatNumber(pdfPreviousBalance.TRY)} | USD ${formatNumber(pdfPreviousBalance.USD)} | EUR ${formatNumber(pdfPreviousBalance.EUR)}`;
+      const prevText = `TL ${formatNumber(remainingPrevBalanceTRY)} | USD ${formatNumber(remainingPrevBalanceUSD)} | EUR ${formatNumber(remainingPrevBalanceEUR)}`;
       doc.text(prevText, 18, yPos + 8);
 
       // Ayırıcı çizgi
@@ -1077,7 +1056,7 @@ const SupplierDetail: React.FC = () => {
     doc.save(fileName);
 
     setSnackbar({ open: true, message: 'PDF basariyla indirildi', severity: 'success' });
-  };
+  }, [supplier, previousBalance, startDate, endDate, purchases, payments, id]); // ✅ Dependency array eklendi
 
   const formatCurrency = (amount: number, currency?: string) => {
     const curr = currency || 'TRY';
@@ -1350,62 +1329,72 @@ const SupplierDetail: React.FC = () => {
                           <TableCell></TableCell>
                         </TableRow>
 
-                        {/* Önceki Bakiye Satırı */}
-                        {startDate && (
-                          <>
-                            <TableRow>
-                              <TableCell colSpan={3} sx={{ py: 1 }} />
-                            </TableRow>
-                            <TableRow sx={{ bgcolor: 'action.hover' }}>
-                              <TableCell sx={{ fontWeight: 600 }}>
-                                Önceki Bakiye ({startDate} öncesi)
-                              </TableCell>
-                              <TableCell sx={{ fontWeight: 700 }}>
-                                <Box>
-                                  {previousBalance.TRY !== 0 && (
+                        {/* Önceki Bakiye Satırı - Ödemeler uygulandıktan sonra kalan */}
+                        {startDate && (() => {
+                          // Ödemelerin önceki bakiyeye uygulanmasını hesapla
+                          let remainingPrevBalanceTRY = previousBalance.TRY;
+                          let remainingPrevBalanceUSD = previousBalance.USD;
+                          let remainingPrevBalanceEUR = previousBalance.EUR;
+
+                          payments.forEach(payment => {
+                            const currency = payment.currency || 'TRY';
+                            if (currency === 'TRY' && remainingPrevBalanceTRY > 0) {
+                              const appliedToPrevious = Math.min(payment.amount, remainingPrevBalanceTRY);
+                              remainingPrevBalanceTRY -= appliedToPrevious;
+                            } else if (currency === 'USD' && remainingPrevBalanceUSD > 0) {
+                              const appliedToPrevious = Math.min(payment.amount, remainingPrevBalanceUSD);
+                              remainingPrevBalanceUSD -= appliedToPrevious;
+                            } else if (currency === 'EUR' && remainingPrevBalanceEUR > 0) {
+                              const appliedToPrevious = Math.min(payment.amount, remainingPrevBalanceEUR);
+                              remainingPrevBalanceEUR -= appliedToPrevious;
+                            }
+                          });
+
+                          return (
+                            <>
+                              <TableRow>
+                                <TableCell colSpan={3} sx={{ py: 1 }} />
+                              </TableRow>
+                              <TableRow sx={{ bgcolor: 'action.hover' }}>
+                                <TableCell sx={{ fontWeight: 600 }}>
+                                  Önceki Bakiye ({startDate} öncesi)
+                                </TableCell>
+                                <TableCell sx={{ fontWeight: 700 }}>
+                                  <Box>
                                     <Typography
                                       variant="body2"
                                       sx={{
-                                        color: previousBalance.TRY > 0 ? 'error.main' : previousBalance.TRY < 0 ? 'success.main' : 'text.secondary',
+                                        color: remainingPrevBalanceTRY > 0 ? 'error.main' : remainingPrevBalanceTRY < 0 ? 'success.main' : 'text.secondary',
                                         fontWeight: 600
                                       }}
                                     >
-                                      {previousBalance.TRY > 0 ? '+' : ''}₺{previousBalance.TRY.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                                      {remainingPrevBalanceTRY > 0 ? '+' : ''}₺{remainingPrevBalanceTRY.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
                                     </Typography>
-                                  )}
-                                  {previousBalance.USD !== 0 && (
                                     <Typography
                                       variant="body2"
                                       sx={{
-                                        color: previousBalance.USD > 0 ? 'error.main' : previousBalance.USD < 0 ? 'success.main' : 'text.secondary',
+                                        color: remainingPrevBalanceUSD > 0 ? 'error.main' : remainingPrevBalanceUSD < 0 ? 'success.main' : 'text.secondary',
                                         fontWeight: 600
                                       }}
                                     >
-                                      {previousBalance.USD > 0 ? '+' : ''}${previousBalance.USD.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                                      {remainingPrevBalanceUSD > 0 ? '+' : ''}${remainingPrevBalanceUSD.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
                                     </Typography>
-                                  )}
-                                  {previousBalance.EUR !== 0 && (
                                     <Typography
                                       variant="body2"
                                       sx={{
-                                        color: previousBalance.EUR > 0 ? 'error.main' : previousBalance.EUR < 0 ? 'success.main' : 'text.secondary',
+                                        color: remainingPrevBalanceEUR > 0 ? 'error.main' : remainingPrevBalanceEUR < 0 ? 'success.main' : 'text.secondary',
                                         fontWeight: 600
                                       }}
                                     >
-                                      {previousBalance.EUR > 0 ? '+' : ''}€{previousBalance.EUR.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                                      {remainingPrevBalanceEUR > 0 ? '+' : ''}€{remainingPrevBalanceEUR.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
                                     </Typography>
-                                  )}
-                                  {previousBalance.TRY === 0 && previousBalance.USD === 0 && previousBalance.EUR === 0 && (
-                                    <Typography variant="body2" color="text.secondary">
-                                      Bakiye yok
-                                    </Typography>
-                                  )}
-                                </Box>
-                              </TableCell>
-                              <TableCell></TableCell>
-                            </TableRow>
-                          </>
-                        )}
+                                  </Box>
+                                </TableCell>
+                                <TableCell></TableCell>
+                              </TableRow>
+                            </>
+                          );
+                        })()}
                       </>
                     )}
                   </TableBody>
@@ -1443,6 +1432,7 @@ const SupplierDetail: React.FC = () => {
                     <TableRow>
                       <TableCell>Tarih</TableCell>
                       <TableCell>Tutar</TableCell>
+                      <TableCell>Uygulanan</TableCell>
                       <TableCell>Yöntem</TableCell>
                       <TableCell align="center">İşlem</TableCell>
                     </TableRow>
@@ -1450,55 +1440,100 @@ const SupplierDetail: React.FC = () => {
                   <TableBody>
                     {payments.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={4} align="center">
+                        <TableCell colSpan={5} align="center">
                           Henüz ödeme kaydı bulunmuyor
                         </TableCell>
                       </TableRow>
                     ) : (
                       <>
-                        {payments
-                          .slice(paymentPage * rowsPerPage, paymentPage * rowsPerPage + rowsPerPage)
-                          .map((payment) => (
-                            <TableRow key={payment.id} hover>
-                              <TableCell>
-                                {(() => {
-                                  try {
-                                    // Önce payment_date, sonra date, sonra created_at kontrol et
-                                    const dateValue = payment.payment_date || payment.date || payment.created_at;
-                                    if (!dateValue) return 'Tarih Belirtilmemiş';
-                                    const date = new Date(dateValue);
-                                    return isNaN(date.getTime()) ? 'Geçersiz Tarih' : date.toLocaleDateString('tr-TR');
-                                  } catch (error) {
-                                    return 'Geçersiz Tarih';
-                                  }
-                                })()}
-                              </TableCell>
-                              <TableCell>
-                                {formatCurrency(payment.amount, payment.currency)}
-                              </TableCell>
-                              <TableCell>
-                                <Chip
-                                  label={payment.payment_type === 'cash' ? 'Nakit' :
-                                    payment.payment_type === 'card' ? 'Kart' :
-                                      payment.payment_type === 'transfer' ? 'Banka Transferi' :
-                                        payment.payment_type === 'check' ? 'Çek' :
-                                          payment.payment_type || 'Belirtilmemiş'}
-                                  size="small"
-                                  color="primary"
-                                />
-                              </TableCell>
-                              <TableCell align="center">
-                                <IconButton
-                                  size="small"
-                                  color="error"
-                                  onClick={() => handleDeletePayment(payment.id)}
-                                  title="Sil"
-                                >
-                                  <Delete />
-                                </IconButton>
-                              </TableCell>
-                            </TableRow>
-                          ))}
+                        {(() => {
+                          // Ödemeleri işlerken önceki bakiyeyi takip et
+                          let remainingPrevBalanceTRY = previousBalance.TRY;
+                          let remainingPrevBalanceUSD = previousBalance.USD;
+                          let remainingPrevBalanceEUR = previousBalance.EUR;
+
+                          return payments
+                            .slice(paymentPage * rowsPerPage, paymentPage * rowsPerPage + rowsPerPage)
+                            .map((payment) => {
+                              const currency = payment.currency || 'TRY';
+                              let appliedToPrevious = 0;
+                              let appliedToCurrent = 0;
+
+                              // Ödemeyi önce önceki bakiyeye uygula
+                              if (currency === 'TRY' && remainingPrevBalanceTRY > 0) {
+                                appliedToPrevious = Math.min(payment.amount, remainingPrevBalanceTRY);
+                                appliedToCurrent = payment.amount - appliedToPrevious;
+                                remainingPrevBalanceTRY -= appliedToPrevious;
+                              } else if (currency === 'USD' && remainingPrevBalanceUSD > 0) {
+                                appliedToPrevious = Math.min(payment.amount, remainingPrevBalanceUSD);
+                                appliedToCurrent = payment.amount - appliedToPrevious;
+                                remainingPrevBalanceUSD -= appliedToPrevious;
+                              } else if (currency === 'EUR' && remainingPrevBalanceEUR > 0) {
+                                appliedToPrevious = Math.min(payment.amount, remainingPrevBalanceEUR);
+                                appliedToCurrent = payment.amount - appliedToPrevious;
+                                remainingPrevBalanceEUR -= appliedToPrevious;
+                              } else {
+                                appliedToCurrent = payment.amount;
+                              }
+
+                              const currencySymbol = payment.currency === 'TRY' ? '₺' : payment.currency === 'EUR' ? '€' : '$';
+
+                              return (
+                                <TableRow key={payment.id} hover>
+                                  <TableCell>
+                                    {(() => {
+                                      try {
+                                        const dateValue = payment.payment_date || payment.date || payment.created_at;
+                                        if (!dateValue) return 'Tarih Belirtilmemiş';
+                                        const date = new Date(dateValue);
+                                        return isNaN(date.getTime()) ? 'Geçersiz Tarih' : date.toLocaleDateString('tr-TR');
+                                      } catch (error) {
+                                        return 'Geçersiz Tarih';
+                                      }
+                                    })()}
+                                  </TableCell>
+                                  <TableCell>
+                                    <Typography variant="body2" sx={{ color: 'success.main', fontWeight: 600 }}>
+                                      -{currencySymbol}{payment.amount.toLocaleString('tr-TR')}
+                                    </Typography>
+                                  </TableCell>
+                                  <TableCell>
+                                    {appliedToPrevious > 0 && appliedToCurrent > 0 ? (
+                                      <Box>
+                                        <Chip label={`Önceki: ${currencySymbol}${appliedToPrevious.toLocaleString('tr-TR')}`} size="small" color="warning" sx={{ mb: 0.5, display: 'block' }} />
+                                        <Chip label={`Bu Dönem: ${currencySymbol}${appliedToCurrent.toLocaleString('tr-TR')}`} size="small" color="info" />
+                                      </Box>
+                                    ) : appliedToPrevious > 0 ? (
+                                      <Chip label="Önceki Bakiye" size="small" color="warning" />
+                                    ) : (
+                                      <Chip label="Bu Dönem" size="small" color="info" />
+                                    )}
+                                  </TableCell>
+                                  <TableCell>
+                                    <Chip
+                                      label={payment.payment_type === 'cash' ? 'Nakit' :
+                                        payment.payment_type === 'card' ? 'Kart' :
+                                          payment.payment_type === 'transfer' ? 'Banka Transferi' :
+                                            payment.payment_type === 'check' ? 'Çek' :
+                                              payment.payment_type || 'Belirtilmemiş'}
+                                      size="small"
+                                      color="primary"
+                                    />
+                                  </TableCell>
+                                  <TableCell align="center">
+                                    <IconButton
+                                      size="small"
+                                      color="error"
+                                      onClick={() => handleDeletePayment(payment.id)}
+                                      title="Sil"
+                                    >
+                                      <Delete />
+                                    </IconButton>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            });
+                        })()}
                         {/* Toplam Satırı */}
                         <TableRow sx={{ backgroundColor: '#f5f5f5', fontWeight: 'bold' }}>
                           <TableCell sx={{ fontWeight: 'bold' }}>TOPLAM</TableCell>
@@ -1523,6 +1558,7 @@ const SupplierDetail: React.FC = () => {
                               return parts.join(' | ');
                             })()}
                           </TableCell>
+                          <TableCell></TableCell>
                           <TableCell></TableCell>
                           <TableCell></TableCell>
                         </TableRow>

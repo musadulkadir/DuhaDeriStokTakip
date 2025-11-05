@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -537,11 +537,11 @@ const CustomerDetail: React.FC = () => {
 
     setFilteredSales(filtered);
     setFilteredPayments(filteredPaymentsData);
-    
+
     // Toplam hesapla (backend'den gelen verilerle)
     const salesTotalsCalc: Record<string, number> = {};
     const processedSales = new Set<number>();
-    
+
     filtered.forEach(sale => {
       if (!processedSales.has(sale.id)) {
         processedSales.add(sale.id);
@@ -552,7 +552,7 @@ const CustomerDetail: React.FC = () => {
         salesTotalsCalc[currency] += Number(sale.totalAmount) || 0;
       }
     });
-    
+
     const paymentsTotalsCalc: Record<string, number> = {};
     filteredPaymentsData.forEach(payment => {
       const currency = payment.currency || 'TRY';
@@ -561,7 +561,7 @@ const CustomerDetail: React.FC = () => {
       }
       paymentsTotalsCalc[currency] += Number(payment.amount) || 0;
     });
-    
+
     setSalesTotals(salesTotalsCalc);
     setPaymentsTotals(paymentsTotalsCalc);
   }, [sales, payments, startDate, endDate]);
@@ -632,41 +632,23 @@ const CustomerDetail: React.FC = () => {
     }
   };
 
-  // PDF İndir
-  const handleDownloadPDF = () => {
+  // PDF İndir - useCallback ile sarmalanmış (previousBalance güncellemelerini yakalamak için)
+  const handleDownloadPDF = useCallback(() => {
     if (!customer) return;
 
-    // Önceki bakiyeyi yeniden hesapla (PDF için)
-    let pdfPreviousBalance = { TRY: 0, USD: 0, EUR: 0 };
-    if (startDate) {
-      const start = new Date(startDate);
+    // ✅ DÜZELTME: UI'da zaten hesaplanmış previousBalance state'ini kullan
+    // useCallback dependency'leri sayesinde her previousBalance güncellendiğinde bu fonksiyon yeniden oluşturulur
+    const pdfPreviousBalance = previousBalance;
 
-      const previousSales = sales.filter(sale => {
-        const saleDate = new Date(sale.date);
-        return saleDate < start;
-      });
-
-      const previousPayments = payments.filter(payment => {
-        const paymentDate = new Date(payment.paymentDate);
-        return paymentDate < start;
-      });
-
-      const prevSalesTRY = previousSales.filter(s => (s.currency || 'TRY') === 'TRY').reduce((sum, s) => sum + Number(s.totalAmount), 0);
-      const prevSalesUSD = previousSales.filter(s => (s.currency || 'TRY') === 'USD').reduce((sum, s) => sum + Number(s.totalAmount), 0);
-      const prevSalesEUR = previousSales.filter(s => (s.currency || 'TRY') === 'EUR').reduce((sum, s) => sum + Number(s.totalAmount), 0);
-
-      const prevPaymentsTRY = previousPayments.filter(p => (p.currency || 'TRY') === 'TRY').reduce((sum, p) => sum + Number(p.amount), 0);
-      const prevPaymentsUSD = previousPayments.filter(p => (p.currency || 'TRY') === 'USD').reduce((sum, p) => sum + Number(p.amount), 0);
-      const prevPaymentsEUR = previousPayments.filter(p => (p.currency || 'TRY') === 'EUR').reduce((sum, p) => sum + Number(p.amount), 0);
-
-      pdfPreviousBalance = {
-        TRY: prevSalesTRY - prevPaymentsTRY,
-        USD: prevSalesUSD - prevPaymentsUSD,
-        EUR: prevSalesEUR - prevPaymentsEUR
-      };
-
-      console.log('📄 PDF Önceki Bakiye:', pdfPreviousBalance);
-    }
+    console.log('📄 PDF İndiriliyor - Önceki Bakiye:', {
+      previousBalance: pdfPreviousBalance,
+      startDate,
+      endDate,
+      salesCount: sales.length,
+      paymentsCount: payments.length,
+      filteredSalesCount: filteredSales.length,
+      filteredPaymentsCount: filteredPayments.length
+    });
 
     // Sayı formatla (NaN kontrolü ile)
     const formatNumber = (num: any) => {
@@ -730,6 +712,25 @@ const CustomerDetail: React.FC = () => {
 
     // Sol taraf: Önceki Bakiye (eğer tarih filtresi varsa)
     if (startDate) {
+      // ✅ Ödemeler uygulandıktan sonra kalan bakiyeyi hesapla (UI ile tutarlı)
+      let remainingPrevBalanceTRY = pdfPreviousBalance.TRY;
+      let remainingPrevBalanceUSD = pdfPreviousBalance.USD;
+      let remainingPrevBalanceEUR = pdfPreviousBalance.EUR;
+
+      filteredPayments.forEach(payment => {
+        const currency = payment.currency || 'TRY';
+        if (currency === 'TRY' && remainingPrevBalanceTRY > 0) {
+          const appliedToPrevious = Math.min(payment.amount, remainingPrevBalanceTRY);
+          remainingPrevBalanceTRY -= appliedToPrevious;
+        } else if (currency === 'USD' && remainingPrevBalanceUSD > 0) {
+          const appliedToPrevious = Math.min(payment.amount, remainingPrevBalanceUSD);
+          remainingPrevBalanceUSD -= appliedToPrevious;
+        } else if (currency === 'EUR' && remainingPrevBalanceEUR > 0) {
+          const appliedToPrevious = Math.min(payment.amount, remainingPrevBalanceEUR);
+          remainingPrevBalanceEUR -= appliedToPrevious;
+        }
+      });
+
       doc.setFontSize(8);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(70, 130, 180);
@@ -738,7 +739,7 @@ const CustomerDetail: React.FC = () => {
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(100, 100, 100);
       doc.setFontSize(7);
-      const prevText = `TL ${formatNumber(pdfPreviousBalance.TRY)} | USD ${formatNumber(pdfPreviousBalance.USD)} | EUR ${formatNumber(pdfPreviousBalance.EUR)}`;
+      const prevText = `TL ${formatNumber(remainingPrevBalanceTRY)} | USD ${formatNumber(remainingPrevBalanceUSD)} | EUR ${formatNumber(remainingPrevBalanceEUR)}`;
       doc.text(prevText, 18, yPos + 8);
 
       // Ayırıcı çizgi
@@ -781,7 +782,7 @@ const CustomerDetail: React.FC = () => {
         `${formatNumber(sale.totalAmount)} ${currencySymbol}`
       ];
     });
-    
+
     // Toplam satırı ekle
     if (salesTableData.length > 0) {
       const totalText = Object.entries(salesTotals)
@@ -791,7 +792,7 @@ const CustomerDetail: React.FC = () => {
           return `${symbol} ${formatNumber(value)}`;
         })
         .join(' | ');
-      
+
       salesTableData.push(['', 'TOPLAM SATIS', totalText]);
     }
 
@@ -821,7 +822,7 @@ const CustomerDetail: React.FC = () => {
       alternateRowStyles: {
         fillColor: [245, 245, 245]
       },
-      didParseCell: function(data: any) {
+      didParseCell: function (data: any) {
         // Son satır (TOPLAM) için özel stil
         if (data.row.index === salesTableData.length - 1 && salesTableData.length > 1) {
           data.cell.styles.fillColor = [52, 73, 94];
@@ -852,7 +853,7 @@ const CustomerDetail: React.FC = () => {
         toAscii(payment.notes || '-')
       ];
     });
-    
+
     // Toplam satırı ekle
     if (paymentsTableData.length > 0) {
       const totalText = Object.entries(paymentsTotals)
@@ -862,7 +863,7 @@ const CustomerDetail: React.FC = () => {
           return `${symbol} ${formatNumber(value)}`;
         })
         .join(' | ');
-      
+
       paymentsTableData.push(['', 'TOPLAM ODEME', totalText, '']);
     }
 
@@ -909,7 +910,7 @@ const CustomerDetail: React.FC = () => {
     doc.save(fileName);
 
     setSnackbar({ open: true, message: 'PDF basariyla indirildi', severity: 'success' });
-  };
+  }, [customer, previousBalance, startDate, endDate, sales, payments, filteredSales, filteredPayments, salesTotals, paymentsTotals]); // ✅ Dependency array eklendi
 
   // Satış fonksiyonları
   const addItemToSale = () => {
@@ -1405,7 +1406,7 @@ const CustomerDetail: React.FC = () => {
       {/* Tables */}
       <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
         {/* Sales History */}
-        <Box sx={{ flex: '1 1 600px', minWidth: '600px' }}>
+        <Box sx={{ flex: '1 1 450px', minWidth: '450px' }}>
           <Card>
             <CardContent>
               <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
@@ -1598,7 +1599,7 @@ const CustomerDetail: React.FC = () => {
         </Box>
 
         {/* Payment History */}
-        <Box sx={{ flex: '1 1 400px', minWidth: '400px' }}>
+        <Box sx={{ flex: '1 1 400px', minWidth: '450px' }}>
           <Card>
             <CardContent>
               <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
@@ -1702,7 +1703,7 @@ const CustomerDetail: React.FC = () => {
                         </TableCell>
                       </TableRow>
                     )}
-                    
+
                     {/* Toplam Satır */}
                     {filteredPayments.length > 0 && (
                       <>
