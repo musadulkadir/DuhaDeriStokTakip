@@ -65,7 +65,8 @@
       "dist-react/**/*",
       "src/main/**/*",
       "assets/**/*",
-      "package.json"
+      "package.json",
+      ".env"
     ],
     "directories": {
       "output": "dist"

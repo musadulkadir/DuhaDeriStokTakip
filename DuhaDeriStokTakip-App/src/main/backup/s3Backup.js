@@ -48,7 +48,8 @@ async saveLastBackupDate() {
     const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
 
     if (!accessKeyId || !secretAccessKey) {
-      throw new Error('AWS credentials bulunamadı. .env dosyasını kontrol edin.');
+      console.warn('⚠️ AWS credentials bulunamadı. Yedekleme sadece yerel olarak yapılacak.');
+      return false;
     }
 
     this.s3Client = new S3Client({
@@ -154,19 +155,24 @@ async saveLastBackupDate() {
   async performBackup(onProgress) {
     try {
       if (onProgress) onProgress('AWS S3 bağlantısı kuruluyor...', 10);
-      await this.initialize();
+      const hasAWSCredentials = await this.initialize();
 
       if (onProgress) onProgress('Veritabanı yedeği oluşturuluyor...', 30);
       const { backupPath, backupFileName } = await this.createDatabaseBackup();
 
-      if (onProgress) onProgress('Yedek AWS S3\'e yükleniyor...', 60);
-      await this.uploadToS3(backupPath, backupFileName);
+      if (hasAWSCredentials) {
+        if (onProgress) onProgress('Yedek AWS S3\'e yükleniyor...', 60);
+        await this.uploadToS3(backupPath, backupFileName);
 
-      if (onProgress) onProgress('Eski yedekler temizleniyor...', 90);
-      await this.cleanOldBackups();
+        if (onProgress) onProgress('Eski yedekler temizleniyor...', 90);
+        await this.cleanOldBackups();
 
-      if (onProgress) onProgress('Yedekleme tamamlandı!', 100);
-      return { success: true, message: 'Yedekleme başarıyla tamamlandı', fileName: backupFileName };
+        if (onProgress) onProgress('Yedekleme tamamlandı!', 100);
+        return { success: true, message: 'Yedekleme başarıyla tamamlandı (AWS S3)', fileName: backupFileName };
+      } else {
+        if (onProgress) onProgress('Yerel yedekleme tamamlandı!', 100);
+        return { success: true, message: 'Yerel yedekleme başarıyla tamamlandı', fileName: backupFileName, localOnly: true };
+      }
     } catch (error) {
       console.error('❌ Yedekleme işlemi başarısız:', error);
       return { success: false, message: error.message, error };
