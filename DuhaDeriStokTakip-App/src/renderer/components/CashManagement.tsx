@@ -838,7 +838,7 @@ const CashManagement: React.FC = () => {
                       <TableCell align="right">
                         <Typography variant="body2" sx={{ fontWeight: 500 }}>
                           {transaction.currency === 'TRY' ? '₺' : transaction.currency === 'EUR' ? '€' : '$'}
-                          {(transaction.previous_balance || 0).toLocaleString('tr-TR')}
+                          {(transaction.previous_balance || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </Typography>
                       </TableCell>
                       <TableCell align="right">
@@ -851,7 +851,7 @@ const CashManagement: React.FC = () => {
                         >
                           {transaction.type === 'in' ? '+' : '-'}
                           {transaction.currency === 'TRY' ? '₺' : transaction.currency === 'EUR' ? '€' : '$'}
-                          {transaction.amount.toLocaleString('tr-TR')}
+                          {Number(transaction.amount).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </Typography>
                       </TableCell>
                       <TableCell align="right">
@@ -863,7 +863,7 @@ const CashManagement: React.FC = () => {
                           }}
                         >
                           {transaction.currency === 'TRY' ? '₺' : transaction.currency === 'EUR' ? '€' : '$'}
-                          {(transaction.new_balance || 0).toLocaleString('tr-TR')}
+                          {(transaction.new_balance || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </Typography>
                       </TableCell>
                       <TableCell align="center">

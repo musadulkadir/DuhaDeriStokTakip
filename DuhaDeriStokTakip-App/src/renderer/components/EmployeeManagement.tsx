@@ -476,11 +476,11 @@ const EmployeeManagement: React.FC = () => {
                     <TableCell>{employee.phone || '-'}</TableCell>
                     <TableCell>{employee.email || '-'}</TableCell>
                     <TableCell align="right">
-                      ₺{(employee.salary || 0).toLocaleString('tr-TR')}
+                      ₺{Number(employee.salary || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </TableCell>
                     <TableCell align="right">
                       <Chip
-                        label={`₺${(employee.balance || 0).toLocaleString('tr-TR')}`}
+                        label={`₺${Number(employee.balance || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                         color={getBalanceColor(employee.balance || 0) as any}
                         size="small"
                       />
