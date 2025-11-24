@@ -221,6 +221,67 @@ async function createTables() {
     `);
 
     // ============================================
+    // CHECK TRANSACTIONS TABLE (Çek-Senet İşlemleri)
+    // ============================================
+    await query(`
+      CREATE TABLE IF NOT EXISTS check_transactions (
+        id SERIAL PRIMARY KEY,
+        type VARCHAR(10) NOT NULL CHECK (type IN ('in', 'out')),
+        amount DECIMAL(15,2) NOT NULL,
+        currency VARCHAR(3) DEFAULT 'TRY',
+        check_type VARCHAR(20) NOT NULL CHECK (check_type IN ('check', 'promissory_note')),
+        check_number VARCHAR(50),
+        received_date DATE,
+        received_from VARCHAR(255),
+        first_endorser VARCHAR(255),
+        last_endorser VARCHAR(255),
+        bank_name VARCHAR(100),
+        branch_name VARCHAR(100),
+        due_date DATE,
+        account_number VARCHAR(50),
+        description TEXT,
+        customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+        customer_name VARCHAR(255),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Check transactions indeksleri
+    await query(`
+      CREATE INDEX IF NOT EXISTS idx_check_transactions_type ON check_transactions(type)
+    `);
+    await query(`
+      CREATE INDEX IF NOT EXISTS idx_check_transactions_check_type ON check_transactions(check_type)
+    `);
+    await query(`
+      CREATE INDEX IF NOT EXISTS idx_check_transactions_customer_id ON check_transactions(customer_id)
+    `);
+    await query(`
+      CREATE INDEX IF NOT EXISTS idx_check_transactions_created_at ON check_transactions(created_at)
+    `);
+
+    // Check transactions için yeni kolonları ekle (eğer yoksa)
+    try {
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS received_date DATE`);
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS received_from VARCHAR(255)`);
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS first_endorser VARCHAR(255)`);
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS last_endorser VARCHAR(255)`);
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS branch_name VARCHAR(100)`);
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS account_number VARCHAR(50)`);
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS is_cashed BOOLEAN DEFAULT FALSE`);
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS cashed_at TIMESTAMP`);
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS original_transaction_id INTEGER`);
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS payment_id INTEGER`);
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS is_converted BOOLEAN DEFAULT FALSE`);
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS original_currency VARCHAR(3)`);
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS original_amount DECIMAL(15,2)`);
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS conversion_rate DECIMAL(10,4)`);
+    } catch (error) {
+      console.log('Check transactions kolonları zaten mevcut veya eklenemedi:', error.message);
+    }
+
+    // ============================================
     // MATERIAL MOVEMENTS TABLE (Malzeme Stok Hareketleri)
     // ============================================
     await query(`
@@ -2917,6 +2978,124 @@ ipcMain.handle('sales:get-by-customer', async (_, customerId, startDate, endDate
     };
   } catch (error) {
     console.error('sales:get-by-customer error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// ==================== ÇEK-SENET İŞLEMLERİ ====================
+
+// Çek-Senet işlemlerini getir
+ipcMain.handle('get-check-transactions', async () => {
+  try {
+    const result = await queryAll(`
+      SELECT ct.*, c.name as customer_name 
+      FROM check_transactions ct
+      LEFT JOIN customers c ON ct.customer_id = c.id
+      ORDER BY ct.created_at DESC
+    `);
+    return { success: true, data: result };
+  } catch (error) {
+    console.error('Çek işlemleri getirme hatası:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Çek-Senet işlemi ekle
+ipcMain.handle('add-check-transaction', async (event, transaction) => {
+  try {
+    const result = await queryOne(`
+      INSERT INTO check_transactions (
+        type, amount, currency, check_type, check_number, received_date, 
+        received_from, first_endorser, last_endorser, bank_name, branch_name,
+        due_date, account_number, description, customer_id, customer_name, payment_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+      RETURNING *
+    `, [
+      transaction.type,
+      transaction.amount,
+      transaction.currency || 'TRY',
+      transaction.check_type,
+      transaction.check_number,
+      transaction.received_date,
+      transaction.received_from,
+      transaction.first_endorser,
+      transaction.last_endorser,
+      transaction.bank_name,
+      transaction.branch_name,
+      transaction.due_date,
+      transaction.account_number,
+      transaction.description,
+      transaction.customer_id,
+      transaction.customer_name,
+      transaction.payment_id || null
+    ]);
+    return { success: true, data: result };
+  } catch (error) {
+    console.error('Çek işlemi ekleme hatası:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Çek-Senet işlemi güncelle
+ipcMain.handle('update-check-transaction', async (event, id, transaction) => {
+  try {
+    const result = await queryOne(`
+      UPDATE check_transactions 
+      SET type = $1, amount = $2, currency = $3, check_type = $4, 
+          check_number = $5, received_date = $6, received_from = $7,
+          first_endorser = $8, last_endorser = $9, bank_name = $10, 
+          branch_name = $11, due_date = $12, account_number = $13,
+          description = $14, customer_name = $15, is_cashed = $16,
+          cashed_at = $17, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $18
+      RETURNING *
+    `, [
+      transaction.type,
+      transaction.amount,
+      transaction.currency || 'TRY',
+      transaction.check_type,
+      transaction.check_number,
+      transaction.received_date,
+      transaction.received_from,
+      transaction.first_endorser,
+      transaction.last_endorser,
+      transaction.bank_name,
+      transaction.branch_name,
+      transaction.due_date,
+      transaction.account_number,
+      transaction.description,
+      transaction.customer_name,
+      transaction.is_cashed || false,
+      transaction.cashed_at || null,
+      id
+    ]);
+    
+    if (!result) {
+      return { success: false, error: 'İşlem bulunamadı' };
+    }
+    
+    return { success: true, data: result };
+  } catch (error) {
+    console.error('Çek işlemi güncelleme hatası:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Çek-Senet işlemi sil
+ipcMain.handle('delete-check-transaction', async (event, id) => {
+  try {
+    const result = await queryOne(
+      'DELETE FROM check_transactions WHERE id = $1 RETURNING *',
+      [id]
+    );
+    
+    if (!result) {
+      return { success: false, error: 'İşlem bulunamadı' };
+    }
+    
+    return { success: true, data: result };
+  } catch (error) {
+    console.error('Çek işlemi silme hatası:', error);
     return { success: false, error: error.message };
   }
 });

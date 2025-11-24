@@ -27,6 +27,7 @@ import MenuIcon from '@mui/icons-material/Menu';
 import WorkIcon from '@mui/icons-material/Work';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import GroupIcon from '@mui/icons-material/Group';
+import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 
 const drawerWidth = 280;
 
@@ -45,6 +46,7 @@ const Sidebar: React.FC<SidebarProps> = ({ open, toggleSidebar }) => {
     { path: '/suppliers', label: 'Tedarikçi Yönetimi', icon: <WorkIcon /> },
     { path: '/employees', label: 'Çalışan Yönetimi', icon: <GroupIcon /> },
     { path: '/cash', label: 'Kasa Yönetimi', icon: <AccountBalanceWalletIcon /> },
+    { path: '/checks', label: 'Çek-Senet Kasası', icon: <ReceiptLongIcon /> },
     { path: '/movements', label: 'Stok Hareketleri', icon: <HistoryIcon /> },
     { path: '/reports', label: 'Raporlar', icon: <AssessmentIcon /> },
     { path: '/settings', label: 'Ayarlar', icon: <SettingsIcon /> },

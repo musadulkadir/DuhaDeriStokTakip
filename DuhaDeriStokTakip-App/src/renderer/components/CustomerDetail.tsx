@@ -141,6 +141,17 @@ const CustomerDetail: React.FC = () => {
   const [paymentCurrency, setPaymentCurrency] = useState('TRY');
   const [paymentNotes, setPaymentNotes] = useState('');
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
+  
+  // Çek detay alanları
+  const [checkNumber, setCheckNumber] = useState('');
+  const [receivedDate, setReceivedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [receivedFrom, setReceivedFrom] = useState('');
+  const [firstEndorser, setFirstEndorser] = useState('');
+  const [lastEndorser, setLastEndorser] = useState('');
+  const [bankName, setBankName] = useState('');
+  const [branchName, setBranchName] = useState('');
+  const [dueDate, setDueDate] = useState('');
+  const [accountNumber, setAccountNumber] = useState('');
 
   // Sale dialog states
   const [saleDialogOpen, setSaleDialogOpen] = useState(false);
@@ -593,21 +604,56 @@ const CustomerDetail: React.FC = () => {
 
       // Müşteri bakiyesi artık ödeme kayıtlarından hesaplanıyor, ayrı güncelleme gerekmiyor
 
-      // Kasa işlemi oluştur (gelir)
-      const cashTransactionData = {
-        type: 'in' as const,
-        amount,
-        currency: paymentCurrency,
-        category: 'Müşteri Ödemesi',
-        description: `${customer.name} - Ödeme`,
-        reference_type: 'payment',
-        reference_id: paymentResponse.data.id,
-        customer_id: customerId,
-        user: 'Kasa Kullanıcısı',
-        date: new Date(paymentDate).toISOString(),
-      };
+      // Ödeme tipine göre kasa veya çek-senet kasasına kaydet
+      if (paymentType === 'check' || paymentType === 'promissory_note') {
+        // Çek veya Senet - check_transactions tablosuna kaydet
+        const checkTransactionData = {
+          type: 'in' as const,
+          amount,
+          currency: paymentCurrency,
+          check_type: paymentType === 'check' ? 'check' : 'promissory_note',
+          check_number: checkNumber || null,
+          received_date: receivedDate || null,
+          received_from: receivedFrom || null,
+          first_endorser: firstEndorser || null,
+          last_endorser: lastEndorser || null,
+          bank_name: bankName || null,
+          branch_name: branchName || null,
+          due_date: dueDate || null,
+          account_number: accountNumber || null,
+          description: paymentNotes || `${customer.name} - ${paymentType === 'check' ? 'Çek' : 'Senet'} Ödemesi`,
+          customer_id: customerId,
+          customer_name: customer.name,
+          payment_id: paymentResponse.data.id, // Ödeme ID'sini ekle
+        };
 
-      await dbAPI.createCashTransaction(cashTransactionData);
+        console.log('🔵 Çek/Senet işlemi kaydediliyor:', checkTransactionData);
+        const checkResponse = await dbAPI.addCheckTransaction(checkTransactionData);
+        console.log('🔵 Çek/Senet işlemi yanıtı:', checkResponse);
+        
+        if (!checkResponse.success) {
+          throw new Error(checkResponse.error || 'Çek/Senet işlemi kaydedilemedi');
+        }
+      } else {
+        // Nakit veya Banka Transferi - cash_transactions tablosuna kaydet
+        const cashTransactionData = {
+          type: 'in' as const,
+          amount,
+          currency: paymentCurrency,
+          category: 'Müşteri Ödemesi',
+          description: `${customer.name} - ${paymentType === 'cash' ? 'Nakit' : 'Banka Transferi'} Ödemesi`,
+          reference_type: 'payment',
+          reference_id: paymentResponse.data.id,
+          customer_id: customerId,
+          user: 'Kasa Kullanıcısı',
+          date: new Date(paymentDate).toISOString(),
+        };
+
+        const cashResponse = await dbAPI.createCashTransaction(cashTransactionData);
+        if (!cashResponse.success) {
+          throw new Error(cashResponse.error || 'Kasa işlemi kaydedilemedi');
+        }
+      }
 
       setSnackbar({ open: true, message: 'Ödeme başarıyla kaydedildi', severity: 'success' });
 
@@ -617,6 +663,15 @@ const CustomerDetail: React.FC = () => {
       setPaymentCurrency('TRY');
       setPaymentNotes('');
       setPaymentDate(new Date().toISOString().split('T')[0]);
+      setCheckNumber('');
+      setReceivedDate(new Date().toISOString().split('T')[0]);
+      setReceivedFrom('');
+      setFirstEndorser('');
+      setLastEndorser('');
+      setBankName('');
+      setBranchName('');
+      setDueDate('');
+      setAccountNumber('');
       setPaymentDialogOpen(false);
 
       // Verileri yeniden yükle
@@ -843,7 +898,8 @@ const CustomerDetail: React.FC = () => {
     const paymentsTableData = filteredPayments.map(payment => {
       const paymentTypeText = payment.paymentType === 'cash' ? 'Nakit' :
         payment.paymentType === 'bank_transfer' ? 'Havale' :
-          payment.paymentType === 'check' ? 'Cek' : 'Diger';
+          payment.paymentType === 'check' ? 'Çek' :
+            payment.paymentType === 'promissory_note' ? 'Senet' : 'Diğer';
       const currencySymbol = payment.currency === 'TRY' ? 'TL' : payment.currency === 'USD' ? 'USD' : 'EUR';
 
       return [
@@ -1060,19 +1116,39 @@ const CustomerDetail: React.FC = () => {
     if (!selectedPayment || !customer || !selectedPayment.id) return;
 
     try {
-      // Önce ilgili kasa işlemini bul ve sil
-      try {
-        const cashResponse = await dbAPI.getCashTransactions();
-        if (cashResponse.success && cashResponse.data) {
-          const relatedCashTransaction = cashResponse.data.find(
-            (t: any) => t.reference_type === 'payment' && t.reference_id === selectedPayment.id
-          );
-          if (relatedCashTransaction && relatedCashTransaction.id) {
-            await dbAPI.deleteCashTransaction(relatedCashTransaction.id);
+      // Ödeme tipi çek veya senet mi kontrol et
+      if (selectedPayment.paymentType === 'check' || selectedPayment.paymentType === 'promissory_note') {
+        // Çek-Senet kasasından ilgili işlemi bul ve sil (payment_id ile)
+        try {
+          const checkResponse = await dbAPI.getCheckTransactions();
+          if (checkResponse.success && checkResponse.data) {
+            const relatedCheckTransaction = checkResponse.data.find(
+              (t: any) => t.payment_id === selectedPayment.id
+            );
+            
+            if (relatedCheckTransaction && relatedCheckTransaction.id) {
+              await dbAPI.deleteCheckTransaction(relatedCheckTransaction.id);
+              console.log('İlgili çek/senet işlemi silindi:', relatedCheckTransaction.id);
+            }
           }
+        } catch (error) {
+          console.error('Çek/Senet işlemi silinirken hata:', error);
         }
-      } catch (error) {
-        console.error('Kasa işlemi silinirken hata:', error);
+      } else {
+        // Nakit/Banka ödemesi - Kasa işlemini bul ve sil
+        try {
+          const cashResponse = await dbAPI.getCashTransactions();
+          if (cashResponse.success && cashResponse.data) {
+            const relatedCashTransaction = cashResponse.data.find(
+              (t: any) => t.reference_type === 'payment' && t.reference_id === selectedPayment.id
+            );
+            if (relatedCashTransaction && relatedCashTransaction.id) {
+              await dbAPI.deleteCashTransaction(relatedCashTransaction.id);
+            }
+          }
+        } catch (error) {
+          console.error('Kasa işlemi silinirken hata:', error);
+        }
       }
 
       // Ödeme kaydını sil
@@ -1081,7 +1157,13 @@ const CustomerDetail: React.FC = () => {
         throw new Error(deleteResponse.error || 'Ödeme silinemedi');
       }
 
-      setSnackbar({ open: true, message: 'Ödeme ve ilgili kasa işlemi başarıyla silindi', severity: 'success' });
+      setSnackbar({ 
+        open: true, 
+        message: selectedPayment.paymentType === 'check' || selectedPayment.paymentType === 'promissory_note'
+          ? 'Ödeme ve ilgili çek/senet işlemi başarıyla silindi'
+          : 'Ödeme ve ilgili kasa işlemi başarıyla silindi', 
+        severity: 'success' 
+      });
       setDeletePaymentDialogOpen(false);
       setSelectedPayment(null);
 
@@ -1673,9 +1755,12 @@ const CustomerDetail: React.FC = () => {
                               </TableCell>
                               <TableCell>
                                 <Chip
-                                  label={payment.paymentType === 'cash' ? 'Nakit' : (
-                                    payment.paymentType === 'bank_transfer' ? 'Banka' : 'Çek'
-                                  )}
+                                  label={
+                                    payment.paymentType === 'cash' ? 'Nakit' :
+                                    payment.paymentType === 'bank_transfer' ? 'Banka' :
+                                    payment.paymentType === 'check' ? 'Çek' :
+                                    payment.paymentType === 'promissory_note' ? 'Senet' : 'Diğer'
+                                  }
                                   variant="outlined"
                                   size="small"
                                 />
@@ -1805,8 +1890,90 @@ const CustomerDetail: React.FC = () => {
                 <MenuItem value="cash">Nakit</MenuItem>
                 <MenuItem value="bank_transfer">Banka Transferi</MenuItem>
                 <MenuItem value="check">Çek</MenuItem>
+                <MenuItem value="promissory_note">Senet</MenuItem>
               </Select>
             </FormControl>
+
+            {/* Çek/Senet Detay Alanları */}
+            {(paymentType === 'check' || paymentType === 'promissory_note') && (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, p: 2, bgcolor: 'grey.50', borderRadius: 2 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'primary.main' }}>
+                  {paymentType === 'check' ? 'Çek' : 'Senet'} Detayları
+                </Typography>
+                
+                <Box sx={{ display: 'flex', gap: 2 }}>
+                  <TextField
+                    fullWidth
+                    label={paymentType === 'check' ? 'Çek No' : 'Senet No'}
+                    value={checkNumber}
+                    onChange={(e) => setCheckNumber(e.target.value)}
+                  />
+                  <TextField
+                    fullWidth
+                    label="Alındığı Tarih"
+                    type="date"
+                    value={receivedDate}
+                    onChange={(e) => setReceivedDate(e.target.value)}
+                    slotProps={{ inputLabel: { shrink: true } }}
+                  />
+                </Box>
+
+                <TextField
+                  fullWidth
+                  label="Kimden Alındı"
+                  value={receivedFrom}
+                  onChange={(e) => setReceivedFrom(e.target.value)}
+                />
+
+                <Box sx={{ display: 'flex', gap: 2 }}>
+                  <TextField
+                    fullWidth
+                    label="İlk Ciro"
+                    value={firstEndorser}
+                    onChange={(e) => setFirstEndorser(e.target.value)}
+                  />
+                  <TextField
+                    fullWidth
+                    label="Son Ciro"
+                    value={lastEndorser}
+                    onChange={(e) => setLastEndorser(e.target.value)}
+                  />
+                </Box>
+
+                <Box sx={{ display: 'flex', gap: 2 }}>
+                  <TextField
+                    fullWidth
+                    label="Bankası"
+                    value={bankName}
+                    onChange={(e) => setBankName(e.target.value)}
+                  />
+                  <TextField
+                    fullWidth
+                    label="Şubesi"
+                    value={branchName}
+                    onChange={(e) => setBranchName(e.target.value)}
+                  />
+                </Box>
+
+                <Box sx={{ display: 'flex', gap: 2 }}>
+                  <TextField
+                    fullWidth
+                    label="Vade Tarihi"
+                    type="date"
+                    value={dueDate}
+                    onChange={(e) => setDueDate(e.target.value)}
+                    slotProps={{ inputLabel: { shrink: true } }}
+                  />
+                  <TextField
+                    fullWidth
+                    label="Hesap No"
+                    value={accountNumber}
+                    onChange={(e) => setAccountNumber(e.target.value)}
+                  />
+                </Box>
+              </Box>
+            )}
+
             <TextField
               fullWidth
               label="Ödeme Tarihi"
@@ -1862,7 +2029,12 @@ const CustomerDetail: React.FC = () => {
                 <strong>Tarih:</strong> {new Date(selectedPayment.paymentDate).toLocaleDateString('tr-TR')}
               </Typography>
               <Typography variant="body2">
-                <strong>Tip:</strong> {selectedPayment.paymentType === 'cash' ? 'Nakit' : 'Banka'}
+                <strong>Tip:</strong> {
+                  selectedPayment.paymentType === 'cash' ? 'Nakit' :
+                  selectedPayment.paymentType === 'check' ? 'Çek' :
+                  selectedPayment.paymentType === 'promissory_note' ? 'Senet' :
+                  'Banka Transferi'
+                }
               </Typography>
             </Box>
           )}

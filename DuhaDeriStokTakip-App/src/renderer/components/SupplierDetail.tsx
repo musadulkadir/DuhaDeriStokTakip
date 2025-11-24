@@ -142,6 +142,13 @@ const SupplierDetail: React.FC = () => {
     payment_date: formatDateForInput(new Date()),
   });
 
+  // Çek listesi ve seçili çek
+  const [availableChecks, setAvailableChecks] = useState<any[]>([]);
+  const [selectedCheckId, setSelectedCheckId] = useState<number | null>(null);
+  const [convertCheckDialogOpen, setConvertCheckDialogOpen] = useState(false);
+  const [convertedCurrency, setConvertedCurrency] = useState('TRY');
+  const [convertedAmount, setConvertedAmount] = useState('');
+
   // Tarih filtresi - Default: Bugünden 1 ay öncesi ile bugün
   const getDefaultStartDate = () => {
     const date = new Date();
@@ -386,7 +393,23 @@ const SupplierDetail: React.FC = () => {
     loadPurchases();
     loadPayments();
     loadMaterials();
+    loadAvailableChecks();
   }, [id]);
+
+  const loadAvailableChecks = async () => {
+    try {
+      const response = await dbAPI.getCheckTransactions();
+      if (response.success && response.data) {
+        // Sadece gelen ve bozdurulmamış çekleri göster
+        const available = response.data.filter((check: any) => 
+          check.type === 'in' && !check.is_cashed
+        );
+        setAvailableChecks(available);
+      }
+    } catch (error) {
+      console.error('Çekler yüklenirken hata:', error);
+    }
+  };
 
   // Tarih filtresi değiştiğinde alımları yeniden yükle
   useEffect(() => {
@@ -400,6 +423,12 @@ const SupplierDetail: React.FC = () => {
   const handleAddPayment = async () => {
     if (!supplier || !newPayment.amount) return;
 
+    // Çek seçiliyse çek seçimi zorunlu
+    if (newPayment.payment_method === 'check' && !selectedCheckId) {
+      setSnackbar({ open: true, message: 'Lütfen bir çek seçin', severity: 'error' });
+      return;
+    }
+
     setLoading(true);
     try {
       const paymentData = {
@@ -407,33 +436,86 @@ const SupplierDetail: React.FC = () => {
         amount: parseFloat(newPayment.amount.replace(/,/g, '')),
         currency: newPayment.currency,
         payment_type: newPayment.payment_method,
-        payment_date: newPayment.payment_date, // Kullanıcının seçtiği tarih
+        payment_date: newPayment.payment_date,
         notes: newPayment.description || undefined,
       };
 
       const response = await dbAPI.createPayment(paymentData);
       if (response.success) {
-        // Kasadan ödeme tutarını düş
-        const cashTransactionData = {
-          type: 'out' as const,
-          amount: paymentData.amount,
-          currency: paymentData.currency,
-          category: 'Tedarikçi Ödemesi',
-          description: `${supplier.name} tedarikçisine ödeme - ${paymentData.notes || 'Tedarikçi ödemesi'}`,
-          reference_type: 'supplier_payment',
-          reference_id: response.data?.id,
-          customer_id: supplier.id,
-          user: 'Sistem Kullanıcısı',
-        };
+        
+        if (newPayment.payment_method === 'check' && selectedCheckId) {
+          // Çek ile ödeme - Çek-Senet kasasından çıkış
+          const selectedCheck = availableChecks.find(c => c.id === selectedCheckId);
+          if (selectedCheck) {
+            // 1. Orijinal çeki "kullanıldı" olarak işaretle
+            await dbAPI.updateCheckTransaction(selectedCheckId, {
+              ...selectedCheck,
+              is_cashed: true,
+              cashed_at: new Date().toISOString(),
+              description: `${selectedCheck.description || ''} - Tedarikçi Ödemesi: ${supplier.name}`.trim(),
+            });
 
-        try {
-          await dbAPI.createCashTransaction(cashTransactionData);
-        } catch (error) {
-          console.error('Kasa işlemi oluşturulamadı:', error);
+            // 2. Çek-Senet kasasından çıkış işlemi
+            const isConverted = selectedCheck.currency !== paymentData.currency || 
+                               selectedCheck.amount !== paymentData.amount;
+            
+            const checkOutTransaction = {
+              type: 'out' as const,
+              check_type: selectedCheck.check_type,
+              amount: paymentData.amount,
+              currency: paymentData.currency,
+              check_number: selectedCheck.check_number,
+              received_date: selectedCheck.received_date,
+              received_from: selectedCheck.received_from,
+              first_endorser: selectedCheck.first_endorser,
+              last_endorser: selectedCheck.last_endorser,
+              bank_name: selectedCheck.bank_name,
+              branch_name: selectedCheck.branch_name,
+              due_date: selectedCheck.due_date,
+              account_number: selectedCheck.account_number,
+              description: `Tedarikçi Ödemesi - ${supplier.name}${isConverted ? ' (Çevrildi)' : ''}`,
+              customer_name: supplier.name,
+              original_transaction_id: selectedCheckId,
+              is_converted: isConverted,
+              original_currency: isConverted ? selectedCheck.currency : null,
+              original_amount: isConverted ? selectedCheck.amount : null,
+              conversion_rate: isConverted && selectedCheck.amount > 0 
+                ? paymentData.amount / selectedCheck.amount 
+                : null,
+            };
+
+            await dbAPI.addCheckTransaction(checkOutTransaction);
+          }
+        } else {
+          // Nakit/Kart/Transfer - Kasadan ödeme tutarını düş
+          const cashTransactionData = {
+            type: 'out' as const,
+            amount: paymentData.amount,
+            currency: paymentData.currency,
+            category: 'Tedarikçi Ödemesi',
+            description: `${supplier.name} tedarikçisine ödeme - ${paymentData.notes || 'Tedarikçi ödemesi'}`,
+            reference_type: 'supplier_payment',
+            reference_id: response.data?.id,
+            customer_id: supplier.id,
+            user: 'Sistem Kullanıcısı',
+          };
+
+          try {
+            await dbAPI.createCashTransaction(cashTransactionData);
+          } catch (error) {
+            console.error('Kasa işlemi oluşturulamadı:', error);
+          }
         }
 
-        setSnackbar({ open: true, message: 'Ödeme başarıyla yapıldı ve kasadan düşürüldü', severity: 'success', });
+        setSnackbar({ 
+          open: true, 
+          message: newPayment.payment_method === 'check' 
+            ? 'Ödeme başarıyla yapıldı ve çek tedarikçiye verildi' 
+            : 'Ödeme başarıyla yapıldı ve kasadan düşürüldü', 
+          severity: 'success' 
+        });
         setPaymentDialogOpen(false);
+        setSelectedCheckId(null);
         setNewPayment({
           amount: '',
           currency: 'TRY',
@@ -1632,7 +1714,10 @@ const SupplierDetail: React.FC = () => {
                 <Select
                   value={newPayment.payment_method}
                   label="Ödeme Yöntemi"
-                  onChange={(e) => setNewPayment({ ...newPayment, payment_method: e.target.value })}
+                  onChange={(e) => {
+                    setNewPayment({ ...newPayment, payment_method: e.target.value });
+                    setSelectedCheckId(null);
+                  }}
                 >
                   <MenuItem value="cash">Nakit</MenuItem>
                   <MenuItem value="card">Kart</MenuItem>
@@ -1641,6 +1726,63 @@ const SupplierDetail: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
+
+            {/* Çek Seçimi */}
+            {newPayment.payment_method === 'check' && (
+              <>
+                <Grid size={{ xs: 12 }}>
+                  <FormControl fullWidth>
+                    <InputLabel>Çek Seç</InputLabel>
+                    <Select
+                      value={selectedCheckId || ''}
+                      label="Çek Seç"
+                      onChange={(e) => {
+                        const checkId = e.target.value as number;
+                        setSelectedCheckId(checkId);
+                        const selectedCheck = availableChecks.find(c => c.id === checkId);
+                        if (selectedCheck) {
+                          setNewPayment({
+                            ...newPayment,
+                            amount: selectedCheck.amount.toString(),
+                            currency: selectedCheck.currency,
+                          });
+                          setConvertedCurrency(selectedCheck.currency);
+                          setConvertedAmount(selectedCheck.amount.toString());
+                        }
+                      }}
+                    >
+                      {availableChecks.length === 0 ? (
+                        <MenuItem value="" disabled>Kullanılabilir çek yok</MenuItem>
+                      ) : (
+                        availableChecks.map((check) => (
+                          <MenuItem key={check.id} value={check.id}>
+                            {check.check_type === 'check' ? 'Çek' : 'Senet'} #{check.check_number || check.id} - 
+                            {check.received_from || 'Bilinmiyor'} - 
+                            {check.currency === 'TRY' ? '₺' : check.currency === 'EUR' ? '€' : '$'}
+                            {Number(check.amount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                          </MenuItem>
+                        ))
+                      )}
+                    </Select>
+                  </FormControl>
+                  {selectedCheckId && (
+                    <Box sx={{ mt: 1, display: 'flex', gap: 1, alignItems: 'center' }}>
+                      <Alert severity="info" sx={{ flex: 1 }}>
+                        Seçili çek tedarikçiye verilecek ve çek-senet kasasından çıkacaktır.
+                      </Alert>
+                      <Button 
+                        variant="outlined" 
+                        size="small"
+                        onClick={() => setConvertCheckDialogOpen(true)}
+                      >
+                        Çevir
+                      </Button>
+                    </Box>
+                  )}
+                </Grid>
+              </>
+            )}
+
             <Grid size={{ xs: 12, sm: 6, }}>
               <TextField
                 fullWidth
@@ -1993,6 +2135,82 @@ const SupplierDetail: React.FC = () => {
         purchaseId={viewingPurchaseId}
       />
       {/* Snackbar for notifications */}
+      {/* Convert Check Dialog */}
+      <Dialog open={convertCheckDialogOpen} onClose={() => setConvertCheckDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Çek/Senet Çevir</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
+            <Alert severity="info">
+              Çeki farklı bir para birimine çevirerek ödeme yapabilirsiniz.
+            </Alert>
+
+            {selectedCheckId && (() => {
+              const selectedCheck = availableChecks.find(c => c.id === selectedCheckId);
+              return selectedCheck ? (
+                <Box sx={{ p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
+                    Orijinal Çek
+                  </Typography>
+                  <Typography variant="body2">
+                    {selectedCheck.check_type === 'check' ? 'Çek' : 'Senet'} #{selectedCheck.check_number || selectedCheck.id}
+                  </Typography>
+                  <Typography variant="body2">
+                    {selectedCheck.currency === 'TRY' ? '₺' : selectedCheck.currency === 'EUR' ? '€' : '$'}
+                    {Number(selectedCheck.amount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                  </Typography>
+                </Box>
+              ) : null;
+            })()}
+
+            <FormControl fullWidth>
+              <InputLabel>Çevrilecek Para Birimi</InputLabel>
+              <Select
+                value={convertedCurrency}
+                label="Çevrilecek Para Birimi"
+                onChange={(e) => setConvertedCurrency(e.target.value)}
+              >
+                <MenuItem value="TRY">₺ Türk Lirası</MenuItem>
+                <MenuItem value="USD">$ Amerikan Doları</MenuItem>
+                <MenuItem value="EUR">€ Euro</MenuItem>
+              </Select>
+            </FormControl>
+
+            <TextField
+              fullWidth
+              label="Çevrilmiş Tutar"
+              type="number"
+              value={convertedAmount}
+              onChange={(e) => setConvertedAmount(e.target.value)}
+              helperText="Çekin yeni para birimindeki karşılığını girin"
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConvertCheckDialogOpen(false)}>İptal</Button>
+          <Button 
+            onClick={() => {
+              if (convertedAmount && parseFloat(convertedAmount) > 0) {
+                setNewPayment({
+                  ...newPayment,
+                  amount: convertedAmount,
+                  currency: convertedCurrency,
+                });
+                setConvertCheckDialogOpen(false);
+                setSnackbar({ 
+                  open: true, 
+                  message: `Çek ${convertedCurrency} cinsinden çevrildi`, 
+                  severity: 'success' 
+                });
+              }
+            }}
+            variant="contained"
+            disabled={!convertedAmount || parseFloat(convertedAmount) <= 0}
+          >
+            Çevir
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}
