@@ -80,19 +80,67 @@ export const getNowISO = (): string => {
 };
 
 /**
- * Input için tarih formatı (YYYY-MM-DD)
+ * Input için tarih formatı (YYYY-MM-DD) - Timezone safe
  * @param date - Date objesi veya ISO string
  * @returns "2024-11-03" formatında tarih
  */
 export const formatDateForInput = (date: string | Date | null | undefined): string => {
-  if (!date) return new Date().toISOString().split('T')[0];
+  if (!date) {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
   
   try {
     const d = new Date(date);
-    return d.toISOString().split('T')[0];
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   } catch {
-    return new Date().toISOString().split('T')[0];
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   }
+};
+
+/**
+ * Bugünün tarihini YYYY-MM-DD formatında döndürür - Timezone safe
+ * @returns "2024-11-03" formatında tarih
+ */
+export const getTodayDateString = (): string => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+/**
+ * Bu ayın YYYY-MM formatını döndürür - Timezone safe
+ * @returns "2024-11" formatında ay
+ */
+export const getCurrentMonthString = (): string => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
+};
+
+/**
+ * Tarih string'ini veritabanı için formatlar - Timezone safe
+ * Kullanıcının seçtiği tarihi veritabanına kaydederken kullan
+ * @param dateString - "2024-11-03" formatında tarih
+ * @returns "2024-11-03" formatında tarih (PostgreSQL DATE için)
+ */
+export const dateStringToISO = (dateString: string): string => {
+  // PostgreSQL DATE tipine sadece YYYY-MM-DD formatı yeterli
+  // Saat bilgisi eklemeye gerek yok, bu timezone sorunlarını önler
+  return dateString;
 };
 
 /**

@@ -89,7 +89,7 @@ const ProductManagement: React.FC = () => {
   // Kategoriler ve renkler artık koddan geliyor (veritabanından değil)
   const PRODUCT_CATEGORIES = ['Keçi', 'Koyun', 'Keçi-Oğlak', 'Keçi-Palto', 'Çoraplık', 'Baskılık'];
   const MATERIAL_CATEGORIES = ['Boya', 'Cila', 'Binder'];
-  
+
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [newProduct, setNewProduct] = useState<NewProduct>({
     category: '',
@@ -246,13 +246,25 @@ const ProductManagement: React.FC = () => {
   const handleAddProduct = async () => {
     console.log('Form data:', newProduct);
 
+    // Validasyon kontrolleri
+    if (!newProduct.category) {
+      setSnackbar({ open: true, message: 'Lütfen deri türünü seçin', severity: 'error' });
+      return;
+    }
+
+    const stockQuantity = newProduct.stock_quantity ? parseFormattedNumber(newProduct.stock_quantity) : 0;
+    if (stockQuantity <= 0) {
+      setSnackbar({ open: true, message: 'Lütfen geçerli bir stok miktarı girin', severity: 'error' });
+      return;
+    }
+
     setLoading(true);
     try {
       const productData = {
         name: newProduct.category || 'Deri',
         category: newProduct.category,
         color: undefined, // Renk artık yok
-        stock_quantity: newProduct.stock_quantity ? parseFormattedNumber(newProduct.stock_quantity) : 0,
+        stock_quantity: stockQuantity,
         description: newProduct.description || undefined
       };
 
@@ -676,92 +688,111 @@ const ProductManagement: React.FC = () => {
       </Box>
 
       {/* Quick Stats */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: 3, mb: 4 }}>
-        <Card>
-          <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
-            <Avatar sx={{ bgcolor: 'primary.main', mr: 2 }}>
-              <InventoryIcon />
-            </Avatar>
-            <Box>
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                {filteredProducts.length}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Deri Ürünü
-              </Typography>
-            </Box>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
-            <Avatar sx={{ bgcolor: 'success.main', mr: 2 }}>
-              <TrendingUp />
-            </Avatar>
-            <Box>
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                {(() => {
-                  try {
-                    const total = (products || []).reduce((sum, p) => sum + (Number(p?.stock_quantity) || 0), 0) || 0;
-                    const materialTotal = (materials || []).reduce((sum, m) => sum + (Number(m?.stock_quantity) || 0), 0) || 0;
-                    return safeToLocaleString(total + materialTotal) + ' adet';
-                  } catch (e) {
-                    return '0 adet';
-                  }
-                })()}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Toplam Stok
-              </Typography>
-            </Box>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
-            <Avatar sx={{ bgcolor: 'info.main', mr: 2 }}>
-              <InventoryIcon />
-            </Avatar>
-            <Box>
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                {filteredMaterials.length}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Malzeme Türü
-              </Typography>
-            </Box>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
-            <Avatar sx={{ bgcolor: 'warning.main', mr: 2 }}>
-              <TrendingDown />
-            </Avatar>
-            <Box>
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                {(products || []).filter(p => (Number(p.stock_quantity) || 0) < 5).length +
-                  (materials || []).filter(m => (Number(m.stock_quantity) || 0) < 5).length}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Düşük Stok
-              </Typography>
-            </Box>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
-            <Avatar sx={{ bgcolor: 'secondary.main', mr: 2 }}>
-              <FilterListIcon />
-            </Avatar>
-            <Box>
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                {new Set((products || []).map(p => p.category)).size}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Deri Türü
-              </Typography>
-            </Box>
-          </CardContent>
-        </Card>
-      </Box>
+      <Grid container spacing={1} sx={{ mb: 4 }}>
+        {/* İlk Satır - 3 Kart */}
+        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+          <Card>
+            <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
+              <Avatar sx={{ bgcolor: 'primary.main', mr: 2, width: 48, height: 48 }}>
+                <InventoryIcon />
+              </Avatar>
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  {products.length}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Deri Ürünü
+                </Typography>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+          <Card>
+            <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
+              <Avatar sx={{ bgcolor: 'info.main', mr: 2, width: 48, height: 48 }}>
+                <InventoryIcon />
+              </Avatar>
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  {materials.length}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Malzeme Ürünü
+                </Typography>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+          <Card>
+            <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
+              <Avatar sx={{ bgcolor: 'warning.main', mr: 2, width: 48, height: 48 }}>
+                <TrendingDown />
+              </Avatar>
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  {(products || []).filter(p => (Number(p.stock_quantity) || 0) < 5).length +
+                    (materials || []).filter(m => (Number(m.stock_quantity) || 0) < 5).length}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Düşük Stok Uyarısı
+                </Typography>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* İkinci Satır - 2 Kart (Stok Bilgileri) */}
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Card>
+            <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
+              <Avatar sx={{ bgcolor: 'success.main', mr: 2, width: 48, height: 48 }}>
+                <TrendingUp />
+              </Avatar>
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  {(() => {
+                    try {
+                      const total = (products || []).reduce((sum, p) => sum + (Number(p?.stock_quantity) || 0), 0) || 0;
+                      return safeToLocaleString(total);
+                    } catch (e) {
+                      return '0';
+                    }
+                  })()}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Toplam Deri Stoğu (adet)
+                </Typography>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Card>
+            <CardContent sx={{ display: 'flex', alignItems: 'center', p: 2 }}>
+              <Avatar sx={{ bgcolor: 'secondary.main', mr: 2, width: 48, height: 48 }}>
+                <TrendingUp />
+              </Avatar>
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  {(() => {
+                    try {
+                      const materialTotal = (materials || []).reduce((sum, m) => sum + (Number(m?.stock_quantity) || 0), 0) || 0;
+                      return safeToLocaleString(materialTotal);
+                    } catch (e) {
+                      return '0';
+                    }
+                  })()}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Toplam Malzeme Stoğu (kg)
+                </Typography>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
 
       {/* Search and Toggle */}
       <Card sx={{ mb: 3 }}>
@@ -1035,12 +1066,13 @@ const ProductManagement: React.FC = () => {
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
             <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
               <Box sx={{ flex: '1 1 200px', minWidth: '200px' }}>
-                <FormControl fullWidth>
-                  <InputLabel>Deri Türü</InputLabel>
+                <FormControl fullWidth required>
+                  <InputLabel>Deri Türü *</InputLabel>
                   <Select
                     value={newProduct.category}
-                    label="Deri Türü"
+                    label="Deri Türü *"
                     onChange={(e) => setNewProduct({ ...newProduct, category: e.target.value })}
+                    required
                   >
                     {PRODUCT_CATEGORIES
                       .filter(cat => ['Keçi', 'Koyun'].includes(cat))
@@ -1066,7 +1098,8 @@ const ProductManagement: React.FC = () => {
               <Box sx={{ flex: '1 1 200px', minWidth: '200px' }}>
                 <TextField
                   fullWidth
-                  label="Başlangıç Stok (Adet)"
+                  required
+                  label="Başlangıç Stok (Adet) *"
                   type="text"
                   value={newProduct.stock_quantity}
                   onChange={(e) => {
@@ -1075,6 +1108,7 @@ const ProductManagement: React.FC = () => {
                   }}
                   helperText="Stoğa eklenecek deri miktarını adet cinsinden giriniz (Örn: 1,000)"
                   placeholder="Örn: 1,000"
+                  error={newProduct.stock_quantity !== '' && parseFormattedNumber(newProduct.stock_quantity) <= 0}
                 />
               </Box>
             </Box>
@@ -1098,7 +1132,11 @@ const ProductManagement: React.FC = () => {
               entry_date: new Date().toISOString().split('T')[0],
             });
           }}>İptal</Button>
-          <Button onClick={handleAddProduct} variant="contained" disabled={loading}>
+          <Button
+            onClick={handleAddProduct}
+            variant="contained"
+            disabled={loading || !newProduct.category || !newProduct.stock_quantity || parseFormattedNumber(newProduct.stock_quantity) <= 0}
+          >
             {loading ? 'Ekleniyor...' : 'Ekle'}
           </Button>
         </DialogActions>
@@ -1407,6 +1445,7 @@ const ProductManagement: React.FC = () => {
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         onClose={() => setSnackbar({ ...snackbar, open: false })}
         sx={{ zIndex: 9999 }}
       >

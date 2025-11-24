@@ -172,6 +172,23 @@ class DatabaseAPI {
     return window.require("electron").ipcRenderer.invoke('cash:delete', id);
   }
 
+  // Check/Promissory Note operations
+  async getCheckTransactions(): Promise<ApiResponse<any[]>> {
+    return window.require("electron").ipcRenderer.invoke('get-check-transactions');
+  }
+
+  async addCheckTransaction(transaction: any): Promise<ApiResponse<any>> {
+    return window.require("electron").ipcRenderer.invoke('add-check-transaction', transaction);
+  }
+
+  async updateCheckTransaction(id: number, transaction: any): Promise<ApiResponse<any>> {
+    return window.require("electron").ipcRenderer.invoke('update-check-transaction', id, transaction);
+  }
+
+  async deleteCheckTransaction(id: number): Promise<ApiResponse<boolean>> {
+    return window.require("electron").ipcRenderer.invoke('delete-check-transaction', id);
+  }
+
   // Employee operations
   async getEmployeesCount(): Promise<ApiResponse<{
     countEmployees: number;

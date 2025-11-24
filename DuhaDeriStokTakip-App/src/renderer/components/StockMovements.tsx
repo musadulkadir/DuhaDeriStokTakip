@@ -666,7 +666,7 @@ const StockMovements: React.FC = () => {
                       </TableCell>
                       <TableCell align="center">
                         <Chip
-                          label={`${movement.movement_type === 'out' ? '-' : '+'}${(movement.quantity || 0).toLocaleString('tr-TR')}`}
+                          label={`${movement.movement_type === 'out' ? '-' : '+'}${Number(movement.quantity || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                           color={movement.movement_type === 'out' ? 'error' : 'success'}
                           size="small"
                           sx={{ fontWeight: 600 }}
@@ -805,7 +805,7 @@ const StockMovements: React.FC = () => {
                           )}
                         </Box>
                         <Chip
-                          label={`${(product.stock_quantity || 0).toLocaleString('tr-TR')} ${product.unit || 'adet'}`}
+                          label={`${Number(product.stock_quantity || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${product.unit || 'adet'}`}
                           size="small"
                           variant="outlined"
                           sx={{ ml: 'auto' }}
@@ -886,6 +886,7 @@ const StockMovements: React.FC = () => {
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         sx={{ zIndex: 9999 }}
         onClose={() => setSnackbar({ ...snackbar, open: false })}
       >

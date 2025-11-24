@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -159,6 +159,17 @@ const CustomerDetail: React.FC = () => {
   const [paymentCurrency, setPaymentCurrency] = useState('TRY');
   const [paymentNotes, setPaymentNotes] = useState('');
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
+  
+  // Çek detay alanları
+  const [checkNumber, setCheckNumber] = useState('');
+  const [receivedDate, setReceivedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [receivedFrom, setReceivedFrom] = useState('');
+  const [firstEndorser, setFirstEndorser] = useState('');
+  const [lastEndorser, setLastEndorser] = useState('');
+  const [bankName, setBankName] = useState('');
+  const [branchName, setBranchName] = useState('');
+  const [dueDate, setDueDate] = useState('');
+  const [accountNumber, setAccountNumber] = useState('');
 
   // Sale dialog states
   const [saleDialogOpen, setSaleDialogOpen] = useState(false);
@@ -193,6 +204,8 @@ const CustomerDetail: React.FC = () => {
   const [filteredSales, setFilteredSales] = useState<CustomerSale[]>([]);
   const [filteredPayments, setFilteredPayments] = useState<CustomerPayment[]>([]);
   const [previousBalance, setPreviousBalance] = useState({ TRY: 0, USD: 0, EUR: 0 });
+  const [salesTotals, setSalesTotals] = useState<Record<string, number>>({});
+  const [paymentsTotals, setPaymentsTotals] = useState<Record<string, number>>({});
 
   // Pagination states
   const [salesPage, setSalesPage] = useState(0);
@@ -604,6 +617,33 @@ const CustomerDetail: React.FC = () => {
 
     setFilteredSales(filtered);
     setFilteredPayments(filteredPaymentsData);
+
+    // Toplam hesapla (backend'den gelen verilerle)
+    const salesTotalsCalc: Record<string, number> = {};
+    const processedSales = new Set<number>();
+
+    filtered.forEach(sale => {
+      if (!processedSales.has(sale.id)) {
+        processedSales.add(sale.id);
+        const currency = sale.currency || 'TRY';
+        if (!salesTotalsCalc[currency]) {
+          salesTotalsCalc[currency] = 0;
+        }
+        salesTotalsCalc[currency] += Number(sale.totalAmount) || 0;
+      }
+    });
+
+    const paymentsTotalsCalc: Record<string, number> = {};
+    filteredPaymentsData.forEach(payment => {
+      const currency = payment.currency || 'TRY';
+      if (!paymentsTotalsCalc[currency]) {
+        paymentsTotalsCalc[currency] = 0;
+      }
+      paymentsTotalsCalc[currency] += Number(payment.amount) || 0;
+    });
+
+    setSalesTotals(salesTotalsCalc);
+    setPaymentsTotals(paymentsTotalsCalc);
   }, [sales, payments, startDate, endDate]);
 
   // Ödeme ekle
@@ -633,21 +673,56 @@ const CustomerDetail: React.FC = () => {
 
       // Müşteri bakiyesi artık ödeme kayıtlarından hesaplanıyor, ayrı güncelleme gerekmiyor
 
-      // Kasa işlemi oluştur (gelir)
-      const cashTransactionData = {
-        type: 'in' as const,
-        amount,
-        currency: paymentCurrency,
-        category: 'Müşteri Ödemesi',
-        description: `${customer.name} - Ödeme`,
-        reference_type: 'payment',
-        reference_id: paymentResponse.data.id,
-        customer_id: customerId,
-        user: 'Kasa Kullanıcısı',
-        date: new Date(paymentDate).toISOString(),
-      };
+      // Ödeme tipine göre kasa veya çek-senet kasasına kaydet
+      if (paymentType === 'check' || paymentType === 'promissory_note') {
+        // Çek veya Senet - check_transactions tablosuna kaydet
+        const checkTransactionData = {
+          type: 'in' as const,
+          amount,
+          currency: paymentCurrency,
+          check_type: paymentType === 'check' ? 'check' : 'promissory_note',
+          check_number: checkNumber || null,
+          received_date: receivedDate || null,
+          received_from: receivedFrom || null,
+          first_endorser: firstEndorser || null,
+          last_endorser: lastEndorser || null,
+          bank_name: bankName || null,
+          branch_name: branchName || null,
+          due_date: dueDate || null,
+          account_number: accountNumber || null,
+          description: paymentNotes || `${customer.name} - ${paymentType === 'check' ? 'Çek' : 'Senet'} Ödemesi`,
+          customer_id: customerId,
+          customer_name: customer.name,
+          payment_id: paymentResponse.data.id, // Ödeme ID'sini ekle
+        };
 
-      await dbAPI.createCashTransaction(cashTransactionData);
+        console.log('🔵 Çek/Senet işlemi kaydediliyor:', checkTransactionData);
+        const checkResponse = await dbAPI.addCheckTransaction(checkTransactionData);
+        console.log('🔵 Çek/Senet işlemi yanıtı:', checkResponse);
+        
+        if (!checkResponse.success) {
+          throw new Error(checkResponse.error || 'Çek/Senet işlemi kaydedilemedi');
+        }
+      } else {
+        // Nakit veya Banka Transferi - cash_transactions tablosuna kaydet
+        const cashTransactionData = {
+          type: 'in' as const,
+          amount,
+          currency: paymentCurrency,
+          category: 'Müşteri Ödemesi',
+          description: `${customer.name} - ${paymentType === 'cash' ? 'Nakit' : 'Banka Transferi'} Ödemesi`,
+          reference_type: 'payment',
+          reference_id: paymentResponse.data.id,
+          customer_id: customerId,
+          user: 'Kasa Kullanıcısı',
+          date: new Date(paymentDate).toISOString(),
+        };
+
+        const cashResponse = await dbAPI.createCashTransaction(cashTransactionData);
+        if (!cashResponse.success) {
+          throw new Error(cashResponse.error || 'Kasa işlemi kaydedilemedi');
+        }
+      }
 
       setSnackbar({ open: true, message: 'Ödeme başarıyla kaydedildi', severity: 'success' });
 
@@ -657,6 +732,15 @@ const CustomerDetail: React.FC = () => {
       setPaymentCurrency('TRY');
       setPaymentNotes('');
       setPaymentDate(new Date().toISOString().split('T')[0]);
+      setCheckNumber('');
+      setReceivedDate(new Date().toISOString().split('T')[0]);
+      setReceivedFrom('');
+      setFirstEndorser('');
+      setLastEndorser('');
+      setBankName('');
+      setBranchName('');
+      setDueDate('');
+      setAccountNumber('');
       setPaymentDialogOpen(false);
 
       // Verileri yeniden yükle
@@ -672,41 +756,23 @@ const CustomerDetail: React.FC = () => {
     }
   };
 
-  // PDF İndir
-  const handleDownloadPDF = () => {
+  // PDF İndir - useCallback ile sarmalanmış (previousBalance güncellemelerini yakalamak için)
+  const handleDownloadPDF = useCallback(() => {
     if (!customer) return;
 
-    // Önceki bakiyeyi yeniden hesapla (PDF için)
-    let pdfPreviousBalance = { TRY: 0, USD: 0, EUR: 0 };
-    if (startDate) {
-      const start = new Date(startDate);
+    // ✅ DÜZELTME: UI'da zaten hesaplanmış previousBalance state'ini kullan
+    // useCallback dependency'leri sayesinde her previousBalance güncellendiğinde bu fonksiyon yeniden oluşturulur
+    const pdfPreviousBalance = previousBalance;
 
-      const previousSales = sales.filter(sale => {
-        const saleDate = new Date(sale.date);
-        return saleDate < start;
-      });
-
-      const previousPayments = payments.filter(payment => {
-        const paymentDate = new Date(payment.paymentDate);
-        return paymentDate < start;
-      });
-
-      const prevSalesTRY = previousSales.filter(s => (s.currency || 'TRY') === 'TRY').reduce((sum, s) => sum + Number(s.totalAmount), 0);
-      const prevSalesUSD = previousSales.filter(s => (s.currency || 'TRY') === 'USD').reduce((sum, s) => sum + Number(s.totalAmount), 0);
-      const prevSalesEUR = previousSales.filter(s => (s.currency || 'TRY') === 'EUR').reduce((sum, s) => sum + Number(s.totalAmount), 0);
-
-      const prevPaymentsTRY = previousPayments.filter(p => (p.currency || 'TRY') === 'TRY').reduce((sum, p) => sum + Number(p.amount), 0);
-      const prevPaymentsUSD = previousPayments.filter(p => (p.currency || 'TRY') === 'USD').reduce((sum, p) => sum + Number(p.amount), 0);
-      const prevPaymentsEUR = previousPayments.filter(p => (p.currency || 'TRY') === 'EUR').reduce((sum, p) => sum + Number(p.amount), 0);
-
-      pdfPreviousBalance = {
-        TRY: prevSalesTRY - prevPaymentsTRY,
-        USD: prevSalesUSD - prevPaymentsUSD,
-        EUR: prevSalesEUR - prevPaymentsEUR
-      };
-
-      console.log('📄 PDF Önceki Bakiye:', pdfPreviousBalance);
-    }
+    console.log('📄 PDF İndiriliyor - Önceki Bakiye:', {
+      previousBalance: pdfPreviousBalance,
+      startDate,
+      endDate,
+      salesCount: sales.length,
+      paymentsCount: payments.length,
+      filteredSalesCount: filteredSales.length,
+      filteredPaymentsCount: filteredPayments.length
+    });
 
     // Sayı formatla (NaN kontrolü ile)
     const formatNumber = (num: any) => {
@@ -770,6 +836,25 @@ const CustomerDetail: React.FC = () => {
 
     // Sol taraf: Önceki Bakiye (eğer tarih filtresi varsa)
     if (startDate) {
+      // ✅ Ödemeler uygulandıktan sonra kalan bakiyeyi hesapla (UI ile tutarlı)
+      let remainingPrevBalanceTRY = pdfPreviousBalance.TRY;
+      let remainingPrevBalanceUSD = pdfPreviousBalance.USD;
+      let remainingPrevBalanceEUR = pdfPreviousBalance.EUR;
+
+      filteredPayments.forEach(payment => {
+        const currency = payment.currency || 'TRY';
+        if (currency === 'TRY' && remainingPrevBalanceTRY > 0) {
+          const appliedToPrevious = Math.min(payment.amount, remainingPrevBalanceTRY);
+          remainingPrevBalanceTRY -= appliedToPrevious;
+        } else if (currency === 'USD' && remainingPrevBalanceUSD > 0) {
+          const appliedToPrevious = Math.min(payment.amount, remainingPrevBalanceUSD);
+          remainingPrevBalanceUSD -= appliedToPrevious;
+        } else if (currency === 'EUR' && remainingPrevBalanceEUR > 0) {
+          const appliedToPrevious = Math.min(payment.amount, remainingPrevBalanceEUR);
+          remainingPrevBalanceEUR -= appliedToPrevious;
+        }
+      });
+
       doc.setFontSize(8);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(70, 130, 180);
@@ -778,7 +863,7 @@ const CustomerDetail: React.FC = () => {
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(100, 100, 100);
       doc.setFontSize(7);
-      const prevText = `TL ${formatNumber(pdfPreviousBalance.TRY)} | USD ${formatNumber(pdfPreviousBalance.USD)} | EUR ${formatNumber(pdfPreviousBalance.EUR)}`;
+      const prevText = `TL ${formatNumber(remainingPrevBalanceTRY)} | USD ${formatNumber(remainingPrevBalanceUSD)} | EUR ${formatNumber(remainingPrevBalanceEUR)}`;
       doc.text(prevText, 18, yPos + 8);
 
       // Ayırıcı çizgi
@@ -826,6 +911,19 @@ const CustomerDetail: React.FC = () => {
         `${isReturn ? '-' : ''}${formatNumber(Math.abs(sale.totalAmount))} ${currencySymbol}`
       ];
     });
+
+    // Toplam satırı ekle
+    if (salesTableData.length > 0) {
+      const totalText = Object.entries(salesTotals)
+        .filter(([_, value]) => value > 0)
+        .map(([currency, value]) => {
+          const symbol = currency === 'TRY' ? 'TL' : currency;
+          return `${symbol} ${formatNumber(value)}`;
+        })
+        .join(' | ');
+
+      salesTableData.push(['', 'TOPLAM SATIS', totalText]);
+    }
 
     autoTable(doc, {
       startY: yPos + 3,
@@ -882,7 +980,8 @@ const CustomerDetail: React.FC = () => {
     const paymentsTableData = filteredPayments.map(payment => {
       const paymentTypeText = payment.paymentType === 'cash' ? 'Nakit' :
         payment.paymentType === 'bank_transfer' ? 'Havale' :
-          payment.paymentType === 'check' ? 'Cek' : 'Diger';
+          payment.paymentType === 'check' ? 'Çek' :
+            payment.paymentType === 'promissory_note' ? 'Senet' : 'Diğer';
       const currencySymbol = payment.currency === 'TRY' ? 'TL' : payment.currency === 'USD' ? 'USD' : 'EUR';
 
       return [
@@ -892,6 +991,19 @@ const CustomerDetail: React.FC = () => {
         toAscii(payment.notes || '-')
       ];
     });
+
+    // Toplam satırı ekle
+    if (paymentsTableData.length > 0) {
+      const totalText = Object.entries(paymentsTotals)
+        .filter(([_, value]) => value > 0)
+        .map(([currency, value]) => {
+          const symbol = currency === 'TRY' ? 'TL' : currency;
+          return `${symbol} ${formatNumber(value)}`;
+        })
+        .join(' | ');
+
+      paymentsTableData.push(['', 'TOPLAM ODEME', totalText, '']);
+    }
 
     autoTable(doc, {
       startY: finalY + 13,
@@ -936,7 +1048,7 @@ const CustomerDetail: React.FC = () => {
     doc.save(fileName);
 
     setSnackbar({ open: true, message: 'PDF basariyla indirildi', severity: 'success' });
-  };
+  }, [customer, previousBalance, startDate, endDate, sales, payments, filteredSales, filteredPayments, salesTotals, paymentsTotals]); // ✅ Dependency array eklendi
 
   // Satış fonksiyonları
   const addItemToSale = () => {
@@ -1086,19 +1198,39 @@ const CustomerDetail: React.FC = () => {
     if (!selectedPayment || !customer || !selectedPayment.id) return;
 
     try {
-      // Önce ilgili kasa işlemini bul ve sil
-      try {
-        const cashResponse = await dbAPI.getCashTransactions();
-        if (cashResponse.success && cashResponse.data) {
-          const relatedCashTransaction = cashResponse.data.find(
-            (t: any) => t.reference_type === 'payment' && t.reference_id === selectedPayment.id
-          );
-          if (relatedCashTransaction && relatedCashTransaction.id) {
-            await dbAPI.deleteCashTransaction(relatedCashTransaction.id);
+      // Ödeme tipi çek veya senet mi kontrol et
+      if (selectedPayment.paymentType === 'check' || selectedPayment.paymentType === 'promissory_note') {
+        // Çek-Senet kasasından ilgili işlemi bul ve sil (payment_id ile)
+        try {
+          const checkResponse = await dbAPI.getCheckTransactions();
+          if (checkResponse.success && checkResponse.data) {
+            const relatedCheckTransaction = checkResponse.data.find(
+              (t: any) => t.payment_id === selectedPayment.id
+            );
+            
+            if (relatedCheckTransaction && relatedCheckTransaction.id) {
+              await dbAPI.deleteCheckTransaction(relatedCheckTransaction.id);
+              console.log('İlgili çek/senet işlemi silindi:', relatedCheckTransaction.id);
+            }
           }
+        } catch (error) {
+          console.error('Çek/Senet işlemi silinirken hata:', error);
         }
-      } catch (error) {
-        console.error('Kasa işlemi silinirken hata:', error);
+      } else {
+        // Nakit/Banka ödemesi - Kasa işlemini bul ve sil
+        try {
+          const cashResponse = await dbAPI.getCashTransactions();
+          if (cashResponse.success && cashResponse.data) {
+            const relatedCashTransaction = cashResponse.data.find(
+              (t: any) => t.reference_type === 'payment' && t.reference_id === selectedPayment.id
+            );
+            if (relatedCashTransaction && relatedCashTransaction.id) {
+              await dbAPI.deleteCashTransaction(relatedCashTransaction.id);
+            }
+          }
+        } catch (error) {
+          console.error('Kasa işlemi silinirken hata:', error);
+        }
       }
 
       // Ödeme kaydını sil
@@ -1107,7 +1239,13 @@ const CustomerDetail: React.FC = () => {
         throw new Error(deleteResponse.error || 'Ödeme silinemedi');
       }
 
-      setSnackbar({ open: true, message: 'Ödeme ve ilgili kasa işlemi başarıyla silindi', severity: 'success' });
+      setSnackbar({ 
+        open: true, 
+        message: selectedPayment.paymentType === 'check' || selectedPayment.paymentType === 'promissory_note'
+          ? 'Ödeme ve ilgili çek/senet işlemi başarıyla silindi'
+          : 'Ödeme ve ilgili kasa işlemi başarıyla silindi', 
+        severity: 'success' 
+      });
       setDeletePaymentDialogOpen(false);
       setSelectedPayment(null);
 
@@ -1564,7 +1702,7 @@ const CustomerDetail: React.FC = () => {
       {/* Tables */}
       <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
         {/* Sales History */}
-        <Box sx={{ flex: '1 1 600px', minWidth: '600px' }}>
+        <Box sx={{ flex: '1 1 450px', minWidth: '450px' }}>
           <Card>
             <CardContent>
               <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
@@ -1655,6 +1793,39 @@ const CustomerDetail: React.FC = () => {
                       </TableRow>
                     )}
 
+                    {/* Toplam Satır */}
+                    {filteredSales.length > 0 && (
+                      <>
+                        <TableRow>
+                          <TableCell colSpan={4} sx={{ py: 0.5 }} />
+                        </TableRow>
+                        <TableRow sx={{ bgcolor: 'primary.light', '& td': { borderTop: '2px solid', borderColor: 'primary.main' } }}>
+                          <TableCell colSpan={3} sx={{ fontWeight: 700, fontSize: '1rem' }}>
+                            TOPLAM SATIŞ
+                          </TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 700, fontSize: '1rem' }}>
+                            <Box>
+                              {salesTotals.TRY > 0 && (
+                                <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                                  ₺{salesTotals.TRY.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                                </Typography>
+                              )}
+                              {salesTotals.USD > 0 && (
+                                <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                                  ${salesTotals.USD.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                                </Typography>
+                              )}
+                              {salesTotals.EUR > 0 && (
+                                <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                                  €{salesTotals.EUR.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                                </Typography>
+                              )}
+                            </Box>
+                          </TableCell>
+                        </TableRow>
+                      </>
+                    )}
+
                     {/* Geçmiş Aylardan Kalan Bakiye */}
                     {startDate && (() => {
                       console.log('🎨 UI Render - previousBalance:', previousBalance);
@@ -1743,7 +1914,7 @@ const CustomerDetail: React.FC = () => {
         </Box>
 
         {/* Payment History */}
-        <Box sx={{ flex: '1 1 400px', minWidth: '400px' }}>
+        <Box sx={{ flex: '1 1 400px', minWidth: '450px' }}>
           <Card>
             <CardContent>
               <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
@@ -1817,9 +1988,12 @@ const CustomerDetail: React.FC = () => {
                               </TableCell>
                               <TableCell>
                                 <Chip
-                                  label={payment.paymentType === 'cash' ? 'Nakit' : (
-                                    payment.paymentType === 'bank_transfer' ? 'Banka' : 'Çek'
-                                  )}
+                                  label={
+                                    payment.paymentType === 'cash' ? 'Nakit' :
+                                    payment.paymentType === 'bank_transfer' ? 'Banka' :
+                                    payment.paymentType === 'check' ? 'Çek' :
+                                    payment.paymentType === 'promissory_note' ? 'Senet' : 'Diğer'
+                                  }
                                   variant="outlined"
                                   size="small"
                                 />
@@ -1846,6 +2020,39 @@ const CustomerDetail: React.FC = () => {
                           Henüz ödeme kaydı bulunmuyor
                         </TableCell>
                       </TableRow>
+                    )}
+
+                    {/* Toplam Satır */}
+                    {filteredPayments.length > 0 && (
+                      <>
+                        <TableRow>
+                          <TableCell colSpan={5} sx={{ py: 0.5 }} />
+                        </TableRow>
+                        <TableRow sx={{ bgcolor: 'success.light', '& td': { borderTop: '2px solid', borderColor: 'success.main' } }}>
+                          <TableCell colSpan={2} sx={{ fontWeight: 700, fontSize: '1rem' }}>
+                            TOPLAM ÖDEME
+                          </TableCell>
+                          <TableCell align="right" colSpan={3} sx={{ fontWeight: 700, fontSize: '1rem' }}>
+                            <Box>
+                              {paymentsTotals.TRY > 0 && (
+                                <Typography variant="body2" sx={{ fontWeight: 700, color: 'success.dark' }}>
+                                  ₺{paymentsTotals.TRY.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                                </Typography>
+                              )}
+                              {paymentsTotals.USD > 0 && (
+                                <Typography variant="body2" sx={{ fontWeight: 700, color: 'success.dark' }}>
+                                  ${paymentsTotals.USD.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                                </Typography>
+                              )}
+                              {paymentsTotals.EUR > 0 && (
+                                <Typography variant="body2" sx={{ fontWeight: 700, color: 'success.dark' }}>
+                                  €{paymentsTotals.EUR.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                                </Typography>
+                              )}
+                            </Box>
+                          </TableCell>
+                        </TableRow>
+                      </>
                     )}
                   </TableBody>
                 </Table>
@@ -1916,8 +2123,90 @@ const CustomerDetail: React.FC = () => {
                 <MenuItem value="cash">Nakit</MenuItem>
                 <MenuItem value="bank_transfer">Banka Transferi</MenuItem>
                 <MenuItem value="check">Çek</MenuItem>
+                <MenuItem value="promissory_note">Senet</MenuItem>
               </Select>
             </FormControl>
+
+            {/* Çek/Senet Detay Alanları */}
+            {(paymentType === 'check' || paymentType === 'promissory_note') && (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, p: 2, bgcolor: 'grey.50', borderRadius: 2 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'primary.main' }}>
+                  {paymentType === 'check' ? 'Çek' : 'Senet'} Detayları
+                </Typography>
+                
+                <Box sx={{ display: 'flex', gap: 2 }}>
+                  <TextField
+                    fullWidth
+                    label={paymentType === 'check' ? 'Çek No' : 'Senet No'}
+                    value={checkNumber}
+                    onChange={(e) => setCheckNumber(e.target.value)}
+                  />
+                  <TextField
+                    fullWidth
+                    label="Alındığı Tarih"
+                    type="date"
+                    value={receivedDate}
+                    onChange={(e) => setReceivedDate(e.target.value)}
+                    slotProps={{ inputLabel: { shrink: true } }}
+                  />
+                </Box>
+
+                <TextField
+                  fullWidth
+                  label="Kimden Alındı"
+                  value={receivedFrom}
+                  onChange={(e) => setReceivedFrom(e.target.value)}
+                />
+
+                <Box sx={{ display: 'flex', gap: 2 }}>
+                  <TextField
+                    fullWidth
+                    label="İlk Ciro"
+                    value={firstEndorser}
+                    onChange={(e) => setFirstEndorser(e.target.value)}
+                  />
+                  <TextField
+                    fullWidth
+                    label="Son Ciro"
+                    value={lastEndorser}
+                    onChange={(e) => setLastEndorser(e.target.value)}
+                  />
+                </Box>
+
+                <Box sx={{ display: 'flex', gap: 2 }}>
+                  <TextField
+                    fullWidth
+                    label="Bankası"
+                    value={bankName}
+                    onChange={(e) => setBankName(e.target.value)}
+                  />
+                  <TextField
+                    fullWidth
+                    label="Şubesi"
+                    value={branchName}
+                    onChange={(e) => setBranchName(e.target.value)}
+                  />
+                </Box>
+
+                <Box sx={{ display: 'flex', gap: 2 }}>
+                  <TextField
+                    fullWidth
+                    label="Vade Tarihi"
+                    type="date"
+                    value={dueDate}
+                    onChange={(e) => setDueDate(e.target.value)}
+                    slotProps={{ inputLabel: { shrink: true } }}
+                  />
+                  <TextField
+                    fullWidth
+                    label="Hesap No"
+                    value={accountNumber}
+                    onChange={(e) => setAccountNumber(e.target.value)}
+                  />
+                </Box>
+              </Box>
+            )}
+
             <TextField
               fullWidth
               label="Ödeme Tarihi"
@@ -1973,7 +2262,12 @@ const CustomerDetail: React.FC = () => {
                 <strong>Tarih:</strong> {new Date(selectedPayment.paymentDate).toLocaleDateString('tr-TR')}
               </Typography>
               <Typography variant="body2">
-                <strong>Tip:</strong> {selectedPayment.paymentType === 'cash' ? 'Nakit' : 'Banka'}
+                <strong>Tip:</strong> {
+                  selectedPayment.paymentType === 'cash' ? 'Nakit' :
+                  selectedPayment.paymentType === 'check' ? 'Çek' :
+                  selectedPayment.paymentType === 'promissory_note' ? 'Senet' :
+                  'Banka Transferi'
+                }
               </Typography>
             </Box>
           )}
@@ -2453,6 +2747,7 @@ const CustomerDetail: React.FC = () => {
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         sx={{ zIndex: 9999 }}
         onClose={() => setSnackbar({ ...snackbar, open: false })}
       >

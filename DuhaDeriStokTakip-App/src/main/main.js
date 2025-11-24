@@ -15,7 +15,9 @@ let s3Backup = new S3Backup();
 // Create database tables
 async function createTables() {
   try {
-    // Customers table
+    // ============================================
+    // CUSTOMERS TABLE (Müşteriler ve Tedarikçiler)
+    // ============================================
     await query(`
       CREATE TABLE IF NOT EXISTS customers (
         id SERIAL PRIMARY KEY,
@@ -32,15 +34,9 @@ async function createTables() {
       )
     `);
 
-    // Mevcut tabloya yeni kolonları ekle (eğer yoksa)
-    try {
-      await query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS balance_usd DECIMAL(15,2) DEFAULT 0`);
-      await query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS balance_eur DECIMAL(15,2) DEFAULT 0`);
-    } catch (err) {
-      // Kolonlar zaten varsa hata vermez
-    }
-
-    // Products table (sadece satış için ürünler)
+    // ============================================
+    // PRODUCTS TABLE (Satış Ürünleri: Keçi, Koyun)
+    // ============================================
     await query(`
       CREATE TABLE IF NOT EXISTS products (
         id SERIAL PRIMARY KEY,
@@ -55,7 +51,9 @@ async function createTables() {
       )
     `);
 
-    // Materials table (sadece alım için malzemeler)
+    // ============================================
+    // MATERIALS TABLE (Alım Malzemeleri: Boya, Cila, Binder)
+    // ============================================
     await query(`
       CREATE TABLE IF NOT EXISTS materials (
         id SERIAL PRIMARY KEY,
@@ -75,15 +73,9 @@ async function createTables() {
       )
     `);
 
-    // Add supplier columns to materials table if they don't exist
-    try {
-      await query(`ALTER TABLE materials ADD COLUMN IF NOT EXISTS supplier_id INTEGER REFERENCES customers(id)`);
-      await query(`ALTER TABLE materials ADD COLUMN IF NOT EXISTS supplier_name VARCHAR(255)`);
-    } catch (err) {
-      // Columns already exist
-    }
-
-    // Employees table
+    // ============================================
+    // EMPLOYEES TABLE (Çalışanlar)
+    // ============================================
     await query(`
       CREATE TABLE IF NOT EXISTS employees (
         id SERIAL PRIMARY KEY,
@@ -92,7 +84,7 @@ async function createTables() {
         phone VARCHAR(50),
         position VARCHAR(100),
         salary DECIMAL(15,2) DEFAULT 0,
-        salary_currency VARCHAR(10) DEFAULT 'USD',
+        salary_currency VARCHAR(10) DEFAULT 'TRY',
         balance DECIMAL(15,2) DEFAULT 0,
         hire_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
@@ -101,7 +93,9 @@ async function createTables() {
       )
     `);
 
-    // Sales table
+    // ============================================
+    // SALES TABLE (Satışlar)
+    // ============================================
     await query(`
       CREATE TABLE IF NOT EXISTS sales (
         id SERIAL PRIMARY KEY,
@@ -111,11 +105,14 @@ async function createTables() {
         payment_status VARCHAR(20) DEFAULT 'pending',
         sale_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         notes TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
-    // Sale items table
+    // ============================================
+    // SALE ITEMS TABLE (Satış Kalemleri)
+    // ============================================
     await query(`
       CREATE TABLE IF NOT EXISTS sale_items (
         id SERIAL PRIMARY KEY,
@@ -132,47 +129,20 @@ async function createTables() {
       )
     `);
 
-    // Mevcut tabloya eksik kolonları ekle (eğer yoksa)
-    try {
-      await query(`ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS unit VARCHAR(10) DEFAULT 'desi'`);
-      await query(`ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS product_name VARCHAR(255)`);
-      await query(`ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS color VARCHAR(50)`);
-    } catch (err) {
-      // Kolonlar zaten varsa hata vermez
-    }
-
-    // Stock movements table (for products only)
+    // ============================================
+    // STOCK MOVEMENTS TABLE (Ürün Stok Hareketleri)
+    // ============================================
     await query(`
       CREATE TABLE IF NOT EXISTS stock_movements (
         id SERIAL PRIMARY KEY,
         product_id INTEGER REFERENCES products(id),
-        movement_type VARCHAR(50) NOT NULL,
+        movement_type VARCHAR(50) NOT NULL CHECK (movement_type IN ('in', 'out', 'adjustment')),
         quantity INTEGER NOT NULL,
         previous_stock INTEGER,
         new_stock INTEGER,
         reference_type VARCHAR(50),
         reference_id INTEGER,
-        customer_id INTEGER,
-        unit_price DECIMAL(15,2),
-        total_amount DECIMAL(15,2),
-        notes TEXT,
-        "user" VARCHAR(255),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // Material movements table (for materials only)
-    await query(`
-      CREATE TABLE IF NOT EXISTS material_movements (
-        id SERIAL PRIMARY KEY,
-        material_id INTEGER NOT NULL REFERENCES materials(id) ON DELETE CASCADE,
-        movement_type VARCHAR(50) NOT NULL,
-        quantity INTEGER NOT NULL,
-        previous_stock INTEGER,
-        new_stock INTEGER,
-        reference_type VARCHAR(50),
-        reference_id INTEGER,
-        supplier_id INTEGER REFERENCES customers(id),
+        customer_id INTEGER REFERENCES customers(id),
         unit_price DECIMAL(15,2),
         total_amount DECIMAL(15,2),
         currency VARCHAR(10) DEFAULT 'TRY',
@@ -182,18 +152,9 @@ async function createTables() {
       )
     `);
 
-    // Mevcut tabloya currency kolonunu ekle (eğer yoksa)
-    try {
-      await query(`ALTER TABLE material_movements ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'TRY'`);
-    } catch (err) {
-      // Kolon zaten varsa hata vermez
-    }
-
-    // Create indexes for material_movements
-    await query(`CREATE INDEX IF NOT EXISTS idx_material_movements_material_id ON material_movements(material_id)`);
-    await query(`CREATE INDEX IF NOT EXISTS idx_material_movements_created_at ON material_movements(created_at)`);
-
-    // Customer payments table
+    // ============================================
+    // CUSTOMER PAYMENTS TABLE (Müşteri Ödemeleri)
+    // ============================================
     await query(`
       CREATE TABLE IF NOT EXISTS customer_payments (
         id SERIAL PRIMARY KEY,
@@ -207,59 +168,9 @@ async function createTables() {
       )
     `);
 
-    // Cash transactions table
-    await query(`
-      CREATE TABLE IF NOT EXISTS cash_transactions (
-        id SERIAL PRIMARY KEY,
-        type VARCHAR(10) NOT NULL CHECK (type IN ('in', 'out')),
-        amount DECIMAL(15,2) NOT NULL,
-        currency VARCHAR(10) DEFAULT 'USD',
-        category VARCHAR(100) NOT NULL,
-        description TEXT NOT NULL,
-        reference_type VARCHAR(50),
-        reference_id INTEGER,
-        customer_id INTEGER REFERENCES customers(id),
-        "user" VARCHAR(255) NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // Employee payments table
-    await query(`
-      CREATE TABLE IF NOT EXISTS employee_payments (
-        id SERIAL PRIMARY KEY,
-        employee_id INTEGER REFERENCES employees(id),
-        amount DECIMAL(15,2) NOT NULL,
-        currency VARCHAR(10) DEFAULT 'USD',
-        payment_type VARCHAR(20) DEFAULT 'salary',
-        payment_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        notes TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // NOT: Categories ve Colors tabloları kaldırıldı
-    // Artık kategoriler ve renkler koddan geliyor (ProductManagement.tsx)
-
-    // Settings table
-    await query(`
-      CREATE TABLE IF NOT EXISTS settings (
-        id SERIAL PRIMARY KEY,
-        key VARCHAR(100) NOT NULL UNIQUE,
-        value TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // Default şifre ekle (eğer yoksa)
-    await query(`
-      INSERT INTO settings (key, value)
-      VALUES ('app_password', 'admin123')
-      ON CONFLICT (key) DO NOTHING
-    `);
-
-    // Purchases table
+    // ============================================
+    // PURCHASES TABLE (Alımlar)
+    // ============================================
     await query(`
       CREATE TABLE IF NOT EXISTS purchases (
         id SERIAL PRIMARY KEY,
@@ -274,37 +185,240 @@ async function createTables() {
       )
     `);
 
-    // Purchase items table
+    // ============================================
+    // PURCHASE ITEMS TABLE (Alım Kalemleri)
+    // ============================================
     await query(`
       CREATE TABLE IF NOT EXISTS purchase_items (
         id SERIAL PRIMARY KEY,
         purchase_id INTEGER REFERENCES purchases(id) ON DELETE CASCADE,
-        product_id INTEGER REFERENCES products(id),
-        quantity INTEGER NOT NULL,
+        product_id INTEGER,
+        quantity DECIMAL(10,2) NOT NULL,
         unit_price DECIMAL(15,2) NOT NULL,
         total_price DECIMAL(15,2) NOT NULL,
+        brand TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
-    // Returns table
+    // ============================================
+    // CASH TRANSACTIONS TABLE (Kasa İşlemleri)
+    // ============================================
     await query(`
-      CREATE TABLE IF NOT EXISTS returns (
+      CREATE TABLE IF NOT EXISTS cash_transactions (
         id SERIAL PRIMARY KEY,
-        sale_id INTEGER REFERENCES sales(id),
+        type VARCHAR(10) NOT NULL CHECK (type IN ('in', 'out')),
+        amount DECIMAL(15,2) NOT NULL,
+        currency VARCHAR(10) DEFAULT 'TRY',
+        category VARCHAR(100) NOT NULL,
+        description TEXT NOT NULL,
+        reference_type VARCHAR(50),
+        reference_id INTEGER,
         customer_id INTEGER REFERENCES customers(id),
-        product_id INTEGER REFERENCES products(id),
+        "user" VARCHAR(255) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // ============================================
+    // CHECK TRANSACTIONS TABLE (Çek-Senet İşlemleri)
+    // ============================================
+    await query(`
+      CREATE TABLE IF NOT EXISTS check_transactions (
+        id SERIAL PRIMARY KEY,
+        type VARCHAR(10) NOT NULL CHECK (type IN ('in', 'out')),
+        amount DECIMAL(15,2) NOT NULL,
+        currency VARCHAR(3) DEFAULT 'TRY',
+        check_type VARCHAR(20) NOT NULL CHECK (check_type IN ('check', 'promissory_note')),
+        check_number VARCHAR(50),
+        received_date DATE,
+        received_from VARCHAR(255),
+        first_endorser VARCHAR(255),
+        last_endorser VARCHAR(255),
+        bank_name VARCHAR(100),
+        branch_name VARCHAR(100),
+        due_date DATE,
+        account_number VARCHAR(50),
+        description TEXT,
+        customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+        customer_name VARCHAR(255),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Check transactions indeksleri
+    await query(`
+      CREATE INDEX IF NOT EXISTS idx_check_transactions_type ON check_transactions(type)
+    `);
+    await query(`
+      CREATE INDEX IF NOT EXISTS idx_check_transactions_check_type ON check_transactions(check_type)
+    `);
+    await query(`
+      CREATE INDEX IF NOT EXISTS idx_check_transactions_customer_id ON check_transactions(customer_id)
+    `);
+    await query(`
+      CREATE INDEX IF NOT EXISTS idx_check_transactions_created_at ON check_transactions(created_at)
+    `);
+
+    // Check transactions için yeni kolonları ekle (eğer yoksa)
+    try {
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS received_date DATE`);
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS received_from VARCHAR(255)`);
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS first_endorser VARCHAR(255)`);
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS last_endorser VARCHAR(255)`);
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS branch_name VARCHAR(100)`);
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS account_number VARCHAR(50)`);
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS is_cashed BOOLEAN DEFAULT FALSE`);
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS cashed_at TIMESTAMP`);
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS original_transaction_id INTEGER`);
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS payment_id INTEGER`);
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS is_converted BOOLEAN DEFAULT FALSE`);
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS original_currency VARCHAR(3)`);
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS original_amount DECIMAL(15,2)`);
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS conversion_rate DECIMAL(10,4)`);
+    } catch (error) {
+      console.log('Check transactions kolonları zaten mevcut veya eklenemedi:', error.message);
+    }
+
+    // ============================================
+    // MATERIAL MOVEMENTS TABLE (Malzeme Stok Hareketleri)
+    // ============================================
+    await query(`
+      CREATE TABLE IF NOT EXISTS material_movements (
+        id SERIAL PRIMARY KEY,
+        material_id INTEGER REFERENCES materials(id) ON DELETE CASCADE,
+        movement_type VARCHAR(20) CHECK (movement_type IN ('in', 'out', 'adjustment')),
         quantity DECIMAL(10,2) NOT NULL,
-        unit_price DECIMAL(15,2) NOT NULL,
-        total_amount DECIMAL(15,2) NOT NULL,
-        return_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        previous_stock DECIMAL(10,2),
+        new_stock DECIMAL(10,2),
+        reference_type VARCHAR(50),
+        reference_id INTEGER,
+        supplier_id INTEGER REFERENCES customers(id),
+        unit_price DECIMAL(15,2),
+        total_amount DECIMAL(15,2),
+        currency VARCHAR(10) DEFAULT 'TRY',
+        notes TEXT,
+        "user" VARCHAR(255),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // ============================================
+    // EMPLOYEE PAYMENTS TABLE (Çalışan Ödemeleri)
+    // ============================================
+    await query(`
+      CREATE TABLE IF NOT EXISTS employee_payments (
+        id SERIAL PRIMARY KEY,
+        employee_id INTEGER REFERENCES employees(id),
+        amount DECIMAL(15,2) NOT NULL,
+        currency VARCHAR(10) DEFAULT 'TRY',
+        payment_type VARCHAR(20) DEFAULT 'salary',
+        payment_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         notes TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
+    // ============================================
+    // SETTINGS TABLE (Uygulama Ayarları)
+    // ============================================
+    await query(`
+      CREATE TABLE IF NOT EXISTS settings (
+        id SERIAL PRIMARY KEY,
+        key VARCHAR(100) NOT NULL UNIQUE,
+        value TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Default ayarları ekle
+    await query(`
+      INSERT INTO settings (key, value)
+      VALUES 
+        ('app_password', NULL),
+        ('password_enabled', 'false')
+      ON CONFLICT (key) DO NOTHING
+    `);
+
+    // // Returns table
+    // await query(`
+    //   CREATE TABLE IF NOT EXISTS returns (
+    //     id SERIAL PRIMARY KEY,
+    //     sale_id INTEGER REFERENCES sales(id),
+    //     customer_id INTEGER REFERENCES customers(id),
+    //     product_id INTEGER REFERENCES products(id),
+    //     quantity DECIMAL(10,2) NOT NULL,
+    //     unit_price DECIMAL(15,2) NOT NULL,
+    //     total_amount DECIMAL(15,2) NOT NULL,
+    //     return_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    //     notes TEXT,
+    //     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    //   )
+    // `);
+
     // NOT: Default categories ve colors kaldırıldı
     // Artık bunlar koddan geliyor (ProductManagement.tsx)
+
+    // ============================================
+    // PERFORMANS İYİLEŞTİRMELERİ - INDEX'LER
+    // ============================================
+
+    // Customers indexes
+    await query(`CREATE INDEX IF NOT EXISTS idx_customers_type ON customers(type)`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_customers_name ON customers(name)`);
+
+    // Sales indexes
+    await query(`CREATE INDEX IF NOT EXISTS idx_sales_customer_id ON sales(customer_id)`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_sales_sale_date ON sales(sale_date DESC)`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_sales_created_at ON sales(created_at DESC)`);
+
+    // Sale items indexes
+    await query(`CREATE INDEX IF NOT EXISTS idx_sale_items_sale_id ON sale_items(sale_id)`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_sale_items_product_id ON sale_items(product_id)`);
+
+    // Purchases indexes
+    await query(`CREATE INDEX IF NOT EXISTS idx_purchases_supplier_id ON purchases(supplier_id)`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_purchases_purchase_date ON purchases(purchase_date DESC)`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_purchases_created_at ON purchases(created_at DESC)`);
+
+    // Purchase items indexes
+    await query(`CREATE INDEX IF NOT EXISTS idx_purchase_items_purchase_id ON purchase_items(purchase_id)`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_purchase_items_product_id ON purchase_items(product_id)`);
+
+    // Customer payments indexes
+    await query(`CREATE INDEX IF NOT EXISTS idx_customer_payments_customer_id ON customer_payments(customer_id)`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_customer_payments_payment_date ON customer_payments(payment_date DESC)`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_customer_payments_created_at ON customer_payments(created_at DESC)`);
+
+    // Cash transactions indexes
+    await query(`CREATE INDEX IF NOT EXISTS idx_cash_transactions_type ON cash_transactions(type)`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_cash_transactions_customer_id ON cash_transactions(customer_id)`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_cash_transactions_created_at ON cash_transactions(created_at DESC)`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_cash_transactions_reference ON cash_transactions(reference_type, reference_id)`);
+
+    // Stock movements indexes
+    await query(`CREATE INDEX IF NOT EXISTS idx_stock_movements_product_id ON stock_movements(product_id)`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_stock_movements_created_at ON stock_movements(created_at DESC)`);
+
+    // Material movements indexes
+    await query(`CREATE INDEX IF NOT EXISTS idx_material_movements_material_id ON material_movements(material_id)`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_material_movements_supplier_id ON material_movements(supplier_id)`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_material_movements_created_at ON material_movements(created_at DESC)`);
+
+    // Materials indexes
+    await query(`CREATE INDEX IF NOT EXISTS idx_materials_supplier_id ON materials(supplier_id)`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_materials_category ON materials(category)`);
+
+    // Products indexes
+    await query(`CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)`);
+
+    // Employee payments indexes
+    await query(`CREATE INDEX IF NOT EXISTS idx_employee_payments_employee_id ON employee_payments(employee_id)`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_employee_payments_payment_date ON employee_payments(payment_date DESC)`);
+
+    console.log('✅ All indexes created successfully');
 
     // Migration: products tablosundaki type='material' kayıtları materials'a taşı
     try {
@@ -1236,33 +1350,16 @@ ipcMain.handle('materials:create', async (_, material) => {
       material.color || null,
       material.brand || null,
       material.code || null,
-      material.stock_quantity || 0,
+      material.stock_quantity || 0, // ✅ DÜZELTME: Kullanıcının girdiği stok miktarını kullan
       material.unit || 'kg',
       material.description || null,
       material.supplier_id || null,
       material.supplier_name || null
     ]);
 
-    // İlk stok girişi varsa material_movements kaydı oluştur
-    if (result && result.stock_quantity > 0) {
-      await query(`
-        INSERT INTO material_movements (
-          material_id, movement_type, quantity, previous_stock, new_stock,
-          reference_type, supplier_id, notes, "user", created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-      `, [
-        result.id,
-        'in',
-        result.stock_quantity,
-        0,
-        result.stock_quantity,
-        'initial_stock',
-        material.supplier_id || null,
-        `İlk stok girişi - ${result.name}`,
-        'Sistem Kullanıcısı',
-        new Date().toISOString()
-      ]);
-    }
+    // ✅ DÜZELTME: Otomatik stok hareketi oluşturma kaldırıldı
+    // Stok hareketi sadece gerçek alım yapıldığında (purchases:create) oluşturulacak
+    // Bu sayede çift kayıt sorunu çözülüyor
 
     return { success: true, data: result };
   } catch (error) {
@@ -1272,6 +1369,12 @@ ipcMain.handle('materials:create', async (_, material) => {
 
 ipcMain.handle('materials:update', async (_, id, material) => {
   try {
+    console.log('🔧 materials:update çağrıldı:', {
+      id,
+      stock_quantity: material.stock_quantity,
+      timestamp: new Date()
+    });
+
     // Dinamik olarak güncellenecek alanları belirle
     const updates = [];
     const values = [];
@@ -1328,9 +1431,17 @@ ipcMain.handle('materials:update', async (_, id, material) => {
       return { success: false, error: 'Malzeme bulunamadı' };
     }
 
+    console.log('✅ materials:update tamamlandı:', {
+      id: result.id,
+      new_stock: result.stock_quantity
+    });
+
+    // ⚠️ DİKKAT: Burada stok hareketi OLUŞTURULMAMALI
+    // Stok hareketi sadece purchases:create'de oluşturulmalı
+
     return { success: true, data: result };
   } catch (error) {
-    console.error('materials:update error:', error);
+    console.error('❌ materials:update error:', error);
     return { success: false, error: error.message };
   }
 });
@@ -2011,10 +2122,36 @@ ipcMain.handle('customer-payments:get-all', async () => {
   }
 });
 
-ipcMain.handle('customer-payments:get-by-customer', async (_, customerId) => {
+ipcMain.handle('customer-payments:get-by-customer', async (_, customerId, startDate, endDate) => {
   try {
-    const result = await queryAll('SELECT * FROM customer_payments WHERE customer_id = $1 ORDER BY created_at DESC', [customerId]);
-    return { success: true, data: result };
+    let queryText = 'SELECT * FROM customer_payments WHERE customer_id = $1';
+    const params = [customerId];
+
+    // Tarih filtresi ekle
+    if (startDate && endDate) {
+      queryText += ' AND DATE(payment_date) BETWEEN $2 AND $3';
+      params.push(startDate, endDate);
+    }
+
+    queryText += ' ORDER BY created_at DESC';
+
+    const result = await queryAll(queryText, params);
+
+    // Toplam hesapla (para birimi bazında)
+    const totals = result.reduce((acc, payment) => {
+      const currency = payment.currency || 'TRY';
+      if (!acc[currency]) {
+        acc[currency] = 0;
+      }
+      acc[currency] += parseFloat(payment.amount) || 0;
+      return acc;
+    }, {});
+
+    return {
+      success: true,
+      data: result,
+      totals: totals // { TRY: 1000, USD: 500, EUR: 200 }
+    };
   } catch (error) {
     return { success: false, error: error.message };
   }
@@ -2400,6 +2537,12 @@ ipcMain.handle('purchases:get-by-id', async (_, id) => {
 
 ipcMain.handle('purchases:create', async (_, purchase) => {
   try {
+    console.log('🚀 purchases:create BAŞLADI:', {
+      supplier_id: purchase.supplier_id,
+      items_count: purchase.items?.length,
+      timestamp: new Date()
+    });
+
     // Start transaction
     await query('BEGIN');
 
@@ -2507,6 +2650,18 @@ ipcMain.handle('purchases:create', async (_, purchase) => {
 
         // Create movement record - use material_movements for materials, stock_movements for products
         if (isMaterial) {
+          console.log('📦 Material movement oluşturuluyor:', {
+            material_id: item.product_id,
+            productName,
+            quantity: item.quantity,
+            previousStock,
+            newStock,
+            purchase_id: purchaseResult.id,
+            timestamp: new Date()
+          });
+
+          // ✅ created_at açıkça belirtilmedi - PostgreSQL DEFAULT CURRENT_TIMESTAMP kullanacak
+          // Bu sayede timezone tutarlı olacak
           await query(`
             INSERT INTO material_movements (
               material_id, movement_type, quantity, previous_stock, new_stock, 
@@ -2528,6 +2683,8 @@ ipcMain.handle('purchases:create', async (_, purchase) => {
             `Alım - ${productName} - Tedarikçi: ${supplierName}`,
             'Sistem'
           ]);
+
+          console.log('✅ Material movement oluşturuldu');
         } else {
           await query(`
             INSERT INTO stock_movements (
@@ -2722,5 +2879,276 @@ ipcMain.handle('backup:get-last-date', async () => {
     return { lastDate };
   } catch (error) {
     return { lastDate: null };
+  }
+});
+
+// Yedek geri yükleme
+ipcMain.handle('backup:restore', async (_, filePath) => {
+  try {
+    const { exec } = require('child_process');
+    const path = require('path');
+    const fs = require('fs');
+
+    const dbHost = process.env.DB_HOST || 'localhost';
+    const dbPort = process.env.DB_PORT || '5432';
+    const dbName = process.env.DB_NAME || 'duha_deri_db';
+    const dbUser = process.env.DB_USER || 'postgres';
+    const dbPassword = process.env.DB_PASSWORD || '';
+
+    // Dosya uzantısını kontrol et
+    const fileExtension = path.extname(filePath).toLowerCase();
+    const isSqlFile = fileExtension === '.sql';
+
+    // Windows için PostgreSQL araçları
+    const pgRestorePath = `"C:\\Program Files\\PostgreSQL\\16\\bin\\pg_restore.exe"`;
+    const psqlPath = `"C:\\Program Files\\PostgreSQL\\16\\bin\\psql.exe"`;
+
+    // Veritabanı yönetim komutları
+    const dropCommand = `${psqlPath} -h ${dbHost} -p ${dbPort} -U ${dbUser} -d postgres -c "DROP DATABASE IF EXISTS ${dbName};"`;
+    const createCommand = `${psqlPath} -h ${dbHost} -p ${dbPort} -U ${dbUser} -d postgres -c "CREATE DATABASE ${dbName};"`;
+
+    const env = { ...process.env };
+    if (dbPassword) env.PGPASSWORD = dbPassword;
+
+    return new Promise((resolve, reject) => {
+      console.log(`📦 Yedek geri yükleniyor: ${filePath}`);
+      console.log(`📄 Dosya formatı: ${isSqlFile ? 'SQL' : 'Custom (binary)'}`);
+
+      // 1. Veritabanını sil
+      exec(dropCommand, { env }, (error) => {
+        if (error) {
+          console.error('Drop database error:', error);
+          // Devam et, veritabanı zaten yoksa hata verir
+        }
+
+        // 2. Yeni veritabanı oluştur
+        exec(createCommand, { env }, (error) => {
+          if (error) {
+            console.error('Create database error:', error);
+            reject(new Error('Veritabanı oluşturulamadı'));
+            return;
+          }
+
+          // 3. Yedeği geri yükle - dosya formatına göre
+          let restoreCommand;
+
+          if (isSqlFile) {
+            // SQL dosyası için psql kullan
+            restoreCommand = `${psqlPath} -h ${dbHost} -p ${dbPort} -U ${dbUser} -d ${dbName} -f "${filePath}"`;
+            console.log('🔄 SQL dosyası geri yükleniyor (psql)...');
+          } else {
+            // Custom format için pg_restore kullan
+            restoreCommand = `${pgRestorePath} -h ${dbHost} -p ${dbPort} -U ${dbUser} -d ${dbName} -v "${filePath}"`;
+            console.log('🔄 Custom format geri yükleniyor (pg_restore)...');
+          }
+
+          exec(restoreCommand, { env, maxBuffer: 50 * 1024 * 1024 }, (error, stdout, stderr) => {
+            if (error) {
+              console.error('Restore error:', error);
+              console.error('stderr:', stderr);
+              reject(new Error('Yedek geri yüklenemedi: ' + error.message));
+              return;
+            }
+
+            if (stderr && !stderr.includes('WARNING')) {
+              console.warn('⚠️ Restore warnings:', stderr);
+            }
+
+            console.log('✅ Yedek başarıyla geri yüklendi');
+            resolve({
+              success: true,
+              message: 'Yedek başarıyla geri yüklendi'
+            });
+          });
+        });
+      });
+    });
+  } catch (error) {
+    console.error('Restore handler error:', error);
+    return {
+      success: false,
+      message: error.message
+    };
+  }
+});
+
+
+// Müşteriye özel satışları getir (toplam ile)
+ipcMain.handle('sales:get-by-customer', async (_, customerId, startDate, endDate) => {
+  try {
+    let queryText = `
+      SELECT 
+        s.*,
+        c.name as customer_name,
+        si.product_id,
+        si.product_name,
+        si.color,
+        si.quantity_pieces,
+        si.quantity_desi,
+        si.unit_price_per_desi,
+        si.total_price,
+        si.unit,
+        p.category
+      FROM sales s
+      LEFT JOIN customers c ON s.customer_id = c.id
+      LEFT JOIN sale_items si ON s.id = si.sale_id
+      LEFT JOIN products p ON si.product_id = p.id
+      WHERE s.customer_id = $1
+    `;
+
+    const params = [customerId];
+
+    // Tarih filtresi ekle
+    if (startDate && endDate) {
+      queryText += ' AND DATE(s.sale_date) BETWEEN $2 AND $3';
+      params.push(startDate, endDate);
+    }
+
+    queryText += ' ORDER BY s.created_at DESC';
+
+    const result = await queryAll(queryText, params);
+
+    // Toplam hesapla (para birimi bazında)
+    const totals = {};
+    const processedSales = new Set();
+
+    result.forEach(row => {
+      // Her satışı sadece bir kez say (sale_items join'i nedeniyle tekrar edebilir)
+      if (!processedSales.has(row.id)) {
+        processedSales.add(row.id);
+        const currency = row.currency || 'TRY';
+        if (!totals[currency]) {
+          totals[currency] = 0;
+        }
+        totals[currency] += parseFloat(row.total_amount) || 0;
+      }
+    });
+
+    return {
+      success: true,
+      data: result,
+      totals: totals // { TRY: 5000, USD: 1000, EUR: 500 }
+    };
+  } catch (error) {
+    console.error('sales:get-by-customer error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// ==================== ÇEK-SENET İŞLEMLERİ ====================
+
+// Çek-Senet işlemlerini getir
+ipcMain.handle('get-check-transactions', async () => {
+  try {
+    const result = await queryAll(`
+      SELECT ct.*, c.name as customer_name 
+      FROM check_transactions ct
+      LEFT JOIN customers c ON ct.customer_id = c.id
+      ORDER BY ct.created_at DESC
+    `);
+    return { success: true, data: result };
+  } catch (error) {
+    console.error('Çek işlemleri getirme hatası:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Çek-Senet işlemi ekle
+ipcMain.handle('add-check-transaction', async (event, transaction) => {
+  try {
+    const result = await queryOne(`
+      INSERT INTO check_transactions (
+        type, amount, currency, check_type, check_number, received_date, 
+        received_from, first_endorser, last_endorser, bank_name, branch_name,
+        due_date, account_number, description, customer_id, customer_name, payment_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+      RETURNING *
+    `, [
+      transaction.type,
+      transaction.amount,
+      transaction.currency || 'TRY',
+      transaction.check_type,
+      transaction.check_number,
+      transaction.received_date,
+      transaction.received_from,
+      transaction.first_endorser,
+      transaction.last_endorser,
+      transaction.bank_name,
+      transaction.branch_name,
+      transaction.due_date,
+      transaction.account_number,
+      transaction.description,
+      transaction.customer_id,
+      transaction.customer_name,
+      transaction.payment_id || null
+    ]);
+    return { success: true, data: result };
+  } catch (error) {
+    console.error('Çek işlemi ekleme hatası:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Çek-Senet işlemi güncelle
+ipcMain.handle('update-check-transaction', async (event, id, transaction) => {
+  try {
+    const result = await queryOne(`
+      UPDATE check_transactions 
+      SET type = $1, amount = $2, currency = $3, check_type = $4, 
+          check_number = $5, received_date = $6, received_from = $7,
+          first_endorser = $8, last_endorser = $9, bank_name = $10, 
+          branch_name = $11, due_date = $12, account_number = $13,
+          description = $14, customer_name = $15, is_cashed = $16,
+          cashed_at = $17, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $18
+      RETURNING *
+    `, [
+      transaction.type,
+      transaction.amount,
+      transaction.currency || 'TRY',
+      transaction.check_type,
+      transaction.check_number,
+      transaction.received_date,
+      transaction.received_from,
+      transaction.first_endorser,
+      transaction.last_endorser,
+      transaction.bank_name,
+      transaction.branch_name,
+      transaction.due_date,
+      transaction.account_number,
+      transaction.description,
+      transaction.customer_name,
+      transaction.is_cashed || false,
+      transaction.cashed_at || null,
+      id
+    ]);
+    
+    if (!result) {
+      return { success: false, error: 'İşlem bulunamadı' };
+    }
+    
+    return { success: true, data: result };
+  } catch (error) {
+    console.error('Çek işlemi güncelleme hatası:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Çek-Senet işlemi sil
+ipcMain.handle('delete-check-transaction', async (event, id) => {
+  try {
+    const result = await queryOne(
+      'DELETE FROM check_transactions WHERE id = $1 RETURNING *',
+      [id]
+    );
+    
+    if (!result) {
+      return { success: false, error: 'İşlem bulunamadı' };
+    }
+    
+    return { success: true, data: result };
+  } catch (error) {
+    console.error('Çek işlemi silme hatası:', error);
+    return { success: false, error: error.message };
   }
 });

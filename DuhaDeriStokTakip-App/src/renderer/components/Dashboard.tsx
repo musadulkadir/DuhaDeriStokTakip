@@ -24,6 +24,7 @@ import { formatDateTime } from '../utils/dateUtils';
 interface DashboardStats {
   totalStock: number;
   totalCustomers: number;
+  totalEmployees: number;
 }
 
 const safeToLocaleString = (value: any): string => {
@@ -53,6 +54,7 @@ const Dashboard: React.FC = () => {
   const [stats, setStats] = useState<DashboardStats>({
     totalStock: 0,
     totalCustomers: 0,
+    totalEmployees: 0,
   });
   const [recentActivities, setRecentActivities] = useState<RecentActivity[]>([]);
   const [lowStockItems, setLowStockItems] = useState<LowStockItem[]>([]);
@@ -60,22 +62,26 @@ const Dashboard: React.FC = () => {
   const loadDashboardData = async () => {
     setLoading(true);
     try {
-      const [productsResponse, customersResponse, cashResponse] = await Promise.all([
+      const [productsResponse, customersResponse, cashResponse, employeesResponse] = await Promise.all([
         dbAPI.getProducts(),
         dbAPI.getCustomers(),
-        dbAPI.getCashTransactions()
+        dbAPI.getCashTransactions(),
+        dbAPI.getEmployees()
       ]);
 
       const products = productsResponse.success ? productsResponse.data : [];
       const customers = customersResponse.success ? customersResponse.data : [];
       const cashTransactions = cashResponse.success ? cashResponse.data : [];
+      const employees = employeesResponse.success ? employeesResponse.data : [];
 
       const totalStock = products.reduce((sum: number, p: Product) => sum + (Number(p.stock_quantity) || 0), 0);
       const totalCustomers = customers.length;
+      const totalEmployees = employees.filter((e: any) => e.status === 'active').length;
 
       setStats({
         totalStock,
         totalCustomers,
+        totalEmployees,
       });
 
       const activities: RecentActivity[] = (cashTransactions || [])
@@ -139,13 +145,13 @@ const Dashboard: React.FC = () => {
     {
       title: 'Müşteri Sayısı',
       value: stats.totalCustomers.toString(),
-      subtitle: 'aktif müşteri',
+      subtitle: 'aktif partner',
       icon: <People />,
       color: '#2196F3',
     },
     {
       title: 'Çalışan Sayısı',
-      value: '5',
+      value: stats.totalEmployees.toString(),
       subtitle: 'aktif çalışan',
       icon: <People />,
       color: '#4CAF50',

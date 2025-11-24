@@ -19,6 +19,7 @@ import SalesManagement from './components/SalesManagement';
 import SupplierManagement from './components/SupplierManagement';
 import StockMovements from './components/StockMovements';
 import CashManagement from './components/CashManagement';
+import CheckManagement from './components/CheckManagement';
 import Reports from './components/Reports';
 import Settings from './components/Settings';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -345,6 +346,7 @@ export default function App() {
                   <Route path="/sales" element={<SalesManagement />} />
                   <Route path="/suppliers" element={<SupplierManagement />} />
                   <Route path="/cash" element={<CashManagement />} />
+                  <Route path="/checks" element={<CheckManagement />} />
                   <Route path="/movements" element={<StockMovements />} />
                   <Route path="/reports" element={<Reports />} />
                   <Route path="/settings" element={<Settings />} />

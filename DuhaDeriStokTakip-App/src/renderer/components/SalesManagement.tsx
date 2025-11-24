@@ -37,7 +37,7 @@ import Pagination from './common/Pagination';
 import { dbAPI } from '../services/api';
 import { Product, Customer } from '../../main/database/models';
 import { useNavigate } from 'react-router-dom';
-import { formatDate, formatDateTime, getNowISO } from '../utils/dateUtils';
+import { formatDate, formatDateTime, getNowISO, getTodayDateString } from '../utils/dateUtils';
 import CurrencySelect from './common/CurrencySelect';
 import { DEFAULT_CURRENCIES } from '../constants/currencies';
 import SaleDetailModal from './SaleDetailModal';
@@ -166,7 +166,11 @@ const SalesManagement: React.FC = () => {
             // Tarih formatını düzelt - Date objesi veya string olabilir
             let dateStr = row.sale_date;
             if (typeof dateStr === 'object' && dateStr !== null) {
-              dateStr = new Date(dateStr).toISOString().split('T')[0];
+              const d = new Date(dateStr);
+              const year = d.getFullYear();
+              const month = String(d.getMonth() + 1).padStart(2, '0');
+              const day = String(d.getDate()).padStart(2, '0');
+              dateStr = `${year}-${month}-${day}`;
             } else if (typeof dateStr === 'string' && dateStr.includes('T')) {
               dateStr = dateStr.split('T')[0];
             }
@@ -226,8 +230,15 @@ const SalesManagement: React.FC = () => {
     loadCustomers();
   }, []);
 
+  // Debounce için tarih filtrelerini geciktir
   useEffect(() => {
-    loadSales();
+    // 2 saniye gecikme ile loadSales çağır
+    const timeoutId = setTimeout(() => {
+      loadSales();
+    }, 2000);
+
+    // Cleanup: Yeni değişiklik gelirse önceki timer'ı iptal et
+    return () => clearTimeout(timeoutId);
   }, [currentPage, itemsPerPage, startDate, endDate]);
 
   // Pagination handlers
@@ -470,8 +481,11 @@ const SalesManagement: React.FC = () => {
                   onClick={() => {
                     const date = new Date();
                     date.setMonth(date.getMonth() - 1);
-                    setStartDate(date.toISOString().split('T')[0]);
-                    setEndDate(new Date().toISOString().split('T')[0]);
+                    const year = date.getFullYear();
+                    const month = String(date.getMonth() + 1).padStart(2, '0');
+                    const day = String(date.getDate()).padStart(2, '0');
+                    setStartDate(`${year}-${month}-${day}`);
+                    setEndDate(getTodayDateString());
                   }}
                   size="small"
                 >
@@ -482,8 +496,11 @@ const SalesManagement: React.FC = () => {
                   onClick={() => {
                     const date = new Date();
                     date.setMonth(date.getMonth() - 3);
-                    setStartDate(date.toISOString().split('T')[0]);
-                    setEndDate(new Date().toISOString().split('T')[0]);
+                    const year = date.getFullYear();
+                    const month = String(date.getMonth() + 1).padStart(2, '0');
+                    const day = String(date.getDate()).padStart(2, '0');
+                    setStartDate(`${year}-${month}-${day}`);
+                    setEndDate(getTodayDateString());
                   }}
                   size="small"
                 >
@@ -895,6 +912,7 @@ const SalesManagement: React.FC = () => {
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         sx={{ zIndex: 9999 }}
         onClose={() => setSnackbar({ ...snackbar, open: false })}
       >

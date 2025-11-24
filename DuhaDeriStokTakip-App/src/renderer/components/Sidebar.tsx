@@ -27,6 +27,7 @@ import MenuIcon from '@mui/icons-material/Menu';
 import WorkIcon from '@mui/icons-material/Work';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import GroupIcon from '@mui/icons-material/Group';
+import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 
 const drawerWidth = 280;
 
@@ -45,6 +46,7 @@ const Sidebar: React.FC<SidebarProps> = ({ open, toggleSidebar }) => {
     { path: '/suppliers', label: 'Tedarikçi Yönetimi', icon: <WorkIcon /> },
     { path: '/employees', label: 'Çalışan Yönetimi', icon: <GroupIcon /> },
     { path: '/cash', label: 'Kasa Yönetimi', icon: <AccountBalanceWalletIcon /> },
+    { path: '/checks', label: 'Çek-Senet Kasası', icon: <ReceiptLongIcon /> },
     { path: '/movements', label: 'Stok Hareketleri', icon: <HistoryIcon /> },
     { path: '/reports', label: 'Raporlar', icon: <AssessmentIcon /> },
     { path: '/settings', label: 'Ayarlar', icon: <SettingsIcon /> },
@@ -68,6 +70,8 @@ const Sidebar: React.FC<SidebarProps> = ({ open, toggleSidebar }) => {
           position: 'fixed',
           height: '100vh',
           zIndex: 1200,
+          borderTopLeftRadius: 0,
+          borderBottomLeftRadius: 0,
         },
       }}
       open={open}
@@ -79,40 +83,56 @@ const Sidebar: React.FC<SidebarProps> = ({ open, toggleSidebar }) => {
           alignItems: 'center',
           justifyContent: open ? 'space-between' : 'center',
           px: open ? 3 : 1,
-          py: 2,
-          minHeight: '80px',
+          py: open ? 3 : 2,
+          minHeight: open ? '140px' : '80px',
           background: 'linear-gradient(135deg, #D7CCC8 0%, #BCAAA4 100%)',
           borderBottom: '1px solid rgba(141, 110, 99, 0.3)',
+          transition: 'all 0.3s ease',
         }}
       >
-        {open && (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Avatar
+        {open ? (
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5, width: '100%' }}>
+            <Box
+              component="img"
+              src="./Duha-Deri_logo.png"
+              alt="Duha Deri Logo"
               sx={{
-                bgcolor: 'primary.main',
-                width: 40,
-                height: 40,
-                background: 'linear-gradient(135deg, #8D6E63 0%, #6D4C41 100%)',
+                width: 80,
+                height: 80,
+                objectFit: 'contain',
+                filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.2))',
               }}
-            >
-              <WorkIcon />
-            </Avatar>
-            <Box>
-              <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '1.1rem' }}>
+            />
+            <Box sx={{ textAlign: 'center' }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, fontSize: '1.2rem', color: '#3E2723', lineHeight: 1.2 }}>
                 Duha Deri
               </Typography>
-              <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
+              <Typography variant="caption" sx={{ color: '#6D4C41', fontSize: '0.8rem' }}>
                 Stok & Cari Takip
               </Typography>
             </Box>
           </Box>
+        ) : (
+          <Box
+            component="img"
+            src="./Duha-Deri_logo.png"
+            alt="Duha Deri Logo"
+            sx={{
+              width: 50,
+              height: 50,
+              objectFit: 'contain',
+            }}
+          />
         )}
         <IconButton
           onClick={toggleSidebar}
           sx={{
-            color: 'inherit',
+            color: '#3E2723',
+            position: open ? 'absolute' : 'relative',
+            top: open ? 8 : 'auto',
+            right: open ? 8 : 'auto',
             '&:hover': {
-              backgroundColor: 'rgba(141, 110, 99, 0.1)',
+              backgroundColor: 'rgba(141, 110, 99, 0.2)',
             },
           }}
         >

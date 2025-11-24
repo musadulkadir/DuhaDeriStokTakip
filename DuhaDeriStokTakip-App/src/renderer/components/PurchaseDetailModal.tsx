@@ -24,6 +24,7 @@ import {
   Paper,
 } from '@mui/material';
 import { dbAPI } from '../services/api';
+import { formatDate, formatDateTime } from '../utils/dateUtils';
 
 // Alım kalemleri için interface
 interface PurchaseItem {
@@ -123,13 +124,7 @@ const PurchaseDetailModal: React.FC<Props> = ({ open, onClose, purchaseId }) => 
                       Tarih
                     </Typography>
                     <Typography variant="body1" sx={{ fontWeight: 600 }}>
-                      {new Date(purchaseData.date).toLocaleDateString('tr-TR', {
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}
+                      {formatDate(purchaseData.date)}
                     </Typography>
                   </Grid>
                   <Grid item xs={12} md={4}>

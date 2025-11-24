@@ -49,9 +49,18 @@ const Reports: React.FC = () => {
     const now = new Date();
     const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
     const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    
+    // Timezone-safe date formatting
+    const formatDateLocal = (date: Date) => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+    
     return {
-      start: firstDay.toISOString().split('T')[0],
-      end: lastDay.toISOString().split('T')[0]
+      start: formatDateLocal(firstDay),
+      end: formatDateLocal(lastDay)
     };
   };
 
@@ -96,7 +105,13 @@ const Reports: React.FC = () => {
           });
 
           return {
-            date: row.sale_date || new Date().toISOString(),
+            date: row.sale_date || (() => {
+              const now = new Date();
+              const year = now.getFullYear();
+              const month = String(now.getMonth() + 1).padStart(2, '0');
+              const day = String(now.getDate()).padStart(2, '0');
+              return `${year}-${month}-${day}`;
+            })(),
             customerName: row.customer_name || row.name || 'Bilinmeyen Müşteri',
             productName: productName,
             quantity: Number(row.quantity_pieces || row.quantity || 0), // Adet cinsinden
