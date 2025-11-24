@@ -901,7 +901,7 @@ ipcMain.handle('sales:get-all', async (_, startDate, endDate) => {
       params.push(startDate, endDate);
     }
 
-    queryText += whereClause + ' ORDER BY s.created_at DESC';
+    queryText += whereClause + ' ORDER BY s.sale_date DESC, s.id DESC';
 
     const result = await queryAll(queryText, params);
 
@@ -1797,26 +1797,48 @@ ipcMain.handle('sales:create', async (_, sale) => {
         // Get current stock before update
         const currentProduct = await queryOne('SELECT stock_quantity FROM products WHERE id = $1', [stockProductId]);
         const previousStock = currentProduct ? currentProduct.stock_quantity : 0;
-        const newStock = previousStock - item.quantity_pieces;
+        
+        // İade işlemi için negatif miktar kontrolü
+        const isReturn = item.quantity_pieces < 0;
+        const absQuantity = Math.abs(item.quantity_pieces);
+        const newStock = isReturn ? previousStock + absQuantity : previousStock - absQuantity;
 
-        console.log('Satış stok düşme:', {
+        console.log('Satış/İade stok hareketi:', {
+          isReturn,
           sale_category: productInfo.category,
           stock_category: stockCategory,
           product_id: item.product_id,
           stock_product_id: stockProductId,
           quantity_pieces: item.quantity_pieces,
+          absQuantity,
           previousStock,
           newStock
         });
 
-        // Update product stock
+        // Update product stock (iade ise ekle, satış ise çıkar)
         await query(`
           UPDATE products 
-          SET stock_quantity = stock_quantity - $1, updated_at = CURRENT_TIMESTAMP 
+          SET stock_quantity = stock_quantity ${isReturn ? '+' : '-'} $1, updated_at = CURRENT_TIMESTAMP 
           WHERE id = $2
-        `, [item.quantity_pieces, stockProductId]);
+        `, [absQuantity, stockProductId]);
 
-        // Create stock movement record (stok düşen ürün için)
+        // Create stock movement record (stok düşen/artan ürün için)
+        // Müşteri adını al
+        const customerInfo = await queryOne('SELECT name FROM customers WHERE id = $1', [sale.customer_id]);
+        const customerName = customerInfo?.name || 'Bilinmeyen Müşteri';
+        
+        const movementType = isReturn ? 'in' : 'out';
+        const movementNote = isReturn 
+          ? `İade - ${customerName} - ${item.product_name || productInfo.category} ${item.color || ''} - ${absQuantity} adet`
+          : `Satış - ${customerName} - ${item.product_name || productInfo.category} ${item.color || ''} - ${absQuantity} adet`;
+        
+        console.log('📝 Stok hareketi kaydediliyor:', {
+          isReturn,
+          movementType,
+          quantity: absQuantity,
+          movementNote
+        });
+        
         await query(`
           INSERT INTO stock_movements (
             product_id, movement_type, quantity, previous_stock, new_stock, 
@@ -1825,43 +1847,53 @@ ipcMain.handle('sales:create', async (_, sale) => {
           ) 
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         `, [
-          stockProductId, // Stok düşen ürün (Keçi veya Koyun)
-          'out', // Satış çıkış hareketi
-          item.quantity_pieces, // Pozitif değer - movement_type zaten 'out'
+          stockProductId,
+          movementType,
+          absQuantity, // Her zaman pozitif değer
           previousStock,
           newStock,
-          'sale',
+          isReturn ? 'return' : 'sale',
           saleResult.id,
           sale.customer_id,
-          item.unit_price_per_desi,
-          item.total_price,
+          Math.abs(item.unit_price_per_desi),
+          Math.abs(item.total_price),
           sale.currency || 'TRY',
-          `Satış - ${item.product_name || productInfo.category} ${item.color || ''} - ${item.quantity_pieces} adet`,
+          movementNote,
           'system'
         ]);
       }
     }
 
-    // Müşteri bakiyesini güncelle (satış tutarı kadar artır) - Para birimine göre
+    // Müşteri bakiyesini güncelle (satış tutarı kadar artır, iade ise azalt) - Para birimine göre
+    // total_amount negatifse iade, pozitifse satış
     const currency = sale.currency || 'TRY';
+    const balanceChange = parseFloat(sale.total_amount);
+    
+    console.log('Müşteri bakiye güncellemesi:', {
+      customer_id: sale.customer_id,
+      currency,
+      balanceChange,
+      isReturn: balanceChange < 0
+    });
+    
     if (currency === 'USD') {
       await query(`
         UPDATE customers 
         SET balance_usd = balance_usd + $1, updated_at = CURRENT_TIMESTAMP 
         WHERE id = $2
-      `, [sale.total_amount, sale.customer_id]);
+      `, [balanceChange, sale.customer_id]);
     } else if (currency === 'EUR') {
       await query(`
         UPDATE customers 
         SET balance_eur = balance_eur + $1, updated_at = CURRENT_TIMESTAMP 
         WHERE id = $2
-      `, [sale.total_amount, sale.customer_id]);
+      `, [balanceChange, sale.customer_id]);
     } else {
       await query(`
         UPDATE customers 
         SET balance = balance + $1, updated_at = CURRENT_TIMESTAMP 
         WHERE id = $2
-      `, [sale.total_amount, sale.customer_id]);
+      `, [balanceChange, sale.customer_id]);
     }
 
     // Commit transaction
