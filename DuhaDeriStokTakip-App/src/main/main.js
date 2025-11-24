@@ -1923,13 +1923,34 @@ ipcMain.handle('sales:delete', async (_, saleId) => {
     // Satış kalemlerini al
     const saleItems = await queryAll('SELECT * FROM sale_items WHERE sale_id = $1', [saleId]);
 
-    // Her ürün için stok geri ekle
+    // İade mi kontrol et
+    const isReturn = sale.notes && sale.notes.includes('İADE');
+    
+    console.log('🗑️ Satış siliniyor:', {
+      saleId,
+      isReturn,
+      notes: sale.notes,
+      itemsCount: saleItems.length
+    });
+
+    // Her ürün için stok güncelle
     for (const item of saleItems) {
+      // İade ise: quantity_pieces negatif, stoktan ÇIKAR (iade iptal = stok azalt)
+      // Satış ise: quantity_pieces pozitif, stoğa EKLE (satış iptal = stok artır)
+      const stockChange = isReturn ? -Math.abs(item.quantity_pieces) : Math.abs(item.quantity_pieces);
+      
+      console.log('📦 Stok güncelleniyor:', {
+        product_id: item.product_id,
+        quantity_pieces: item.quantity_pieces,
+        stockChange,
+        isReturn
+      });
+      
       await query(`
         UPDATE products 
         SET stock_quantity = stock_quantity + $1, updated_at = CURRENT_TIMESTAMP 
         WHERE id = $2
-      `, [item.quantity_pieces, item.product_id]);
+      `, [stockChange, item.product_id]);
     }
 
     // Satış kalemlerini sil

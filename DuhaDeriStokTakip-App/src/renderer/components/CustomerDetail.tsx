@@ -47,6 +47,7 @@ import {
   Add,
   Clear,
   CheckCircle,
+  Undo,
 } from '@mui/icons-material';
 import TablePagination from '@mui/material/TablePagination';
 import { dbAPI } from '../services/api';
@@ -141,6 +142,7 @@ const CustomerDetail: React.FC = () => {
   // Return dialog states
   const [returnDialogOpen, setReturnDialogOpen] = useState(false);
   const [returnSale, setReturnSale] = useState<CustomerSale | null>(null);
+  const [returnDate, setReturnDate] = useState(new Date().toISOString().split('T')[0]);
   const [returnItems, setReturnItems] = useState<Array<{
     productId: number;
     productName: string;
@@ -806,24 +808,29 @@ const CustomerDetail: React.FC = () => {
     doc.text('Satis Gecmisi', 20, yPos);
 
     const salesTableData = filteredSales.slice(0, 15).map(sale => {
+      // Ürünleri alt alta yazdır (virgül yerine satır sonu)
       const itemsText = sale.items.map(item => {
         const currencySymbol = sale.currency === 'TRY' ? 'TL' : sale.currency === 'USD' ? 'USD' : 'EUR';
         const unit = item.unit || 'desi';
-        return `${toAscii(item.productName)} (${formatNumber(item.quantity)} ${unit} x ${formatNumber(item.unitPrice)} ${currencySymbol}/${unit})`;
-      }).join(', ');
+        return `${toAscii(item.productName)} (${formatNumber(Math.abs(item.quantity))} ${unit} x ${formatNumber(Math.abs(item.unitPrice))} ${currencySymbol}/${unit})`;
+      }).join('\n'); // Virgül yerine satır sonu
 
       const currencySymbol = sale.currency === 'TRY' ? 'TL' : sale.currency === 'USD' ? 'USD' : 'EUR';
+      const isReturn = sale.notes?.includes('İADE') || sale.totalAmount < 0;
+      const saleType = isReturn ? 'IADE' : 'SATIS';
+      
       return [
         new Date(sale.date).toLocaleDateString('tr-TR'),
+        saleType,
         itemsText || 'Detay yok',
-        `${formatNumber(sale.totalAmount)} ${currencySymbol}`
+        `${isReturn ? '-' : ''}${formatNumber(Math.abs(sale.totalAmount))} ${currencySymbol}`
       ];
     });
 
     autoTable(doc, {
       startY: yPos + 3,
-      head: [['Tarih', 'Urunler', 'Tutar']],
-      body: salesTableData.length > 0 ? salesTableData : [['Kayit bulunamadi', '', '']],
+      head: [['Tarih', 'Tur', 'Urunler', 'Tutar']],
+      body: salesTableData.length > 0 ? salesTableData : [['Kayit bulunamadi', '', '', '']],
       theme: 'striped',
       headStyles: {
         fillColor: [52, 73, 94],
@@ -836,15 +843,31 @@ const CustomerDetail: React.FC = () => {
         fontSize: 9,
         cellPadding: 3,
         overflow: 'linebreak',
-        font: 'helvetica'
+        font: 'helvetica',
+        lineColor: [200, 200, 200],
+        lineWidth: 0.1
       },
       columnStyles: {
         0: { cellWidth: 25, halign: 'center' },
-        1: { cellWidth: 125 },
-        2: { cellWidth: 32, halign: 'right', fontStyle: 'bold' }
+        1: { cellWidth: 20, halign: 'center', fontStyle: 'bold' },
+        2: { cellWidth: 105 },
+        3: { cellWidth: 32, halign: 'right', fontStyle: 'bold' }
       },
       alternateRowStyles: {
         fillColor: [245, 245, 245]
+      },
+      didParseCell: function(data) {
+        // Tür kolonu için renk ayarla
+        if (data.column.index === 1 && data.cell.raw === 'IADE') {
+          data.cell.styles.textColor = [255, 140, 0]; // Turuncu
+        } else if (data.column.index === 1 && data.cell.raw === 'SATIS') {
+          data.cell.styles.textColor = [39, 174, 96]; // Yeşil
+        }
+        
+        // Tutar kolonu için iade rengini ayarla
+        if (data.column.index === 3 && data.cell.raw && typeof data.cell.raw === 'string' && data.cell.raw.startsWith('-')) {
+          data.cell.styles.textColor = [231, 76, 60]; // Kırmızı
+        }
       }
     });
 
@@ -1168,6 +1191,7 @@ const CustomerDetail: React.FC = () => {
       });
       
       setReturnItems(items);
+      setReturnDate(new Date().toISOString().split('T')[0]); // Reset tarih
       setReturnDialogOpen(true);
     } catch (error) {
       console.error('Return dialog error:', error);
@@ -1224,7 +1248,7 @@ const CustomerDetail: React.FC = () => {
         total_amount: -totalReturnAmount, // Negatif değer
         currency: returnSale.currency || 'TRY',
         payment_status: 'pending',
-        sale_date: new Date().toISOString(),
+        sale_date: new Date(returnDate).toISOString(), // Kullanıcının seçtiği tarih
         notes: `İADE - Orijinal Satış #${returnSale.id}`,
         items: validReturnItems.map(item => ({
           product_id: item.productId,
@@ -1247,6 +1271,7 @@ const CustomerDetail: React.FC = () => {
       setReturnDialogOpen(false);
       setReturnSale(null);
       setReturnItems([]);
+      setReturnDate(new Date().toISOString().split('T')[0]);
 
       // Verileri yeniden yükle
       await loadCustomerData();
@@ -1606,7 +1631,7 @@ const CustomerDetail: React.FC = () => {
                                 onClick={() => handleOpenReturnDialog(sale)}
                                 title="İade Al"
                               >
-                                <ArrowBack />
+                                <Undo />
                               </IconButton>
                             )}
                             <IconButton
@@ -2294,15 +2319,36 @@ const CustomerDetail: React.FC = () => {
       >
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <ArrowBack />
+            <Undo />
             İade İşlemi - Satış #{returnSale?.id}
           </Box>
         </DialogTitle>
         <DialogContent>
           <Box sx={{ mt: 2 }}>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              İade edilecek ürünlerin miktarlarını girin. İade işlemi sonrası stok artacak ve müşteri bakiyesi azalacaktır.
-            </Typography>
+            {/* İade Tarihi */}
+            <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 2, p: 2, bgcolor: 'background.paper', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
+              <Undo sx={{ color: 'warning.main', fontSize: 28 }} />
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                  İade Tarihi
+                </Typography>
+                <TextField
+                  type="date"
+                  value={returnDate}
+                  onChange={(e) => setReturnDate(e.target.value)}
+                  size="small"
+                  fullWidth
+                  slotProps={{
+                    inputLabel: { shrink: true }
+                  }}
+                />
+              </Box>
+              <Box sx={{ flex: 2 }}>
+                <Typography variant="caption" color="text.secondary">
+                  Tüm iade kayıtları için geçerli olacak tarihi seçin
+                </Typography>
+              </Box>
+            </Box>
 
             <TableContainer component={Paper} variant="outlined">
               <Table size="small">

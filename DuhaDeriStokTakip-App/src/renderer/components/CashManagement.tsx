@@ -44,6 +44,7 @@ import {
   Cancel,
   Warning,
   SwapHoriz,
+  Close,
 } from '@mui/icons-material';
 import Pagination from './common/Pagination';
 import { dbAPI } from '../services/api';
@@ -118,6 +119,9 @@ const CashManagement: React.FC = () => {
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+
+  // Currency filter
+  const [currencyFilter, setCurrencyFilter] = useState<string | null>(null);
 
   // Dialog states
   const [addTransactionDialogOpen, setAddTransactionDialogOpen] = useState(false);
@@ -203,7 +207,7 @@ const CashManagement: React.FC = () => {
         const transactionsWithBalance = calculateBalances(sortedTransactions);
 
         setTransactions(transactionsWithBalance.reverse()); // En yeni işlemler üstte
-        await calculateSummary(response.data);
+        await calculateSummary(transactionsWithBalance);
       } else {
         setSnackbar({ open: true, message: response.error || 'İşlemler yüklenemedi', severity: 'error' });
       }
@@ -215,7 +219,7 @@ const CashManagement: React.FC = () => {
   };
 
   // Bakiye hesaplama fonksiyonu
-  const calculateBalances = (transactions: any[]) => {
+  const calculateBalances = (transactions: any[]): CashTransaction[] => {
     const balancesByCurrency: { [key: string]: number } = {
       'TRY': 0,
       'USD': 0,
@@ -237,9 +241,10 @@ const CashManagement: React.FC = () => {
 
       return {
         ...transaction,
+        id: transaction.id || 0,
         previous_balance: previousBalance,
         new_balance: newBalance
-      };
+      } as CashTransaction;
     });
   };
 
@@ -685,7 +690,22 @@ const CashManagement: React.FC = () => {
       <Grid container spacing={3} sx={{ mb: 4 }}>
         {/* TL Kasa Bakiyesi */}
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <Card>
+          <Card
+            sx={{
+              cursor: 'pointer',
+              transition: 'all 0.3s ease',
+              border: currencyFilter === 'TRY' ? '2px solid' : '1px solid transparent',
+              borderColor: currencyFilter === 'TRY' ? 'primary.main' : 'transparent',
+              '&:hover': {
+                transform: 'translateY(-4px)',
+                boxShadow: 4,
+              }
+            }}
+            onClick={() => {
+              setCurrencyFilter('TRY');
+              setCurrentPage(1);
+            }}
+          >
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                 <AccountBalanceWallet sx={{ color: 'primary.main', mr: 1 }} />
@@ -695,7 +715,7 @@ const CashManagement: React.FC = () => {
                 ₺{summary.totalBalanceTRY.toLocaleString('tr-TR')}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                TL kasa bakiyesi
+                TL ile ilgili işlemleri getir
               </Typography>
             </CardContent>
           </Card>
@@ -703,7 +723,22 @@ const CashManagement: React.FC = () => {
 
         {/* USD Kasa Bakiyesi */}
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <Card>
+          <Card
+            sx={{
+              cursor: 'pointer',
+              transition: 'all 0.3s ease',
+              border: currencyFilter === 'USD' ? '2px solid' : '1px solid transparent',
+              borderColor: currencyFilter === 'USD' ? 'primary.main' : 'transparent',
+              '&:hover': {
+                transform: 'translateY(-4px)',
+                boxShadow: 4,
+              }
+            }}
+            onClick={() => {
+              setCurrencyFilter('USD');
+              setCurrentPage(1);
+            }}
+          >
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                 <AccountBalanceWallet sx={{ color: 'primary.main', mr: 1 }} />
@@ -713,7 +748,7 @@ const CashManagement: React.FC = () => {
                 ${summary.totalBalanceUSD.toLocaleString('tr-TR')}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                USD kasa bakiyesi
+                USD ile ilgili işlemleri getir
               </Typography>
             </CardContent>
           </Card>
@@ -721,7 +756,22 @@ const CashManagement: React.FC = () => {
 
         {/* EUR Kasa Bakiyesi */}
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <Card>
+          <Card
+            sx={{
+              cursor: 'pointer',
+              transition: 'all 0.3s ease',
+              border: currencyFilter === 'EUR' ? '2px solid' : '1px solid transparent',
+              borderColor: currencyFilter === 'EUR' ? 'primary.main' : 'transparent',
+              '&:hover': {
+                transform: 'translateY(-4px)',
+                boxShadow: 4,
+              }
+            }}
+            onClick={() => {
+              setCurrencyFilter('EUR');
+              setCurrentPage(1);
+            }}
+          >
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                 <AccountBalanceWallet sx={{ color: 'primary.main', mr: 1 }} />
@@ -731,7 +781,7 @@ const CashManagement: React.FC = () => {
                 €{summary.totalBalanceEUR.toLocaleString('tr-TR')}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                EUR kasa bakiyesi
+                EUR ile ilgili işlemleri getir
               </Typography>
             </CardContent>
           </Card>
@@ -782,6 +832,22 @@ const CashManagement: React.FC = () => {
             Para Çevirme
           </Button>
         </Grid>
+        {currencyFilter && (
+          <Grid>
+            <Button
+              variant="outlined"
+              startIcon={<Close />}
+              onClick={() => {
+                setCurrencyFilter(null);
+                setCurrentPage(1);
+              }}
+              size="large"
+              color="error"
+            >
+              Filtreyi Kaldır ({currencyFilter})
+            </Button>
+          </Grid>
+        )}
       </Grid>
 
       {/* Transactions Table */}
@@ -789,7 +855,12 @@ const CashManagement: React.FC = () => {
         <CardContent sx={{ p: 0 }}>
           <Box sx={{ p: 3, pb: 0 }}>
             <Typography variant="h6" sx={{ fontWeight: 600 }}>
-              Son İşlemler ({transactions.length} kayıt)
+              {currencyFilter ? `${currencyFilter} İşlemleri` : 'Son İşlemler'} ({(() => {
+                const filtered = currencyFilter 
+                  ? transactions.filter(t => t.currency === currencyFilter)
+                  : transactions;
+                return filtered.length;
+              })()}{' '}kayıt)
             </Typography>
           </Box>
           <TableContainer>
@@ -808,9 +879,14 @@ const CashManagement: React.FC = () => {
               </TableHead>
               <TableBody>
                 {(() => {
+                  // Para birimi filtresini uygula
+                  const filteredTransactions = currencyFilter 
+                    ? transactions.filter(t => t.currency === currencyFilter)
+                    : transactions;
+                  
                   const startIndex = (currentPage - 1) * itemsPerPage;
                   const endIndex = startIndex + itemsPerPage;
-                  const paginatedTransactions = transactions.slice(startIndex, endIndex);
+                  const paginatedTransactions = filteredTransactions.slice(startIndex, endIndex);
                   return paginatedTransactions.map((transaction) => (
                     <TableRow key={transaction.id} hover>
                       <TableCell>
@@ -884,28 +960,38 @@ const CashManagement: React.FC = () => {
                     </TableRow>
                   ));
                 })()}
-                {transactions.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={6} align="center">
-                      {loading ? 'Yükleniyor...' : 'Henüz işlem kaydı bulunmuyor'}
-                    </TableCell>
-                  </TableRow>
-                )}
+                {(() => {
+                  const filteredTransactions = currencyFilter 
+                    ? transactions.filter(t => t.currency === currencyFilter)
+                    : transactions;
+                  return filteredTransactions.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={8} align="center">
+                        {loading ? 'Yükleniyor...' : currencyFilter ? `${currencyFilter} para birimi ile işlem bulunamadı` : 'Henüz işlem kaydı bulunmuyor'}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })()}
               </TableBody>
             </Table>
           </TableContainer>
 
           {/* Pagination */}
-          {transactions.length > 0 && (
-            <Pagination
-              currentPage={currentPage}
-              totalPages={Math.ceil(transactions.length / itemsPerPage)}
-              totalItems={transactions.length}
-              itemsPerPage={itemsPerPage}
-              onPageChange={setCurrentPage}
-              onItemsPerPageChange={setItemsPerPage}
-            />
-          )}
+          {(() => {
+            const filteredTransactions = currencyFilter 
+              ? transactions.filter(t => t.currency === currencyFilter)
+              : transactions;
+            return filteredTransactions.length > 0 && (
+              <Pagination
+                currentPage={currentPage}
+                totalPages={Math.ceil(filteredTransactions.length / itemsPerPage)}
+                totalItems={filteredTransactions.length}
+                itemsPerPage={itemsPerPage}
+                onPageChange={setCurrentPage}
+                onItemsPerPageChange={setItemsPerPage}
+              />
+            );
+          })()}
         </CardContent>
       </Card>
 
