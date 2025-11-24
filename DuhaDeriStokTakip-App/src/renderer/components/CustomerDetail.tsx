@@ -47,6 +47,7 @@ import {
   Add,
   Clear,
   CheckCircle,
+  Undo,
 } from '@mui/icons-material';
 import TablePagination from '@mui/material/TablePagination';
 import { dbAPI } from '../services/api';
@@ -82,6 +83,7 @@ interface CustomerSale {
   totalAmount: number;
   currency?: string;
   status: string;
+  notes?: string;
 }
 
 interface CustomerPayment {
@@ -136,6 +138,22 @@ const CustomerDetail: React.FC = () => {
   const [selectedPayment, setSelectedPayment] = useState<CustomerPayment | null>(null);
   const [deleteSaleDialogOpen, setDeleteSaleDialogOpen] = useState(false);
   const [selectedSale, setSelectedSale] = useState<CustomerSale | null>(null);
+  
+  // Return dialog states
+  const [returnDialogOpen, setReturnDialogOpen] = useState(false);
+  const [returnSale, setReturnSale] = useState<CustomerSale | null>(null);
+  const [returnDate, setReturnDate] = useState(new Date().toISOString().split('T')[0]);
+  const [returnItems, setReturnItems] = useState<Array<{
+    productId: number;
+    productName: string;
+    color: string;
+    originalQuantityPieces: number;
+    originalQuantityDesi: number;
+    originalUnitPrice: number;
+    originalUnit: string;
+    returnQuantityPieces: number;
+    returnQuantityDesi: number;
+  }>>([]);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentType, setPaymentType] = useState('cash');
   const [paymentCurrency, setPaymentCurrency] = useState('TRY');
@@ -289,6 +307,13 @@ const CustomerDetail: React.FC = () => {
       let customerSalesForUI: CustomerSale[] = [];
 
       if (salesResponse.success && salesResponse.data) {
+        
+        console.log('🔍 Backend\'den gelen ilk 10 satış:', salesResponse.data.slice(0, 10).map((r: any) => ({
+          id: r.id,
+          sale_date: r.sale_date,
+          notes: r.notes,
+          customer_id: r.customer_id
+        })));
 
         // Bu iki Map, hem UI hem de istatistik sorununu çözecek
         const salesMap = new Map<number, CustomerSale>(); // UI için (sadece bu müşteri, gruplanmış)
@@ -324,6 +349,7 @@ const CustomerDetail: React.FC = () => {
                 totalAmount: row.total_amount,
                 currency: row.currency || 'TRY',
                 status: row.payment_status,
+                notes: row.notes || '', // Notes alanını ekle
                 items: [] // Ürün listesini boş başlat
               };
               salesMap.set(row.id, sale);
@@ -351,7 +377,39 @@ const CustomerDetail: React.FC = () => {
 
       }
 
+      console.log('🔍 Map\'ten çıkan satışlar (sıralanmadan önce):', customerSalesForUI.map(s => ({
+        id: s.id,
+        date: s.date,
+        notes: s.notes
+      })));
+      
       // UI state'ini (setSales) gruplanmış ve doğru veriyle güncelle
+      // Tarihe göre sırala (en yeni en üstte) - sale_date kullan
+      customerSalesForUI.sort((a, b) => {
+        const dateA = new Date(a.date).getTime();
+        const dateB = new Date(b.date).getTime();
+        
+        console.log('🔄 Karşılaştırma:', {
+          a: { id: a.id, date: a.date, timestamp: dateA, notes: a.notes },
+          b: { id: b.id, date: b.date, timestamp: dateB, notes: b.notes },
+          result: dateB - dateA
+        });
+        
+        // Önce tarihe göre sırala
+        if (dateB !== dateA) {
+          return dateB - dateA;
+        }
+        
+        // Aynı tarihte ise ID'ye göre sırala (en yeni ID en üstte)
+        return (b.id || 0) - (a.id || 0);
+      });
+      
+      console.log('✅ Sıralandıktan sonra:', customerSalesForUI.map(s => ({
+        id: s.id,
+        date: s.date,
+        notes: s.notes
+      })));
+      
       setSales(customerSalesForUI);
 
       // İstatistikleri hesapla
@@ -480,7 +538,18 @@ const CustomerDetail: React.FC = () => {
         }
         return true;
       })
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); // En yeni en üstte
+      .sort((a, b) => {
+        const dateA = new Date(a.date).getTime();
+        const dateB = new Date(b.date).getTime();
+        
+        // Önce tarihe göre sırala
+        if (dateB !== dateA) {
+          return dateB - dateA;
+        }
+        
+        // Aynı tarihte ise ID'ye göre sırala (en yeni ID en üstte)
+        return (b.id || 0) - (a.id || 0);
+      });
 
     // Başlangıç tarihinden önceki satışları hesapla (geçmiş bakiye)
     if (start) {
@@ -824,17 +893,22 @@ const CustomerDetail: React.FC = () => {
     doc.text('Satis Gecmisi', 20, yPos);
 
     const salesTableData = filteredSales.slice(0, 15).map(sale => {
+      // Ürünleri alt alta yazdır (virgül yerine satır sonu)
       const itemsText = sale.items.map(item => {
         const currencySymbol = sale.currency === 'TRY' ? 'TL' : sale.currency === 'USD' ? 'USD' : 'EUR';
         const unit = item.unit || 'desi';
-        return `${toAscii(item.productName)} (${formatNumber(item.quantity)} ${unit} x ${formatNumber(item.unitPrice)} ${currencySymbol}/${unit})`;
-      }).join(', ');
+        return `${toAscii(item.productName)} (${formatNumber(Math.abs(item.quantity))} ${unit} x ${formatNumber(Math.abs(item.unitPrice))} ${currencySymbol}/${unit})`;
+      }).join('\n'); // Virgül yerine satır sonu
 
       const currencySymbol = sale.currency === 'TRY' ? 'TL' : sale.currency === 'USD' ? 'USD' : 'EUR';
+      const isReturn = sale.notes?.includes('İADE') || sale.totalAmount < 0;
+      const saleType = isReturn ? 'IADE' : 'SATIS';
+      
       return [
         new Date(sale.date).toLocaleDateString('tr-TR'),
+        saleType,
         itemsText || 'Detay yok',
-        `${formatNumber(sale.totalAmount)} ${currencySymbol}`
+        `${isReturn ? '-' : ''}${formatNumber(Math.abs(sale.totalAmount))} ${currencySymbol}`
       ];
     });
 
@@ -853,8 +927,8 @@ const CustomerDetail: React.FC = () => {
 
     autoTable(doc, {
       startY: yPos + 3,
-      head: [['Tarih', 'Urunler', 'Tutar']],
-      body: salesTableData.length > 0 ? salesTableData : [['Kayit bulunamadi', '', '']],
+      head: [['Tarih', 'Tur', 'Urunler', 'Tutar']],
+      body: salesTableData.length > 0 ? salesTableData : [['Kayit bulunamadi', '', '', '']],
       theme: 'striped',
       headStyles: {
         fillColor: [52, 73, 94],
@@ -867,22 +941,30 @@ const CustomerDetail: React.FC = () => {
         fontSize: 9,
         cellPadding: 3,
         overflow: 'linebreak',
-        font: 'helvetica'
+        font: 'helvetica',
+        lineColor: [200, 200, 200],
+        lineWidth: 0.1
       },
       columnStyles: {
         0: { cellWidth: 25, halign: 'center' },
-        1: { cellWidth: 125 },
-        2: { cellWidth: 32, halign: 'right', fontStyle: 'bold' }
+        1: { cellWidth: 20, halign: 'center', fontStyle: 'bold' },
+        2: { cellWidth: 105 },
+        3: { cellWidth: 32, halign: 'right', fontStyle: 'bold' }
       },
       alternateRowStyles: {
         fillColor: [245, 245, 245]
       },
-      didParseCell: function (data: any) {
-        // Son satır (TOPLAM) için özel stil
-        if (data.row.index === salesTableData.length - 1 && salesTableData.length > 1) {
-          data.cell.styles.fillColor = [52, 73, 94];
-          data.cell.styles.textColor = [255, 255, 255];
-          data.cell.styles.fontStyle = 'bold';
+      didParseCell: function(data) {
+        // Tür kolonu için renk ayarla
+        if (data.column.index === 1 && data.cell.raw === 'IADE') {
+          data.cell.styles.textColor = [255, 140, 0]; // Turuncu
+        } else if (data.column.index === 1 && data.cell.raw === 'SATIS') {
+          data.cell.styles.textColor = [39, 174, 96]; // Yeşil
+        }
+        
+        // Tutar kolonu için iade rengini ayarla
+        if (data.column.index === 3 && data.cell.raw && typeof data.cell.raw === 'string' && data.cell.raw.startsWith('-')) {
+          data.cell.styles.textColor = [231, 76, 60]; // Kırmızı
         }
       }
     });
@@ -1212,6 +1294,138 @@ const CustomerDetail: React.FC = () => {
     }
   };
 
+  // İade işlemini başlat
+  const handleOpenReturnDialog = async (sale: CustomerSale) => {
+    try {
+      setLoading(true);
+      
+      // Backend'den satış detaylarını çek (product_id bilgisi için)
+      const saleDetailResponse = await dbAPI.getSaleById(sale.id);
+      
+      if (!saleDetailResponse.success || !saleDetailResponse.data) {
+        throw new Error('Satış detayları alınamadı');
+      }
+      
+      const saleDetail = saleDetailResponse.data;
+      
+      setReturnSale(sale);
+      
+      // Satış kalemlerini iade formu için hazırla
+      const items = (saleDetail.items || []).map((item: any) => {
+        // Renk bilgisini direkt item'dan al
+        const color = item.color || '';
+        
+        return {
+          productId: item.productId,
+          productName: item.productName,
+          color: color,
+          originalQuantityPieces: Math.abs(item.quantityPieces),
+          originalQuantityDesi: Math.abs(item.quantityDesi),
+          originalUnitPrice: Math.abs(item.unitPricePerDesi),
+          originalUnit: item.unit || 'desi',
+          returnQuantityPieces: Math.abs(item.quantityPieces), // Default olarak tüm miktar
+          returnQuantityDesi: Math.abs(item.quantityDesi),
+        };
+      });
+      
+      setReturnItems(items);
+      setReturnDate(new Date().toISOString().split('T')[0]); // Reset tarih
+      setReturnDialogOpen(true);
+    } catch (error) {
+      console.error('Return dialog error:', error);
+      setSnackbar({
+        open: true,
+        message: error instanceof Error ? error.message : 'İade formu açılırken hata oluştu',
+        severity: 'error'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // İade miktarını güncelle
+  const updateReturnQuantity = (index: number, field: 'pieces' | 'desi', value: string) => {
+    const newItems = [...returnItems];
+    const numValue = parseFormattedNumber(value);
+    
+    if (field === 'pieces') {
+      newItems[index].returnQuantityPieces = numValue;
+    } else {
+      newItems[index].returnQuantityDesi = numValue;
+    }
+    
+    setReturnItems(newItems);
+  };
+
+  // İade işlemini tamamla
+  const handleCompleteReturn = async () => {
+    if (!returnSale || !customer) return;
+
+    try {
+      setLoading(true);
+
+      // İade edilecek ürünleri filtrele (miktar > 0 olanlar)
+      const validReturnItems = returnItems.filter(
+        item => item.returnQuantityPieces > 0 && item.returnQuantityDesi > 0
+      );
+
+      if (validReturnItems.length === 0) {
+        setSnackbar({ open: true, message: 'İade edilecek ürün seçin', severity: 'error' });
+        return;
+      }
+
+      // Toplam iade tutarını hesapla
+      const totalReturnAmount = validReturnItems.reduce(
+        (sum, item) => sum + (item.returnQuantityDesi * item.originalUnitPrice),
+        0
+      );
+
+      // İade için negatif satış oluştur
+      const returnSaleData = {
+        customer_id: customerId,
+        total_amount: -totalReturnAmount, // Negatif değer
+        currency: returnSale.currency || 'TRY',
+        payment_status: 'pending',
+        sale_date: new Date(returnDate).toISOString(), // Kullanıcının seçtiği tarih
+        notes: `İADE - Orijinal Satış #${returnSale.id}`,
+        items: validReturnItems.map(item => ({
+          product_id: item.productId,
+          product_name: item.productName,
+          color: item.color,
+          quantity_pieces: -item.returnQuantityPieces, // Negatif değer
+          quantity_desi: item.returnQuantityDesi,
+          unit_price_per_desi: item.originalUnitPrice,
+          total_price: -(item.returnQuantityDesi * item.originalUnitPrice), // Negatif değer
+          unit: (item.originalUnit as 'desi' | 'ayak')
+        }))
+      };
+
+      const response = await dbAPI.createSale(returnSaleData);
+      if (!response.success) {
+        throw new Error(response.error || 'İade kaydedilemedi');
+      }
+
+      setSnackbar({ open: true, message: 'İade başarıyla tamamlandı', severity: 'success' });
+      setReturnDialogOpen(false);
+      setReturnSale(null);
+      setReturnItems([]);
+      setReturnDate(new Date().toISOString().split('T')[0]);
+
+      // Verileri yeniden yükle
+      await loadCustomerData();
+
+    } catch (error) {
+      console.error('Return error:', error);
+      setSnackbar({
+        open: true,
+        message: error instanceof Error ? error.message : 'İade işlemi sırasında hata oluştu',
+        severity: 'error'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadCustomerData();
   }, [customerId]);
@@ -1245,7 +1459,7 @@ const CustomerDetail: React.FC = () => {
   }
 
   return (
-    <Box sx={{ p: 3 }}>
+    <Box sx={{ mt: 2, mr: 2, }}>
       {/* Header */}
       <Box sx={{ mb: 4, display: 'flex', alignItems: 'center', gap: 2 }}>
         <IconButton onClick={() => navigate('/customers')}>
@@ -1513,7 +1727,15 @@ const CustomerDetail: React.FC = () => {
                       .map((sale, saleIndex) => (
                         <TableRow key={`sale-${sale.id}-${saleIndex}`} hover>
                           <TableCell sx={{ verticalAlign: 'top', minWidth: 100 }}>
-                            {new Date(sale.date).toLocaleDateString('tr-TR')}
+                            <Typography variant="body2">
+                              {new Date(sale.date).toLocaleDateString('tr-TR')}
+                            </Typography>
+                            <Chip 
+                              label={sale.notes?.includes('İADE') ? 'İADE' : 'SATIŞ'} 
+                              size="small" 
+                              color={sale.notes?.includes('İADE') ? 'warning' : 'success'}
+                              sx={{ mt: 0.5, fontSize: '0.7rem' }}
+                            />
                           </TableCell>
                           <TableCell sx={{ verticalAlign: 'top' }}>
                             {sale.items && sale.items.length > 0 ? (
@@ -1524,7 +1746,7 @@ const CustomerDetail: React.FC = () => {
                                       {item.productName}
                                     </Typography>
                                     <Typography variant="caption" color="text.secondary">
-                                      {item.quantity} {item.unit || 'desi'} × {sale.currency === 'TRY' ? '₺' : sale.currency === 'EUR' ? '€' : '$'}{item.unitPrice.toLocaleString('tr-TR')}/{item.unit || 'desi'} = {sale.currency === 'TRY' ? '₺' : sale.currency === 'EUR' ? '€' : '$'}{item.total.toLocaleString('tr-TR')}
+                                      {Math.abs(item.quantity)} {item.unit || 'desi'} × {sale.currency === 'TRY' ? '₺' : sale.currency === 'EUR' ? '€' : '$'}{Math.abs(item.unitPrice).toLocaleString('tr-TR')}/{item.unit || 'desi'} = {sale.currency === 'TRY' ? '₺' : sale.currency === 'EUR' ? '€' : '$'}{Math.abs(item.total).toLocaleString('tr-TR')}
                                     </Typography>
                                   </Box>
                                 ))}
@@ -1536,9 +1758,20 @@ const CustomerDetail: React.FC = () => {
                             )}
                           </TableCell>
                           <TableCell align="right" sx={{ verticalAlign: 'top', fontWeight: 600 }}>
-                            {sale.currency === 'TRY' ? '₺' : sale.currency === 'EUR' ? '€' : '$'}{(sale.totalAmount || 0).toLocaleString('tr-TR')}
+                            {sale.totalAmount < 0 && '-'}
+                            {sale.currency === 'TRY' ? '₺' : sale.currency === 'EUR' ? '€' : '$'}{Math.abs(sale.totalAmount || 0).toLocaleString('tr-TR')}
                           </TableCell>
                           <TableCell align="center" sx={{ verticalAlign: 'top' }}>
+                            {!sale.notes?.includes('İADE') && (
+                              <IconButton
+                                size="small"
+                                color="warning"
+                                onClick={() => handleOpenReturnDialog(sale)}
+                                title="İade Al"
+                              >
+                                <Undo />
+                              </IconButton>
+                            )}
                             <IconButton
                               size="small"
                               color="error"
@@ -2368,6 +2601,145 @@ const CustomerDetail: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setSaleDialogOpen(false)}>İptal</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Return Dialog */}
+      <Dialog
+        open={returnDialogOpen}
+        onClose={() => setReturnDialogOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Undo />
+            İade İşlemi - Satış #{returnSale?.id}
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2 }}>
+            {/* İade Tarihi */}
+            <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 2, p: 2, bgcolor: 'background.paper', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
+              <Undo sx={{ color: 'warning.main', fontSize: 28 }} />
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                  İade Tarihi
+                </Typography>
+                <TextField
+                  type="date"
+                  value={returnDate}
+                  onChange={(e) => setReturnDate(e.target.value)}
+                  size="small"
+                  fullWidth
+                  slotProps={{
+                    inputLabel: { shrink: true }
+                  }}
+                />
+              </Box>
+              <Box sx={{ flex: 2 }}>
+                <Typography variant="caption" color="text.secondary">
+                  Tüm iade kayıtları için geçerli olacak tarihi seçin
+                </Typography>
+              </Box>
+            </Box>
+
+            <TableContainer component={Paper} variant="outlined">
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Ürün</TableCell>
+                    <TableCell align="center">Satış Miktarı</TableCell>
+                    <TableCell align="center">İade Adet</TableCell>
+                    <TableCell align="center">İade Miktarı</TableCell>
+                    <TableCell align="right">Birim Fiyat</TableCell>
+                    <TableCell align="right">İade Tutarı</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {returnItems.map((item, index) => (
+                    <TableRow key={index}>
+                      <TableCell>
+                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                          {item.productName}
+                        </Typography>
+                      </TableCell>
+                      <TableCell align="center">
+                        <Typography variant="body2" color="text.secondary">
+                          {item.originalQuantityPieces} adet
+                          <br />
+                          {item.originalQuantityDesi.toLocaleString('tr-TR')} {item.originalUnit}
+                        </Typography>
+                      </TableCell>
+                      <TableCell align="center">
+                        <TextField
+                          size="small"
+                          value={formatNumberWithCommas(item.returnQuantityPieces.toString())}
+                          onChange={(e) => updateReturnQuantity(index, 'pieces', e.target.value)}
+                          sx={{ width: 100 }}
+                          inputProps={{ style: { textAlign: 'center' } }}
+                        />
+                      </TableCell>
+                      <TableCell align="center">
+                        <TextField
+                          size="small"
+                          value={formatNumberWithCommas(item.returnQuantityDesi.toString())}
+                          onChange={(e) => updateReturnQuantity(index, 'desi', e.target.value)}
+                          sx={{ width: 100 }}
+                          inputProps={{ style: { textAlign: 'center' } }}
+                        />
+                      </TableCell>
+                      <TableCell align="right">
+                        <Typography variant="body2">
+                          {returnSale?.currency === 'TRY' ? '₺' : returnSale?.currency === 'EUR' ? '€' : '$'}
+                          {item.originalUnitPrice.toLocaleString('tr-TR')}
+                        </Typography>
+                      </TableCell>
+                      <TableCell align="right">
+                        <Typography variant="body2" sx={{ fontWeight: 600, color: 'error.main' }}>
+                          -{returnSale?.currency === 'TRY' ? '₺' : returnSale?.currency === 'EUR' ? '€' : '$'}
+                          {(item.returnQuantityDesi * item.originalUnitPrice).toLocaleString('tr-TR')}
+                        </Typography>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  <TableRow>
+                    <TableCell colSpan={5} align="right">
+                      <Typography variant="h6">Toplam İade Tutarı:</Typography>
+                    </TableCell>
+                    <TableCell align="right">
+                      <Typography variant="h6" sx={{ color: 'error.main' }}>
+                        -{returnSale?.currency === 'TRY' ? '₺' : returnSale?.currency === 'EUR' ? '€' : '$'}
+                        {returnItems.reduce((sum, item) => sum + (item.returnQuantityDesi * item.originalUnitPrice), 0).toLocaleString('tr-TR')}
+                      </Typography>
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </TableContainer>
+
+            <Alert severity="warning" sx={{ mt: 2 }}>
+              <Typography variant="body2">
+                <strong>Dikkat:</strong> İade işlemi sonrası:
+              </Typography>
+              <ul style={{ margin: '8px 0', paddingLeft: '20px' }}>
+                <li>Ürün stoğu artacaktır</li>
+                <li>Müşteri bakiyesi azalacaktır</li>
+                <li>İade kaydı satış geçmişinde görünecektir</li>
+              </ul>
+            </Alert>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setReturnDialogOpen(false)}>İptal</Button>
+          <Button
+            onClick={handleCompleteReturn}
+            variant="contained"
+            color="warning"
+            disabled={loading || returnItems.every(item => item.returnQuantityPieces === 0)}
+          >
+            {loading ? 'İşleniyor...' : 'İade İşlemini Tamamla'}
+          </Button>
         </DialogActions>
       </Dialog>
 

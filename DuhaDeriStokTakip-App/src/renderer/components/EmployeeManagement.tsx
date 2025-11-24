@@ -309,7 +309,7 @@ const EmployeeManagement: React.FC = () => {
   };
 
   return (
-    <Box sx={{ p: 3 }}>
+    <Box sx={{ mt: 2, mr: 4}}>
       {/* Header */}
       <Box sx={{ mb: 4 }}>
         <Typography variant="h3" sx={{ fontWeight: 700, mb: 1 }}>
@@ -462,7 +462,6 @@ const EmployeeManagement: React.FC = () => {
                   <TableCell>Telefon</TableCell>
                   <TableCell>Email</TableCell>
                   <TableCell align="right">Maaş</TableCell>
-                  <TableCell align="right">Bakiye</TableCell>
                   <TableCell>Durum</TableCell>
                   <TableCell align="center">İşlemler</TableCell>
                 </TableRow>
@@ -476,14 +475,8 @@ const EmployeeManagement: React.FC = () => {
                     <TableCell>{employee.phone || '-'}</TableCell>
                     <TableCell>{employee.email || '-'}</TableCell>
                     <TableCell align="right">
-                      ₺{Number(employee.salary || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </TableCell>
-                    <TableCell align="right">
-                      <Chip
-                        label={`₺${Number(employee.balance || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                        color={getBalanceColor(employee.balance || 0) as any}
-                        size="small"
-                      />
+                      {employee.salary_currency === 'USD' ? '$' : employee.salary_currency === 'EUR' ? '€' : '₺'}
+                      {(employee.salary || 0).toLocaleString('tr-TR')}
                     </TableCell>
                     <TableCell>
                       <Chip
@@ -540,7 +533,7 @@ const EmployeeManagement: React.FC = () => {
                 ))}
                 {employees.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={9} align="center">
+                    <TableCell colSpan={8} align="center">
                       {loading ? 'Yükleniyor...' : 'Çalışan bulunamadı'}
                     </TableCell>
                   </TableRow>
@@ -645,15 +638,33 @@ const EmployeeManagement: React.FC = () => {
                 <TextField
                   fullWidth
                   label="Maaş"
-                  type="number"
                   value={selectedEmployee.salary || 0}
-                  onChange={(e) => setSelectedEmployee({ ...selectedEmployee, salary: parseFloat(e.target.value) || 0 })}
+                  onChange={(e) => {
+                    const value = e.target.value.replace(/[^\d.]/g, '');
+                    setSelectedEmployee({ ...selectedEmployee, salary: parseFloat(value) || 0 });
+                  }}
                   InputProps={{
-                    startAdornment: <InputAdornment position="start">₺</InputAdornment>,
+                    startAdornment: <InputAdornment position="start">
+                      {selectedEmployee.salary_currency === 'USD' ? '$' : selectedEmployee.salary_currency === 'EUR' ? '€' : '₺'}
+                    </InputAdornment>,
                   }}
                 />
               </Grid>
               <Grid size={{ xs: 12, md: 6 }}>
+                <FormControl fullWidth>
+                  <InputLabel>Para Birimi</InputLabel>
+                  <Select
+                    value={selectedEmployee.salary_currency || 'TRY'}
+                    label="Para Birimi"
+                    onChange={(e) => setSelectedEmployee({ ...selectedEmployee, salary_currency: e.target.value })}
+                  >
+                    <MenuItem value="TRY">₺ Türk Lirası</MenuItem>
+                    <MenuItem value="USD">$ Amerikan Doları</MenuItem>
+                    <MenuItem value="EUR">€ Euro</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid size={{ xs: 12 }}>
                 <TextField
                   fullWidth
                   label="Email"
@@ -662,7 +673,7 @@ const EmployeeManagement: React.FC = () => {
                   onChange={(e) => setSelectedEmployee({ ...selectedEmployee, email: e.target.value })}
                 />
               </Grid>
-              <Grid size={{ xs: 12, md: 6 }}>
+              <Grid size={{ xs: 12 }}>
                 <FormControl fullWidth>
                   <InputLabel>Durum</InputLabel>
                   <Select

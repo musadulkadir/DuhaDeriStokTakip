@@ -28,12 +28,6 @@ class DatabaseAPI {
     return window.require("electron").ipcRenderer.invoke('db:create-tables');
   }
 
-  // YENİ EKLENECEK FONKSİYON:
-  async getSaleById(saleId: number): Promise<ApiResponse<Sale>> { // 'Sale' tipi SalesManagement.tsx'ten gelen tip olmalı
-    return window.require("electron").ipcRenderer.invoke('sales:getById', saleId);
-  }
-
-
   // Customer operations
   async getCustomers(page = 1, limit = 50): Promise<PaginatedResponse<Customer>> {
     return window.require("electron").ipcRenderer.invoke('customers:get-all', page, limit);
@@ -147,6 +141,10 @@ class DatabaseAPI {
   // Sales operations
   async getSales(startDate?: string, endDate?: string): Promise<ApiResponse<Sale[]> & { totals?: Record<string, number>; dayCount?: number }> {
     return window.require("electron").ipcRenderer.invoke('sales:get-all', startDate, endDate);
+  }
+
+  async getSaleById(saleId: number): Promise<ApiResponse<any>> {
+    return window.require("electron").ipcRenderer.invoke('sales:getById', saleId);
   }
 
   async createSale(sale: Omit<Sale, 'id' | 'created_at' | 'updated_at'>): Promise<ApiResponse<Sale>> {

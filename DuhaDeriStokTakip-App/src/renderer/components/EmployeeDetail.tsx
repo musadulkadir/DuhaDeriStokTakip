@@ -319,6 +319,7 @@ const EmployeeDetail: React.FC = () => {
       const cashTransactionData: CashTransaction = {
         type: 'in',
         amount: selectedPayment.amount,
+        currency: selectedPayment.currency,
         category: 'Ödeme İptali',
         description: `${employee.name} - Ödeme iptali`,
         reference_type: 'payment_cancel',

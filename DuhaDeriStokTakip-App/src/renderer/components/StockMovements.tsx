@@ -705,9 +705,16 @@ const StockMovements: React.FC = () => {
                               reference_type: movement.reference_type
                             });
 
-                            // "Satış - Keçi-Palto Bej - 10 adet" -> "Satış - Müşteri Adı"
+                            // "İade - Müşteri Adı - ..." -> "İade - Müşteri Adı"
+                            if (movement.notes.includes('İade - ')) {
+                              const parts = movement.notes.split(' - ');
+                              return parts.length >= 2 ? `İade - ${parts[1]}` : 'İade';
+                            }
+
+                            // "Satış - Müşteri Adı - ..." -> "Satış - Müşteri Adı"
                             if (movement.notes.includes('Satış - ')) {
-                              return movement.customerName ? `Satış - ${movement.customerName}` : 'Satış';
+                              const parts = movement.notes.split(' - ');
+                              return parts.length >= 2 ? `Satış - ${parts[1]}` : 'Satış';
                             }
 
                             // "Alım - Boya Kahverengi - 100 kg" -> "Alım - Tedarikçi Adı"
