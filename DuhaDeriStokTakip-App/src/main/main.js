@@ -226,6 +226,8 @@ async function createTables() {
     await query(`
       CREATE TABLE IF NOT EXISTS check_transactions (
         id SERIAL PRIMARY KEY,
+        sequence_number VARCHAR(20),
+        is_official BOOLEAN DEFAULT true,
         type VARCHAR(10) NOT NULL CHECK (type IN ('in', 'out')),
         amount DECIMAL(15,2) NOT NULL,
         currency VARCHAR(3) DEFAULT 'TRY',
@@ -242,6 +244,9 @@ async function createTables() {
         description TEXT,
         customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
         customer_name VARCHAR(255),
+        status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'collected', 'used', 'protested')),
+        protested_at TIMESTAMP,
+        protest_reason TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
@@ -263,12 +268,15 @@ async function createTables() {
 
     // Check transactions için yeni kolonları ekle (eğer yoksa)
     try {
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS sequence_number VARCHAR(20)`);
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS is_official BOOLEAN DEFAULT true`);
       await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS received_date DATE`);
       await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS received_from VARCHAR(255)`);
       await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS first_endorser VARCHAR(255)`);
       await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS last_endorser VARCHAR(255)`);
       await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS branch_name VARCHAR(100)`);
       await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS account_number VARCHAR(50)`);
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'active'`);
       await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS is_cashed BOOLEAN DEFAULT FALSE`);
       await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS cashed_at TIMESTAMP`);
       await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS original_transaction_id INTEGER`);
@@ -277,6 +285,9 @@ async function createTables() {
       await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS original_currency VARCHAR(3)`);
       await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS original_amount DECIMAL(15,2)`);
       await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS conversion_rate DECIMAL(10,4)`);
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS converted_amount DECIMAL(15,2)`);
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS protested_at TIMESTAMP`);
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS protest_reason TEXT`);
     } catch (error) {
       console.log('Check transactions kolonları zaten mevcut veya eklenemedi:', error.message);
     }
@@ -620,6 +631,156 @@ async function createTables() {
     } catch (migrationError) {
       console.error('Migration 5 error:', migrationError);
       console.log('Migration 5 skipped or already completed:', migrationError.message);
+    }
+
+    // Migration 6: Add sequence numbers and status to check_transactions
+    try {
+      console.log('Starting check transactions migration...');
+
+      // ALWAYS update status constraint to include 'protested'
+      try {
+        console.log('Updating status constraint...');
+        // Drop old constraint if exists
+        await query(`
+          ALTER TABLE check_transactions 
+          DROP CONSTRAINT IF EXISTS check_transactions_status_check
+        `);
+        
+        // Add new constraint with protested status
+        await query(`
+          ALTER TABLE check_transactions 
+          ADD CONSTRAINT check_transactions_status_check 
+          CHECK (status IN ('active', 'collected', 'used', 'protested'))
+        `);
+        console.log('Status constraint updated successfully');
+      } catch (e) {
+        console.log('Status constraint could not be updated:', e.message);
+      }
+
+      // Check if migration is needed
+      const needsMigration = await query(`
+        SELECT COUNT(*) as count 
+        FROM check_transactions 
+        WHERE sequence_number IS NULL
+      `);
+
+      if (needsMigration.rows[0].count > 0) {
+        console.log(`Found ${needsMigration.rows[0].count} check transactions without sequence numbers`);
+
+        // Generate sequence numbers for existing records
+        // Checks
+        const checks = await queryAll(`
+          SELECT id, created_at 
+          FROM check_transactions 
+          WHERE check_type = 'check' AND sequence_number IS NULL
+          ORDER BY created_at ASC
+        `);
+
+        for (const check of checks) {
+          const year = new Date(check.created_at).getFullYear();
+          const prefix = 'C';
+          
+          // Get last sequence number for this year
+          const lastSeq = await queryOne(`
+            SELECT sequence_number 
+            FROM check_transactions 
+            WHERE check_type = 'check' 
+            AND sequence_number LIKE $1
+            ORDER BY id DESC 
+            LIMIT 1
+          `, [`${prefix}${year}%`]);
+          
+          let seqNum = 1;
+          if (lastSeq && lastSeq.sequence_number) {
+            const parts = lastSeq.sequence_number.split('-');
+            if (parts.length === 2) {
+              seqNum = parseInt(parts[1]) + 1;
+            }
+          }
+          
+          const sequenceNumber = `${prefix}${year}-${String(seqNum).padStart(4, '0')}`;
+          
+          await query(`
+            UPDATE check_transactions
+            SET sequence_number = $1
+            WHERE id = $2
+          `, [sequenceNumber, check.id]);
+        }
+
+        // Promissory notes
+        const notes = await queryAll(`
+          SELECT id, created_at 
+          FROM check_transactions 
+          WHERE check_type = 'promissory_note' AND sequence_number IS NULL
+          ORDER BY created_at ASC
+        `);
+
+        for (const note of notes) {
+          const year = new Date(note.created_at).getFullYear();
+          const prefix = 'S';
+          
+          // Get last sequence number for this year
+          const lastSeq = await queryOne(`
+            SELECT sequence_number 
+            FROM check_transactions 
+            WHERE check_type = 'promissory_note' 
+            AND sequence_number LIKE $1
+            ORDER BY id DESC 
+            LIMIT 1
+          `, [`${prefix}${year}%`]);
+          
+          let seqNum = 1;
+          if (lastSeq && lastSeq.sequence_number) {
+            const parts = lastSeq.sequence_number.split('-');
+            if (parts.length === 2) {
+              seqNum = parseInt(parts[1]) + 1;
+            }
+          }
+          
+          const sequenceNumber = `${prefix}${year}-${String(seqNum).padStart(4, '0')}`;
+          
+          await query(`
+            UPDATE check_transactions
+            SET sequence_number = $1
+            WHERE id = $2
+          `, [sequenceNumber, note.id]);
+        }
+
+        // Update status for existing records
+        await query(`
+          UPDATE check_transactions 
+          SET status = 'collected' 
+          WHERE is_cashed = true 
+          AND (description LIKE '%Tahsil%' OR description LIKE '%tahsil%')
+          AND status = 'active'
+        `);
+
+        await query(`
+          UPDATE check_transactions 
+          SET status = 'used' 
+          WHERE is_cashed = true 
+          AND (description LIKE '%Tedarikçi%' OR description LIKE '%Kullanıldı%' OR description LIKE '%kullanıldı%')
+          AND status = 'active'
+        `);
+
+        await query(`
+          UPDATE check_transactions 
+          SET status = 'used' 
+          WHERE is_cashed = true 
+          AND status = 'active'
+        `);
+
+        // Add indexes
+        await query(`CREATE INDEX IF NOT EXISTS idx_check_transactions_sequence_number ON check_transactions(sequence_number)`);
+        await query(`CREATE INDEX IF NOT EXISTS idx_check_transactions_status ON check_transactions(status)`);
+
+        console.log('Migration completed: Check transactions sequence numbers and status added');
+      } else {
+        console.log('Check transactions migration not needed, all records have sequence numbers');
+      }
+    } catch (migrationError) {
+      console.error('Migration 6 error:', migrationError);
+      console.log('Migration 6 skipped or already completed:', migrationError.message);
     }
 
     console.log('Database tables created successfully');
@@ -3056,14 +3217,38 @@ ipcMain.handle('get-check-transactions', async () => {
 // Çek-Senet işlemi ekle
 ipcMain.handle('add-check-transaction', async (event, transaction) => {
   try {
+    // Sıra numarası oluştur
+    const year = new Date().getFullYear();
+    const checkTypePrefix = transaction.check_type === 'check' ? 'C' : 'S';
+    
+    // Son sıra numarasını al
+    const lastSeq = await queryOne(`
+      SELECT sequence_number 
+      FROM check_transactions 
+      WHERE check_type = $1 
+      AND sequence_number LIKE $2
+      ORDER BY id DESC 
+      LIMIT 1
+    `, [transaction.check_type, `${checkTypePrefix}${year}%`]);
+    
+    let sequenceNumber;
+    if (lastSeq && lastSeq.sequence_number) {
+      const lastNum = parseInt(lastSeq.sequence_number.split('-')[1]);
+      sequenceNumber = `${checkTypePrefix}${year}-${String(lastNum + 1).padStart(4, '0')}`;
+    } else {
+      sequenceNumber = `${checkTypePrefix}${year}-0001`;
+    }
+    
     const result = await queryOne(`
       INSERT INTO check_transactions (
-        type, amount, currency, check_type, check_number, received_date, 
+        sequence_number, is_official, type, amount, currency, check_type, check_number, received_date, 
         received_from, first_endorser, last_endorser, bank_name, branch_name,
-        due_date, account_number, description, customer_id, customer_name, payment_id
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+        due_date, account_number, description, customer_id, customer_name, payment_id, status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
       RETURNING *
     `, [
+      sequenceNumber,
+      transaction.is_official !== undefined ? transaction.is_official : true,
       transaction.type,
       transaction.amount,
       transaction.currency || 'TRY',
@@ -3080,7 +3265,8 @@ ipcMain.handle('add-check-transaction', async (event, transaction) => {
       transaction.description,
       transaction.customer_id,
       transaction.customer_name,
-      transaction.payment_id || null
+      transaction.payment_id || null,
+      transaction.status || 'active'
     ]);
     return { success: true, data: result };
   } catch (error) {
@@ -3094,15 +3280,20 @@ ipcMain.handle('update-check-transaction', async (event, id, transaction) => {
   try {
     const result = await queryOne(`
       UPDATE check_transactions 
-      SET type = $1, amount = $2, currency = $3, check_type = $4, 
-          check_number = $5, received_date = $6, received_from = $7,
-          first_endorser = $8, last_endorser = $9, bank_name = $10, 
-          branch_name = $11, due_date = $12, account_number = $13,
-          description = $14, customer_name = $15, is_cashed = $16,
-          cashed_at = $17, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $18
+      SET is_official = $1, type = $2, amount = $3, currency = $4, check_type = $5, 
+          check_number = $6, received_date = $7, received_from = $8,
+          first_endorser = $9, last_endorser = $10, bank_name = $11, 
+          branch_name = $12, due_date = $13, account_number = $14,
+          description = $15, customer_name = $16, is_cashed = $17,
+          cashed_at = $18, status = $19, is_converted = $20,
+          original_currency = $21, original_amount = $22, 
+          conversion_rate = $23, converted_amount = $24,
+          protested_at = $25, protest_reason = $26,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = $27
       RETURNING *
     `, [
+      transaction.is_official !== undefined ? transaction.is_official : true,
       transaction.type,
       transaction.amount,
       transaction.currency || 'TRY',
@@ -3120,6 +3311,14 @@ ipcMain.handle('update-check-transaction', async (event, id, transaction) => {
       transaction.customer_name,
       transaction.is_cashed || false,
       transaction.cashed_at || null,
+      transaction.status || 'active',
+      transaction.is_converted || false,
+      transaction.original_currency || null,
+      transaction.original_amount || null,
+      transaction.conversion_rate || null,
+      transaction.converted_amount || null,
+      transaction.protested_at || null,
+      transaction.protest_reason || null,
       id
     ]);
     

@@ -39,6 +39,8 @@ import { DEFAULT_CURRENCIES } from '../constants/currencies';
 
 interface CheckTransaction {
   id: number;
+  sequence_number?: string;
+  is_official?: boolean;
   type: 'in' | 'out';
   amount: number;
   currency: string;
@@ -55,6 +57,7 @@ interface CheckTransaction {
   description?: string;
   customer_id?: number;
   customer_name?: string;
+  status?: 'active' | 'collected' | 'used' | 'protested';
   is_cashed?: boolean;
   cashed_at?: string;
   original_transaction_id?: number;
@@ -62,6 +65,9 @@ interface CheckTransaction {
   original_currency?: string;
   original_amount?: number;
   conversion_rate?: number;
+  converted_amount?: number;
+  protested_at?: string;
+  protest_reason?: string;
   created_at: string;
 }
 
@@ -69,7 +75,7 @@ const CheckManagement: React.FC = () => {
   const [transactions, setTransactions] = useState<CheckTransaction[]>([]);
   const [filteredTransactions, setFilteredTransactions] = useState<CheckTransaction[]>([]);
   const [loading, setLoading] = useState(false);
-  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' | 'warning' });
   
   // Summary states
   const [checkBalanceTRY, setCheckBalanceTRY] = useState(0);
@@ -92,12 +98,15 @@ const CheckManagement: React.FC = () => {
   const [cashOutDialogOpen, setCashOutDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [protestDialogOpen, setProtestDialogOpen] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<CheckTransaction | null>(null);
   const [cashOutAmount, setCashOutAmount] = useState('');
+  const [protestReason, setProtestReason] = useState('');
   
   // Form states
   const [transactionType, setTransactionType] = useState<'in' | 'out'>('in');
   const [checkType, setCheckType] = useState<'check' | 'promissory_note'>('check');
+  const [isOfficial, setIsOfficial] = useState(true);
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState(DEFAULT_CURRENCIES.CASH_TRANSACTION);
   const [checkNumber, setCheckNumber] = useState('');
@@ -110,7 +119,6 @@ const CheckManagement: React.FC = () => {
   const [dueDate, setDueDate] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [description, setDescription] = useState('');
-  const [customerName, setCustomerName] = useState('');
 
   const loadTransactions = async () => {
     setLoading(true);
@@ -213,6 +221,7 @@ const CheckManagement: React.FC = () => {
   const resetForm = () => {
     setTransactionType('in');
     setCheckType('check');
+    setIsOfficial(true);
     setAmount('');
     setCurrency(DEFAULT_CURRENCIES.CASH_TRANSACTION);
     setCheckNumber('');
@@ -225,7 +234,6 @@ const CheckManagement: React.FC = () => {
     setDueDate('');
     setAccountNumber('');
     setDescription('');
-    setCustomerName('');
   };
 
   const handleSubmit = async () => {
@@ -239,6 +247,7 @@ const CheckManagement: React.FC = () => {
       const transaction = {
         type: transactionType,
         check_type: checkType,
+        is_official: isOfficial,
         amount: parseFloat(amount),
         currency,
         check_number: checkNumber || null,
@@ -251,7 +260,6 @@ const CheckManagement: React.FC = () => {
         due_date: dueDate || null,
         account_number: accountNumber || null,
         description: description || null,
-        customer_name: customerName || null,
       };
 
       const response = await dbAPI.addCheckTransaction(transaction);
@@ -276,6 +284,7 @@ const CheckManagement: React.FC = () => {
     // Form alanlarını doldur
     setTransactionType(selectedTransaction.type);
     setCheckType(selectedTransaction.check_type);
+    setIsOfficial(selectedTransaction.is_official !== undefined ? selectedTransaction.is_official : true);
     setAmount(selectedTransaction.amount.toString());
     setCurrency(selectedTransaction.currency);
     setCheckNumber(selectedTransaction.check_number || '');
@@ -288,7 +297,6 @@ const CheckManagement: React.FC = () => {
     setDueDate(selectedTransaction.due_date || '');
     setAccountNumber(selectedTransaction.account_number || '');
     setDescription(selectedTransaction.description || '');
-    setCustomerName(selectedTransaction.customer_name || '');
     
     setEditDialogOpen(true);
   };
@@ -304,6 +312,7 @@ const CheckManagement: React.FC = () => {
       const updatedTransaction = {
         type: transactionType,
         check_type: checkType,
+        is_official: isOfficial,
         amount: parseFloat(amount),
         currency,
         check_number: checkNumber || null,
@@ -316,7 +325,6 @@ const CheckManagement: React.FC = () => {
         due_date: dueDate || null,
         account_number: accountNumber || null,
         description: description || null,
-        customer_name: customerName || null,
         is_cashed: selectedTransaction.is_cashed,
         cashed_at: selectedTransaction.cashed_at,
       };
@@ -365,15 +373,68 @@ const CheckManagement: React.FC = () => {
     }
   };
 
+  const handleProtestCheck = async () => {
+    console.log('🔴 handleProtestCheck başladı');
+    console.log('selectedTransaction:', selectedTransaction);
+    
+    if (!selectedTransaction) {
+      console.log('❌ selectedTransaction yok!');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      console.log('📤 updateCheckTransaction çağrılıyor...');
+      console.log('Transaction ID:', selectedTransaction.id);
+      console.log('Protest reason:', protestReason);
+      
+      const updateData = {
+        ...selectedTransaction,
+        status: 'protested',
+        protested_at: new Date().toISOString(),
+        protest_reason: protestReason || 'Protesto edildi',
+        description: `${selectedTransaction.description || ''} - PROTESTO EDİLDİ${protestReason ? ': ' + protestReason : ''}`.trim(),
+      };
+      
+      console.log('Update data:', updateData);
+      
+      const response = await dbAPI.updateCheckTransaction(selectedTransaction.id, updateData);
+      
+      console.log('📥 Response:', response);
+
+      if (response.success) {
+        console.log('✅ Protesto başarılı');
+        setSnackbar({ 
+          open: true, 
+          message: `${selectedTransaction.check_type === 'check' ? 'Çek' : 'Senet'} protesto edildi`, 
+          severity: 'warning' 
+        });
+        setProtestDialogOpen(false);
+        setProtestReason('');
+        setSelectedTransaction(null);
+        loadTransactions();
+      } else {
+        console.log('❌ Protesto başarısız:', response.error);
+        setSnackbar({ open: true, message: response.error || 'İşlem güncellenemedi', severity: 'error' });
+      }
+    } catch (error) {
+      console.error('❌ Protesto işlemi hatası:', error);
+      setSnackbar({ open: true, message: 'Protesto işlemi sırasında hata oluştu', severity: 'error' });
+    } finally {
+      setLoading(false);
+      console.log('🔴 handleProtestCheck bitti');
+    }
+  };
+
   const handleCashOut = async () => {
     if (!selectedTransaction || !cashOutAmount || parseFloat(cashOutAmount) <= 0) {
       setSnackbar({ open: true, message: 'Lütfen geçerli bir tutar girin', severity: 'error' });
       return;
     }
 
-    // Zaten bozdurulmuş mu kontrol et
-    if (selectedTransaction.is_cashed) {
-      setSnackbar({ open: true, message: 'Bu çek/senet zaten bozdurulmuş!', severity: 'error' });
+    // Zaten tahsil edilmiş mi kontrol et
+    if (selectedTransaction.status === 'collected') {
+      setSnackbar({ open: true, message: 'Bu çek/senet zaten tahsil edilmiş!', severity: 'error' });
       return;
     }
 
@@ -384,6 +445,7 @@ const CheckManagement: React.FC = () => {
       // 1. Orijinal çeki "tahsil edildi" olarak işaretle
       const updateResponse = await dbAPI.updateCheckTransaction(selectedTransaction.id, {
         ...selectedTransaction,
+        status: 'collected',
         is_cashed: true,
         cashed_at: new Date().toISOString(),
         description: `${selectedTransaction.description || ''} - Tahsil Edildi`.trim(),
@@ -393,41 +455,15 @@ const CheckManagement: React.FC = () => {
         throw new Error(updateResponse.error || 'Çek işaretleme başarısız');
       }
 
-      // 2. Çek-Senet kasasından çıkış işlemi (out)
-      const checkOutTransaction = {
-        type: 'out' as const,
-        check_type: selectedTransaction.check_type,
-        amount,
-        currency: selectedTransaction.currency,
-        check_number: selectedTransaction.check_number || null,
-        received_date: selectedTransaction.received_date || null,
-        received_from: selectedTransaction.received_from || null,
-        first_endorser: selectedTransaction.first_endorser || null,
-        last_endorser: selectedTransaction.last_endorser || null,
-        bank_name: selectedTransaction.bank_name || null,
-        branch_name: selectedTransaction.branch_name || null,
-        due_date: selectedTransaction.due_date || null,
-        account_number: selectedTransaction.account_number || null,
-        description: `Bozdurma - ${selectedTransaction.check_type === 'check' ? 'Çek' : 'Senet'} No: ${selectedTransaction.check_number || 'Yok'}`,
-        customer_id: selectedTransaction.customer_id || null,
-        customer_name: selectedTransaction.customer_name || null,
-        original_transaction_id: selectedTransaction.id,
-      };
-
-      const checkResponse = await dbAPI.addCheckTransaction(checkOutTransaction);
-      if (!checkResponse.success) {
-        throw new Error(checkResponse.error || 'Çek/Senet çıkış işlemi başarısız');
-      }
-
-      // 3. Normal kasaya giriş işlemi (in)
+      // 2. Normal kasaya giriş işlemi (in)
       const cashInTransaction = {
         type: 'in' as const,
         amount,
         currency: selectedTransaction.currency,
         category: selectedTransaction.check_type === 'check' ? 'Çek Tahsil' : 'Senet Tahsil',
-        description: `${selectedTransaction.check_type === 'check' ? 'Çek' : 'Senet'} Tahsil - No: ${selectedTransaction.check_number || 'Yok'}`,
+        description: `${selectedTransaction.check_type === 'check' ? 'Çek' : 'Senet'} Tahsil - Sıra No: ${selectedTransaction.sequence_number || selectedTransaction.check_number || 'Yok'}`,
         reference_type: 'check_cashout',
-        reference_id: checkResponse.data?.id,
+        reference_id: selectedTransaction.id,
         user: 'Kasa Kullanıcısı',
         date: new Date().toISOString(),
       };
@@ -449,10 +485,10 @@ const CheckManagement: React.FC = () => {
       loadTransactions();
 
     } catch (error) {
-      console.error('Bozdurma hatası:', error);
+      console.error('Tahsil hatası:', error);
       setSnackbar({
         open: true,
-        message: error instanceof Error ? error.message : 'Bozdurma işlemi sırasında hata oluştu',
+        message: error instanceof Error ? error.message : 'Tahsil işlemi sırasında hata oluştu',
         severity: 'error'
       });
     } finally {
@@ -601,14 +637,14 @@ const CheckManagement: React.FC = () => {
             <Table>
               <TableHead>
                 <TableRow>
+                  <TableCell>Sıra No</TableCell>
                   <TableCell>Tarih</TableCell>
-                  <TableCell>Tür</TableCell>
+                  <TableCell>Durum</TableCell>
                   <TableCell>Tip</TableCell>
                   <TableCell>Çek/Senet No</TableCell>
                   <TableCell>Kimden Alındı</TableCell>
                   <TableCell>Banka</TableCell>
                   <TableCell>Vade</TableCell>
-                  <TableCell>Müşteri</TableCell>
                   <TableCell>Açıklama</TableCell>
                   <TableCell align="right">Tutar</TableCell>
                 </TableRow>
@@ -631,9 +667,13 @@ const CheckManagement: React.FC = () => {
                       hover 
                       sx={{ 
                         cursor: 'pointer',
-                        bgcolor: transaction.is_cashed ? 'error.lighter' : 'transparent',
+                        bgcolor: transaction.status === 'collected' ? 'success.lighter' : 
+                                transaction.status === 'used' ? 'warning.lighter' : 
+                                transaction.status === 'protested' ? 'error.lighter' : 'transparent',
                         '&:hover': {
-                          bgcolor: transaction.is_cashed ? 'error.light' : 'action.hover',
+                          bgcolor: transaction.status === 'collected' ? 'success.light' : 
+                                  transaction.status === 'used' ? 'warning.light' : 
+                                  transaction.status === 'protested' ? 'error.light' : 'action.hover',
                         }
                       }}
                       onClick={() => {
@@ -641,35 +681,50 @@ const CheckManagement: React.FC = () => {
                         setDetailDialogOpen(true);
                       }}
                     >
+                      <TableCell>
+                        <Typography variant="body2" sx={{ fontWeight: 600, color: 'primary.main' }}>
+                          {transaction.sequence_number || '-'}
+                        </Typography>
+                      </TableCell>
                       <TableCell>{formatDateTime(transaction.created_at)}</TableCell>
                       <TableCell>
                         <Chip
                           label={
-                            transaction.is_cashed && transaction.description?.includes('Tahsil') ? 'Tahsil Edildi' :
-                            transaction.is_cashed && transaction.description?.includes('Tedarikçi') ? 'Kullanıldı' :
-                            transaction.is_cashed ? 'Kullanıldı' :
+                            transaction.status === 'collected' ? 'Tahsil Edildi' :
+                            transaction.status === 'used' ? 'Kullanıldı' :
+                            transaction.status === 'protested' ? 'PROTESTO' :
                             transaction.type === 'in' ? 'Gelen' : 'Giden'
                           }
                           color={
-                            transaction.is_cashed && transaction.description?.includes('Tahsil') ? 'success' :
-                            transaction.is_cashed && transaction.description?.includes('Tedarikçi') ? 'warning' :
-                            transaction.is_cashed ? 'error' :
+                            transaction.status === 'collected' ? 'success' :
+                            transaction.status === 'used' ? 'warning' :
+                            transaction.status === 'protested' ? 'error' :
                             transaction.type === 'in' ? 'info' : 'default'
                           }
                           size="small"
                           icon={
-                            transaction.is_cashed && transaction.description?.includes('Tahsil') ? <TrendingUp /> :
-                            transaction.is_cashed && transaction.description?.includes('Tedarikçi') ? <TrendingDown /> :
+                            transaction.status === 'collected' ? <TrendingUp /> :
+                            transaction.status === 'used' ? <TrendingDown /> :
                             transaction.type === 'in' ? <TrendingUp /> : <TrendingDown />
                           }
                         />
                       </TableCell>
                       <TableCell>
-                        <Chip
-                          label={transaction.check_type === 'check' ? 'Çek' : 'Senet'}
-                          size="small"
-                          variant="outlined"
-                        />
+                        <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+                          <Chip
+                            label={transaction.check_type === 'check' ? 'Çek' : 'Senet'}
+                            size="small"
+                            variant="outlined"
+                          />
+                          {transaction.is_official === false && (
+                            <Chip
+                              label="Gayrıresmi"
+                              size="small"
+                              color="warning"
+                              variant="outlined"
+                            />
+                          )}
+                        </Box>
                       </TableCell>
                       <TableCell>{transaction.check_number || '-'}</TableCell>
                       <TableCell>{transaction.received_from || '-'}</TableCell>
@@ -677,13 +732,20 @@ const CheckManagement: React.FC = () => {
                       <TableCell>
                         {transaction.due_date ? formatDate(transaction.due_date) : '-'}
                       </TableCell>
-                      <TableCell>{transaction.customer_name || '-'}</TableCell>
                       <TableCell>{transaction.description || '-'}</TableCell>
                       <TableCell align="right">
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                          {transaction.currency === 'TRY' ? '₺' : transaction.currency === 'EUR' ? '€' : '$'}
-                          {Number(transaction.amount).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </Typography>
+                        <Box>
+                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                            {transaction.currency === 'TRY' ? '₺' : transaction.currency === 'EUR' ? '€' : '$'}
+                            {Number(transaction.amount).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </Typography>
+                          {transaction.is_converted && transaction.original_amount && transaction.original_currency && (
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                              Orijinal: {transaction.original_currency === 'TRY' ? '₺' : transaction.original_currency === 'EUR' ? '€' : '$'}
+                              {Number(transaction.original_amount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                            </Typography>
+                          )}
+                        </Box>
                       </TableCell>
                     </TableRow>
                   ))
@@ -712,18 +774,32 @@ const CheckManagement: React.FC = () => {
               </Select>
             </FormControl>
 
-            {/* Çek/Senet Tipi */}
-            <FormControl fullWidth>
-              <InputLabel>Çek/Senet Tipi</InputLabel>
-              <Select
-                value={checkType}
-                label="Çek/Senet Tipi"
-                onChange={(e) => setCheckType(e.target.value as 'check' | 'promissory_note')}
-              >
-                <MenuItem value="check">Çek</MenuItem>
-                <MenuItem value="promissory_note">Senet</MenuItem>
-              </Select>
-            </FormControl>
+            {/* Çek/Senet Tipi ve Tür */}
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <FormControl fullWidth>
+                <InputLabel>Çek/Senet Tipi</InputLabel>
+                <Select
+                  value={checkType}
+                  label="Çek/Senet Tipi"
+                  onChange={(e) => setCheckType(e.target.value as 'check' | 'promissory_note')}
+                >
+                  <MenuItem value="check">Çek</MenuItem>
+                  <MenuItem value="promissory_note">Senet</MenuItem>
+                </Select>
+              </FormControl>
+
+              <FormControl fullWidth>
+                <InputLabel>Tür</InputLabel>
+                <Select
+                  value={isOfficial ? 'official' : 'unofficial'}
+                  label="Tür"
+                  onChange={(e) => setIsOfficial(e.target.value === 'official')}
+                >
+                  <MenuItem value="official">Resmi</MenuItem>
+                  <MenuItem value="unofficial">Gayrıresmi</MenuItem>
+                </Select>
+              </FormControl>
+            </Box>
 
             {/* Tutar ve Para Birimi */}
             <Box sx={{ display: 'flex', gap: 2 }}>
@@ -821,14 +897,6 @@ const CheckManagement: React.FC = () => {
               </Box>
             </Box>
 
-            {/* Müşteri Adı */}
-            <TextField
-              label="Müşteri/Firma Adı"
-              value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
-              fullWidth
-            />
-
             {/* Açıklama */}
             <TextField
               label="Açıklama"
@@ -863,10 +931,43 @@ const CheckManagement: React.FC = () => {
                 </Typography>
                 <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
                   <Box>
+                    <Typography variant="caption" color="text.secondary">Sıra No</Typography>
+                    <Typography variant="body1" sx={{ fontWeight: 600, color: 'primary.main' }}>
+                      {selectedTransaction.sequence_number || '-'}
+                    </Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">Durum</Typography>
+                    <Chip
+                      label={
+                        selectedTransaction.status === 'collected' ? 'Tahsil Edildi' :
+                        selectedTransaction.status === 'used' ? 'Kullanıldı' :
+                        selectedTransaction.status === 'protested' ? 'PROTESTO' :
+                        'Aktif'
+                      }
+                      color={
+                        selectedTransaction.status === 'collected' ? 'success' :
+                        selectedTransaction.status === 'used' ? 'warning' :
+                        selectedTransaction.status === 'protested' ? 'error' :
+                        'default'
+                      }
+                      size="small"
+                    />
+                  </Box>
+                  <Box>
                     <Typography variant="caption" color="text.secondary">İşlem Tipi</Typography>
                     <Typography variant="body1">
                       {selectedTransaction.type === 'in' ? 'Gelen' : 'Giden'}
                     </Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">Tür</Typography>
+                    <Chip
+                      label={selectedTransaction.is_official === false ? 'Gayrıresmi' : 'Resmi'}
+                      size="small"
+                      color={selectedTransaction.is_official === false ? 'warning' : 'default'}
+                      variant="outlined"
+                    />
                   </Box>
                   <Box>
                     <Typography variant="caption" color="text.secondary">Tutar</Typography>
@@ -874,10 +975,6 @@ const CheckManagement: React.FC = () => {
                       {selectedTransaction.currency === 'TRY' ? '₺' : selectedTransaction.currency === 'EUR' ? '€' : '$'}
                       {Number(selectedTransaction.amount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
                     </Typography>
-                  </Box>
-                  <Box>
-                    <Typography variant="caption" color="text.secondary">Müşteri</Typography>
-                    <Typography variant="body1">{selectedTransaction.customer_name || '-'}</Typography>
                   </Box>
                   <Box>
                     <Typography variant="caption" color="text.secondary">Kayıt Tarihi</Typography>
@@ -946,37 +1043,71 @@ const CheckManagement: React.FC = () => {
                     <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 2, color: 'info.main' }}>
                       Çevrilme Bilgileri
                     </Typography>
+                    <Alert severity="info" sx={{ mb: 2 }}>
+                      Bu çek/senet farklı bir para birimine çevrilerek kullanılmıştır.
+                    </Alert>
                     <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
                       <Box>
                         <Typography variant="caption" color="text.secondary">Orijinal Para Birimi</Typography>
-                        <Typography variant="body1">{selectedTransaction.original_currency || '-'}</Typography>
+                        <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                          {selectedTransaction.original_currency || '-'}
+                        </Typography>
                       </Box>
                       <Box>
                         <Typography variant="caption" color="text.secondary">Orijinal Tutar</Typography>
-                        <Typography variant="body1">
+                        <Typography variant="body1" sx={{ fontWeight: 600 }}>
                           {selectedTransaction.original_amount 
-                            ? Number(selectedTransaction.original_amount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })
+                            ? `${selectedTransaction.original_currency === 'TRY' ? '₺' : selectedTransaction.original_currency === 'EUR' ? '€' : '$'}${Number(selectedTransaction.original_amount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`
                             : '-'}
                         </Typography>
                       </Box>
                       <Box>
                         <Typography variant="caption" color="text.secondary">Çevrilmiş Para Birimi</Typography>
-                        <Typography variant="body1">{selectedTransaction.currency}</Typography>
+                        <Typography variant="body1" sx={{ fontWeight: 600, color: 'success.main' }}>
+                          {selectedTransaction.currency}
+                        </Typography>
                       </Box>
                       <Box>
                         <Typography variant="caption" color="text.secondary">Çevrilmiş Tutar</Typography>
-                        <Typography variant="body1">
+                        <Typography variant="body1" sx={{ fontWeight: 600, color: 'success.main' }}>
+                          {selectedTransaction.currency === 'TRY' ? '₺' : selectedTransaction.currency === 'EUR' ? '€' : '$'}
                           {Number(selectedTransaction.amount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
                         </Typography>
                       </Box>
                       {selectedTransaction.conversion_rate && (
                         <Box sx={{ gridColumn: '1 / -1' }}>
-                          <Typography variant="caption" color="text.secondary">Kur</Typography>
+                          <Typography variant="caption" color="text.secondary">Kur Oranı</Typography>
                           <Typography variant="body1">
-                            1 {selectedTransaction.original_currency} = {Number(selectedTransaction.conversion_rate).toFixed(4)} {selectedTransaction.currency}
+                            1 {selectedTransaction.currency} = {Number(selectedTransaction.conversion_rate).toFixed(4)} {selectedTransaction.original_currency}
                           </Typography>
                         </Box>
                       )}
+                    </Box>
+                  </Box>
+                </>
+              )}
+
+              {selectedTransaction.status === 'protested' && selectedTransaction.protest_reason && (
+                <>
+                  <Divider />
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 2, color: 'error.main' }}>
+                      Protesto Bilgileri
+                    </Typography>
+                    <Alert severity="error" sx={{ mb: 2 }}>
+                      Bu çek/senet protesto edilmiştir ve ödenmemiştir.
+                    </Alert>
+                    <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+                      <Box>
+                        <Typography variant="caption" color="text.secondary">Protesto Tarihi</Typography>
+                        <Typography variant="body1">
+                          {selectedTransaction.protested_at ? formatDateTime(selectedTransaction.protested_at) : '-'}
+                        </Typography>
+                      </Box>
+                      <Box sx={{ gridColumn: '1 / -1' }}>
+                        <Typography variant="caption" color="text.secondary">Protesto Nedeni</Typography>
+                        <Typography variant="body1">{selectedTransaction.protest_reason}</Typography>
+                      </Box>
                     </Box>
                   </Box>
                 </>
@@ -1001,20 +1132,6 @@ const CheckManagement: React.FC = () => {
         <DialogActions>
           <Box sx={{ display: 'flex', gap: 1, width: '100%', justifyContent: 'space-between' }}>
             <Box sx={{ display: 'flex', gap: 1 }}>
-              {selectedTransaction?.is_cashed && selectedTransaction?.description?.includes('Tahsil') && (
-                <Chip 
-                  label="Tahsil Edildi" 
-                  color="success" 
-                  icon={<TrendingUp />}
-                />
-              )}
-              {selectedTransaction?.is_cashed && selectedTransaction?.description?.includes('Tedarikçi') && (
-                <Chip 
-                  label="Kullanıldı" 
-                  color="warning" 
-                  icon={<TrendingDown />}
-                />
-              )}
               {selectedTransaction?.is_converted && (
                 <Chip 
                   label="Çevrildi" 
@@ -1041,8 +1158,7 @@ const CheckManagement: React.FC = () => {
               >
                 Düzenle
               </Button>
-              <Button onClick={() => setDetailDialogOpen(false)}>Kapat</Button>
-              {selectedTransaction?.type === 'in' && !selectedTransaction?.is_cashed && !selectedTransaction?.description?.includes('Tedarikçi') && (
+              {selectedTransaction?.type === 'in' && (selectedTransaction?.status === 'active' || selectedTransaction?.status === 'protested') && (
                 <Button 
                   variant="contained" 
                   color="success"
@@ -1055,6 +1171,21 @@ const CheckManagement: React.FC = () => {
                   Tahsil Et
                 </Button>
               )}
+              {selectedTransaction?.type === 'in' && (selectedTransaction?.status === 'active' || selectedTransaction?.status === 'protested') && (
+                <Button 
+                  variant="outlined" 
+                  color="error"
+                  onClick={() => {
+                    console.log('🔵 Protesto butonu tıklandı');
+                    console.log('selectedTransaction:', selectedTransaction);
+                    setProtestDialogOpen(true);
+                    setDetailDialogOpen(false);
+                  }}
+                >
+                  {selectedTransaction?.status === 'protested' ? 'Protesto Güncelle' : 'Protesto Et'}
+                </Button>
+              )}
+              <Button onClick={() => setDetailDialogOpen(false)}>Kapat</Button>
             </Box>
           </Box>
         </DialogActions>
@@ -1129,18 +1260,32 @@ const CheckManagement: React.FC = () => {
               </Select>
             </FormControl>
 
-            {/* Çek/Senet Tipi */}
-            <FormControl fullWidth>
-              <InputLabel>Çek/Senet Tipi</InputLabel>
-              <Select
-                value={checkType}
-                label="Çek/Senet Tipi"
-                onChange={(e) => setCheckType(e.target.value as 'check' | 'promissory_note')}
-              >
-                <MenuItem value="check">Çek</MenuItem>
-                <MenuItem value="promissory_note">Senet</MenuItem>
-              </Select>
-            </FormControl>
+            {/* Çek/Senet Tipi ve Tür */}
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <FormControl fullWidth>
+                <InputLabel>Çek/Senet Tipi</InputLabel>
+                <Select
+                  value={checkType}
+                  label="Çek/Senet Tipi"
+                  onChange={(e) => setCheckType(e.target.value as 'check' | 'promissory_note')}
+                >
+                  <MenuItem value="check">Çek</MenuItem>
+                  <MenuItem value="promissory_note">Senet</MenuItem>
+                </Select>
+              </FormControl>
+
+              <FormControl fullWidth>
+                <InputLabel>Tür</InputLabel>
+                <Select
+                  value={isOfficial ? 'official' : 'unofficial'}
+                  label="Tür"
+                  onChange={(e) => setIsOfficial(e.target.value === 'official')}
+                >
+                  <MenuItem value="official">Resmi</MenuItem>
+                  <MenuItem value="unofficial">Gayrıresmi</MenuItem>
+                </Select>
+              </FormControl>
+            </Box>
 
             {/* Tutar ve Para Birimi */}
             <Box sx={{ display: 'flex', gap: 2 }}>
@@ -1239,13 +1384,6 @@ const CheckManagement: React.FC = () => {
             </Box>
 
             <TextField
-              label="Müşteri/Firma Adı"
-              value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
-              fullWidth
-            />
-
-            <TextField
               label="Açıklama"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -1289,6 +1427,75 @@ const CheckManagement: React.FC = () => {
           <Button onClick={() => setDeleteDialogOpen(false)}>İptal</Button>
           <Button onClick={confirmDeleteTransaction} color="error" variant="contained" disabled={loading}>
             {loading ? 'Siliniyor...' : 'Sil'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Protest Dialog */}
+      <Dialog 
+        open={protestDialogOpen} 
+        onClose={() => {
+          console.log('🔵 Protesto dialog kapatılıyor');
+          setProtestDialogOpen(false);
+        }} 
+        maxWidth="sm" 
+        fullWidth
+      >
+        <DialogTitle>
+          {selectedTransaction?.check_type === 'check' ? 'Çek' : 'Senet'} Protesto Et
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
+            <Alert severity="warning">
+              Bu işlem {selectedTransaction?.check_type === 'check' ? 'çekin' : 'senedin'} ödenmediğini işaretleyecektir.
+              Protesto durumu sadece bilgilendirme amaçlıdır, çek/senet yine de kullanılabilir.
+            </Alert>
+            
+            <Box>
+              <Typography variant="caption" color="text.secondary">
+                {selectedTransaction?.check_type === 'check' ? 'Çek' : 'Senet'} Bilgileri
+              </Typography>
+              <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                Sıra No: {selectedTransaction?.sequence_number || '-'}
+              </Typography>
+              <Typography variant="body2">
+                {selectedTransaction?.check_number || 'No yok'} - {selectedTransaction?.received_from || 'Bilinmiyor'}
+              </Typography>
+              <Typography variant="body2" sx={{ fontWeight: 600, color: 'error.main', mt: 1 }}>
+                Tutar: {selectedTransaction?.currency === 'TRY' ? '₺' : selectedTransaction?.currency === 'EUR' ? '€' : '$'}
+                {Number(selectedTransaction?.amount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+              </Typography>
+            </Box>
+
+            <TextField
+              fullWidth
+              label="Protesto Nedeni"
+              multiline
+              rows={3}
+              value={protestReason}
+              onChange={(e) => setProtestReason(e.target.value)}
+              placeholder="Karşılıksız, imza uyuşmazlığı, vb..."
+              helperText="Protesto nedenini belirtiniz (opsiyonel)"
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setProtestDialogOpen(false);
+            setProtestReason('');
+          }}>
+            İptal
+          </Button>
+          <Button 
+            onClick={() => {
+              console.log('🟢 Protesto Et butonu tıklandı (dialog içinde)');
+              handleProtestCheck();
+            }} 
+            variant="contained" 
+            color="error"
+            disabled={loading}
+          >
+            {loading ? 'İşleniyor...' : 'Protesto Et'}
           </Button>
         </DialogActions>
       </Dialog>

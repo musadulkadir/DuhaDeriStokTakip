@@ -161,6 +161,7 @@ const CustomerDetail: React.FC = () => {
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
   
   // Çek detay alanları
+  const [isCheckOfficial, setIsCheckOfficial] = useState(true);
   const [checkNumber, setCheckNumber] = useState('');
   const [receivedDate, setReceivedDate] = useState(new Date().toISOString().split('T')[0]);
   const [receivedFrom, setReceivedFrom] = useState('');
@@ -214,23 +215,27 @@ const CustomerDetail: React.FC = () => {
   const [paymentsRowsPerPage, setPaymentsRowsPerPage] = useState(10);
 
   // Tutar formatlama fonksiyonları
-  const formatNumberWithCommas = (value: string): string => {
-    // Sadece rakam ve nokta karakterlerini al
-    const numericValue = value.replace(/[^\d.]/g, '');
+  const formatNumberWithCommas = (value: string | number): string => {
+    // Eğer number ise string'e çevir
+    const stringValue = typeof value === 'number' ? value.toFixed(2) : value;
+    
+    // Sadece rakam ve nokta/virgül karakterlerini al
+    const numericValue = stringValue.replace(/[^\d.,]/g, '');
 
     // Eğer boşsa boş döndür
     if (!numericValue) return '';
 
     // Sayıyı parçalara ayır (tam kısım ve ondalık kısım)
-    const parts = numericValue.split('.');
+    // Hem nokta hem virgül ondalık ayıraç olabilir
+    const parts = numericValue.split(/[.,]/);
     const integerPart = parts[0];
     const decimalPart = parts[1];
 
-    // Tam kısmı üç haneli ayraçlarla formatla
-    const formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    // Tam kısmı üç haneli ayraçlarla formatla (NOKTA ile)
+    const formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 
-    // Ondalık kısım varsa ekle
-    return decimalPart !== undefined ? `${formattedInteger}.${decimalPart}` : formattedInteger;
+    // Ondalık kısım varsa ekle (VİRGÜL ile)
+    return decimalPart !== undefined ? `${formattedInteger},${decimalPart}` : formattedInteger;
   };
 
   const parseFormattedNumber = (value: string): number => {
@@ -248,6 +253,10 @@ const CustomerDetail: React.FC = () => {
       const customerResponse = await dbAPI.getCustomerById(customerId);
       if (customerResponse.success && customerResponse.data) {
         setCustomer(customerResponse.data);
+        // Kimden alındı alanını müşteri ismi ile doldur (sadece boşsa)
+        if (!receivedFrom) {
+          setReceivedFrom(customerResponse.data.name);
+        }
       }
 
       // Ürünleri yükle (satış için)
@@ -681,9 +690,10 @@ const CustomerDetail: React.FC = () => {
           amount,
           currency: paymentCurrency,
           check_type: paymentType === 'check' ? 'check' : 'promissory_note',
+          is_official: isCheckOfficial,
           check_number: checkNumber || null,
           received_date: receivedDate || null,
-          received_from: receivedFrom || null,
+          received_from: receivedFrom || customer.name,
           first_endorser: firstEndorser || null,
           last_endorser: lastEndorser || null,
           bank_name: bankName || null,
@@ -732,6 +742,7 @@ const CustomerDetail: React.FC = () => {
       setPaymentCurrency('TRY');
       setPaymentNotes('');
       setPaymentDate(new Date().toISOString().split('T')[0]);
+      setIsCheckOfficial(true);
       setCheckNumber('');
       setReceivedDate(new Date().toISOString().split('T')[0]);
       setReceivedFrom('');
@@ -1971,14 +1982,14 @@ const CustomerDetail: React.FC = () => {
                               </TableCell>
                               <TableCell align="right">
                                 <Typography variant="body2" sx={{ color: 'success.main', fontWeight: 600 }}>
-                                  +{currencySymbol}{payment.amount.toLocaleString('tr-TR')}
+                                  +{currencySymbol}{formatNumberWithCommas(payment.amount)}
                                 </Typography>
                               </TableCell>
                               <TableCell>
                                 {appliedToPrevious > 0 && appliedToCurrent > 0 ? (
                                   <Box>
-                                    <Chip label={`Önceki: ${currencySymbol}${appliedToPrevious.toLocaleString('tr-TR')}`} size="small" color="warning" sx={{ mb: 0.5, display: 'block' }} />
-                                    <Chip label={`Bu Dönem: ${currencySymbol}${appliedToCurrent.toLocaleString('tr-TR')}`} size="small" color="info" />
+                                    <Chip label={`Önceki: ${currencySymbol}${formatNumberWithCommas(appliedToPrevious)}`} size="small" color="warning" sx={{ mb: 0.5, display: 'block' }} />
+                                    <Chip label={`Bu Dönem: ${currencySymbol}${formatNumberWithCommas(appliedToCurrent)}`} size="small" color="info" />
                                   </Box>
                                 ) : appliedToPrevious > 0 ? (
                                   <Chip label="Önceki Bakiye" size="small" color="warning" />
@@ -2133,6 +2144,18 @@ const CustomerDetail: React.FC = () => {
                 <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'primary.main' }}>
                   {paymentType === 'check' ? 'Çek' : 'Senet'} Detayları
                 </Typography>
+                
+                <FormControl fullWidth>
+                  <InputLabel>Tür</InputLabel>
+                  <Select
+                    value={isCheckOfficial ? 'official' : 'unofficial'}
+                    label="Tür"
+                    onChange={(e) => setIsCheckOfficial(e.target.value === 'official')}
+                  >
+                    <MenuItem value="official">Resmi</MenuItem>
+                    <MenuItem value="unofficial">Gayrıresmi</MenuItem>
+                  </Select>
+                </FormControl>
                 
                 <Box sx={{ display: 'flex', gap: 2 }}>
                   <TextField

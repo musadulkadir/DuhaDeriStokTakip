@@ -98,6 +98,20 @@ interface NewPurchase {
   purchase_date: string;
 }
 
+// Tutar formatlama fonksiyonu (Türkiye standardı: 1.234,56)
+const formatNumberWithCommas = (value: number | string): string => {
+  // Önce number'a çevir
+  const numValue = typeof value === 'string' ? parseFloat(value) : value;
+  
+  // Geçerli bir sayı değilse 0 döndür
+  if (isNaN(numValue)) return '0,00';
+  
+  const fixed = numValue.toFixed(2);
+  const parts = fixed.split('.');
+  const integerPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return `${integerPart},${parts[1]}`;
+};
+
 const SupplierDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -400,9 +414,9 @@ const SupplierDetail: React.FC = () => {
     try {
       const response = await dbAPI.getCheckTransactions();
       if (response.success && response.data) {
-        // Sadece gelen ve bozdurulmamış çekleri göster
+        // Sadece gelen ve kullanılmamış çekleri göster (aktif veya protesto)
         const available = response.data.filter((check: any) => 
-          check.type === 'in' && !check.is_cashed
+          check.type === 'in' && (check.status === 'active' || check.status === 'protested')
         );
         setAvailableChecks(available);
       }
@@ -443,48 +457,30 @@ const SupplierDetail: React.FC = () => {
       const response = await dbAPI.createPayment(paymentData);
       if (response.success) {
         
-        if (newPayment.payment_method === 'check' && selectedCheckId) {
+        if ((newPayment.payment_method === 'check' || newPayment.payment_method === 'promissory_note') && selectedCheckId) {
           // Çek ile ödeme - Çek-Senet kasasından çıkış
           const selectedCheck = availableChecks.find(c => c.id === selectedCheckId);
           if (selectedCheck) {
             // 1. Orijinal çeki "kullanıldı" olarak işaretle
-            await dbAPI.updateCheckTransaction(selectedCheckId, {
-              ...selectedCheck,
-              is_cashed: true,
-              cashed_at: new Date().toISOString(),
-              description: `${selectedCheck.description || ''} - Tedarikçi Ödemesi: ${supplier.name}`.trim(),
-            });
-
-            // 2. Çek-Senet kasasından çıkış işlemi
             const isConverted = selectedCheck.currency !== paymentData.currency || 
                                selectedCheck.amount !== paymentData.amount;
             
-            const checkOutTransaction = {
-              type: 'out' as const,
-              check_type: selectedCheck.check_type,
-              amount: paymentData.amount,
-              currency: paymentData.currency,
-              check_number: selectedCheck.check_number,
-              received_date: selectedCheck.received_date,
-              received_from: selectedCheck.received_from,
-              first_endorser: selectedCheck.first_endorser,
-              last_endorser: selectedCheck.last_endorser,
-              bank_name: selectedCheck.bank_name,
-              branch_name: selectedCheck.branch_name,
-              due_date: selectedCheck.due_date,
-              account_number: selectedCheck.account_number,
-              description: `Tedarikçi Ödemesi - ${supplier.name}${isConverted ? ' (Çevrildi)' : ''}`,
-              customer_name: supplier.name,
-              original_transaction_id: selectedCheckId,
+            await dbAPI.updateCheckTransaction(selectedCheckId, {
+              ...selectedCheck,
+              status: 'used',
+              is_cashed: true,
+              cashed_at: new Date().toISOString(),
+              description: `${selectedCheck.description || ''} - Tedarikçi Ödemesi: ${supplier.name}`.trim(),
               is_converted: isConverted,
               original_currency: isConverted ? selectedCheck.currency : null,
               original_amount: isConverted ? selectedCheck.amount : null,
-              conversion_rate: isConverted && selectedCheck.amount > 0 
-                ? paymentData.amount / selectedCheck.amount 
+              currency: isConverted ? paymentData.currency : selectedCheck.currency,
+              amount: isConverted ? paymentData.amount : selectedCheck.amount,
+              conversion_rate: isConverted && paymentData.amount > 0 
+                ? selectedCheck.amount / paymentData.amount 
                 : null,
-            };
-
-            await dbAPI.addCheckTransaction(checkOutTransaction);
+              converted_amount: isConverted ? paymentData.amount : null,
+            });
           }
         } else {
           // Nakit/Kart/Transfer - Kasadan ödeme tutarını düş
@@ -509,8 +505,8 @@ const SupplierDetail: React.FC = () => {
 
         setSnackbar({ 
           open: true, 
-          message: newPayment.payment_method === 'check' 
-            ? 'Ödeme başarıyla yapıldı ve çek tedarikçiye verildi' 
+          message: (newPayment.payment_method === 'check' || newPayment.payment_method === 'promissory_note')
+            ? 'Ödeme başarıyla yapıldı ve çek/senet tedarikçiye verildi' 
             : 'Ödeme başarıyla yapıldı ve kasadan düşürüldü', 
           severity: 'success' 
         });
@@ -613,8 +609,8 @@ const SupplierDetail: React.FC = () => {
     }
   };
 
-  // Sayı formatlama fonksiyonları
-  const formatNumberWithCommas = (value: string): string => {
+  // Sayı formatlama fonksiyonları (input için)
+  const formatInputNumber = (value: string): string => {
     const numericValue = value.replace(/[^\d]/g, '');
     if (!numericValue) return '';
     return numericValue.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -1581,14 +1577,14 @@ const SupplierDetail: React.FC = () => {
                                   </TableCell>
                                   <TableCell>
                                     <Typography variant="body2" sx={{ color: 'success.main', fontWeight: 600 }}>
-                                      -{currencySymbol}{payment.amount.toLocaleString('tr-TR')}
+                                      -{currencySymbol}{formatNumberWithCommas(payment.amount)}
                                     </Typography>
                                   </TableCell>
                                   <TableCell>
                                     {appliedToPrevious > 0 && appliedToCurrent > 0 ? (
                                       <Box>
-                                        <Chip label={`Önceki: ${currencySymbol}${appliedToPrevious.toLocaleString('tr-TR')}`} size="small" color="warning" sx={{ mb: 0.5, display: 'block' }} />
-                                        <Chip label={`Bu Dönem: ${currencySymbol}${appliedToCurrent.toLocaleString('tr-TR')}`} size="small" color="info" />
+                                        <Chip label={`Önceki: ${currencySymbol}${formatNumberWithCommas(appliedToPrevious)}`} size="small" color="warning" sx={{ mb: 0.5, display: 'block' }} />
+                                        <Chip label={`Bu Dönem: ${currencySymbol}${formatNumberWithCommas(appliedToCurrent)}`} size="small" color="info" />
                                       </Box>
                                     ) : appliedToPrevious > 0 ? (
                                       <Chip label="Önceki Bakiye" size="small" color="warning" />
@@ -1723,12 +1719,13 @@ const SupplierDetail: React.FC = () => {
                   <MenuItem value="card">Kart</MenuItem>
                   <MenuItem value="transfer">Banka Transferi</MenuItem>
                   <MenuItem value="check">Çek</MenuItem>
+                  <MenuItem value="promissory_note">Senet</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
 
-            {/* Çek Seçimi */}
-            {newPayment.payment_method === 'check' && (
+            {/* Çek/Senet Seçimi */}
+            {(newPayment.payment_method === 'check' || newPayment.payment_method === 'promissory_note') && (
               <>
                 <Grid size={{ xs: 12 }}>
                   <FormControl fullWidth>
@@ -1756,10 +1753,12 @@ const SupplierDetail: React.FC = () => {
                       ) : (
                         availableChecks.map((check) => (
                           <MenuItem key={check.id} value={check.id}>
+                            {check.is_official === false ? '🔸 ' : ''}
                             {check.check_type === 'check' ? 'Çek' : 'Senet'} #{check.check_number || check.id} - 
                             {check.received_from || 'Bilinmiyor'} - 
                             {check.currency === 'TRY' ? '₺' : check.currency === 'EUR' ? '€' : '$'}
                             {Number(check.amount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                            {check.is_official === false ? ' (Gayrıresmi)' : ''}
                           </MenuItem>
                         ))
                       )}
@@ -2009,7 +2008,7 @@ const SupplierDetail: React.FC = () => {
                 fullWidth
                 label="Miktar (kg)"
                 value={currentItem.quantity}
-                onChange={(e) => setCurrentItem({ ...currentItem, quantity: formatNumberWithCommas(e.target.value) })}
+                onChange={(e) => setCurrentItem({ ...currentItem, quantity: formatInputNumber(e.target.value) })}
                 InputProps={{
                   sx: { fontSize: '1rem', minHeight: '40px' }
                 }}

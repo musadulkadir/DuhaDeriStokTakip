@@ -80,6 +80,20 @@ interface EmployeeStats {
   lastPaymentDate?: string;
 }
 
+// Tutar formatlama fonksiyonu (Türkiye standardı: 1.234,56)
+const formatNumberWithCommas = (value: number | string): string => {
+  // Önce number'a çevir
+  const numValue = typeof value === 'string' ? parseFloat(value) : value;
+  
+  // Geçerli bir sayı değilse 0 döndür
+  if (isNaN(numValue)) return '0,00';
+  
+  const fixed = numValue.toFixed(2);
+  const parts = fixed.split('.');
+  const integerPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return `${integerPart},${parts[1]}`;
+};
+
 const EmployeeDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -558,7 +572,7 @@ const EmployeeDetail: React.FC = () => {
                     </TableCell>
                     <TableCell align="right">
                       <Typography variant="body2" sx={{ color: 'error.main', fontWeight: 600 }}>
-                        -{payment.currency === 'TRY' ? '₺' : payment.currency === 'USD' ? '$' : '€'}{payment.amount.toLocaleString('tr-TR')}
+                        -{payment.currency === 'TRY' ? '₺' : payment.currency === 'USD' ? '$' : '€'}{formatNumberWithCommas(payment.amount)}
                       </Typography>
                     </TableCell>
                     <TableCell>
