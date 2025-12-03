@@ -461,7 +461,7 @@ const SupplierDetail: React.FC = () => {
           // Çek ile ödeme - Çek-Senet kasasından çıkış
           const selectedCheck = availableChecks.find(c => c.id === selectedCheckId);
           if (selectedCheck) {
-            // 1. Orijinal çeki "kullanıldı" olarak işaretle
+            // Çevirme yapıldı mı kontrol et
             const isConverted = selectedCheck.currency !== paymentData.currency || 
                                selectedCheck.amount !== paymentData.amount;
             
@@ -471,15 +471,9 @@ const SupplierDetail: React.FC = () => {
               is_cashed: true,
               cashed_at: new Date().toISOString(),
               description: `${selectedCheck.description || ''} - Tedarikçi Ödemesi: ${supplier.name}`.trim(),
-              is_converted: isConverted,
-              original_currency: isConverted ? selectedCheck.currency : null,
-              original_amount: isConverted ? selectedCheck.amount : null,
-              currency: isConverted ? paymentData.currency : selectedCheck.currency,
-              amount: isConverted ? paymentData.amount : selectedCheck.amount,
-              conversion_rate: isConverted && paymentData.amount > 0 
-                ? selectedCheck.amount / paymentData.amount 
-                : null,
-              converted_amount: isConverted ? paymentData.amount : null,
+              // Verirken çevirme bilgileri
+              given_converted_currency: isConverted ? paymentData.currency : null,
+              given_converted_amount: isConverted ? paymentData.amount : null,
             });
           }
         } else {

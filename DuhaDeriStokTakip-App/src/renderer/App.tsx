@@ -1,6 +1,6 @@
 // src/renderer/App.tsx
 import { useState, useEffect } from 'react';
-import { MemoryRouter as Router, Routes, Route } from 'react-router-dom';
+import { MemoryRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import {
   CssBaseline,
   ThemeProvider,
@@ -199,6 +199,38 @@ const leatherTheme = createTheme({
   },
 });
 
+// Scroll pozisyonunu yöneten component
+function ScrollManager() {
+  const location = useLocation();
+
+  useEffect(() => {
+    // Sayfa değiştiğinde scroll pozisyonunu kaydet
+    const handleScroll = () => {
+      sessionStorage.setItem(`scroll-${location.pathname}`, window.scrollY.toString());
+    };
+
+    window.addEventListener('scroll', handleScroll);
+
+    // Sayfa yüklendiğinde kaydedilmiş scroll pozisyonuna git
+    const savedScroll = sessionStorage.getItem(`scroll-${location.pathname}`);
+    if (savedScroll) {
+      // Küçük bir gecikme ile scroll yap (DOM'un yüklenmesini bekle)
+      setTimeout(() => {
+        window.scrollTo(0, parseInt(savedScroll, 10));
+      }, 100);
+    } else {
+      // Kaydedilmiş pozisyon yoksa en üste git
+      window.scrollTo(0, 0);
+    }
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+    };
+  }, [location.pathname]);
+
+  return null;
+}
+
 export default function App() {
   const [open, setOpen] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -334,6 +366,7 @@ export default function App() {
             }}
           >
             <Box sx={{ position: 'relative', zIndex: 1 }}>
+              <ScrollManager />
               <ErrorBoundary>
                 <Routes>
                   <Route path="/" element={<Dashboard />} />

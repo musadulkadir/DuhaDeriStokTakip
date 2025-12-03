@@ -66,6 +66,14 @@ interface CheckTransaction {
   original_amount?: number;
   conversion_rate?: number;
   converted_amount?: number;
+  // Alınırken çevirme bilgileri
+  received_converted_currency?: string;
+  received_converted_amount?: number;
+  received_conversion_rate?: number;
+  // Verirken çevirme bilgileri
+  given_converted_currency?: string;
+  given_converted_amount?: number;
+  given_conversion_rate?: number;
   protested_at?: string;
   protest_reason?: string;
   created_at: string;
@@ -125,6 +133,8 @@ const CheckManagement: React.FC = () => {
     try {
       const response = await dbAPI.getCheckTransactions();
       if (response.success && response.data) {
+        console.log('🔍 Çek işlemleri yüklendi:', response.data);
+        console.log('🔍 İlk çek detayı:', response.data[0]);
         setTransactions(response.data);
         setFilteredTransactions(response.data);
         calculateSummary(response.data);
@@ -677,6 +687,14 @@ const CheckManagement: React.FC = () => {
                         }
                       }}
                       onClick={() => {
+                        console.log('🔍 Seçilen çek detayı:', transaction);
+                        console.log('🔍 Çevirme bilgileri:', {
+                          is_converted: transaction.is_converted,
+                          received_converted_currency: transaction.received_converted_currency,
+                          received_converted_amount: transaction.received_converted_amount,
+                          given_converted_currency: transaction.given_converted_currency,
+                          given_converted_amount: transaction.given_converted_amount
+                        });
                         setSelectedTransaction(transaction);
                         setDetailDialogOpen(true);
                       }}
@@ -1036,53 +1054,84 @@ const CheckManagement: React.FC = () => {
                 </Box>
               </Box>
 
-              {selectedTransaction.is_converted && (
+              {(selectedTransaction.received_converted_amount || selectedTransaction.given_converted_amount) && (
                 <>
                   <Divider />
                   <Box>
                     <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 2, color: 'info.main' }}>
                       Çevrilme Bilgileri
                     </Typography>
-                    <Alert severity="info" sx={{ mb: 2 }}>
-                      Bu çek/senet farklı bir para birimine çevrilerek kullanılmıştır.
-                    </Alert>
-                    <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
-                      <Box>
-                        <Typography variant="caption" color="text.secondary">Orijinal Para Birimi</Typography>
-                        <Typography variant="body1" sx={{ fontWeight: 600 }}>
-                          {selectedTransaction.original_currency || '-'}
-                        </Typography>
-                      </Box>
-                      <Box>
-                        <Typography variant="caption" color="text.secondary">Orijinal Tutar</Typography>
-                        <Typography variant="body1" sx={{ fontWeight: 600 }}>
-                          {selectedTransaction.original_amount 
-                            ? `${selectedTransaction.original_currency === 'TRY' ? '₺' : selectedTransaction.original_currency === 'EUR' ? '€' : '$'}${Number(selectedTransaction.original_amount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`
-                            : '-'}
-                        </Typography>
-                      </Box>
-                      <Box>
-                        <Typography variant="caption" color="text.secondary">Çevrilmiş Para Birimi</Typography>
-                        <Typography variant="body1" sx={{ fontWeight: 600, color: 'success.main' }}>
-                          {selectedTransaction.currency}
-                        </Typography>
-                      </Box>
-                      <Box>
-                        <Typography variant="caption" color="text.secondary">Çevrilmiş Tutar</Typography>
-                        <Typography variant="body1" sx={{ fontWeight: 600, color: 'success.main' }}>
-                          {selectedTransaction.currency === 'TRY' ? '₺' : selectedTransaction.currency === 'EUR' ? '€' : '$'}
-                          {Number(selectedTransaction.amount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
-                        </Typography>
-                      </Box>
-                      {selectedTransaction.conversion_rate && (
-                        <Box sx={{ gridColumn: '1 / -1' }}>
-                          <Typography variant="caption" color="text.secondary">Kur Oranı</Typography>
-                          <Typography variant="body1">
-                            1 {selectedTransaction.currency} = {Number(selectedTransaction.conversion_rate).toFixed(4)} {selectedTransaction.original_currency}
-                          </Typography>
-                        </Box>
-                      )}
+                    
+                    {/* Çek Tutarı */}
+                    <Box sx={{ mb: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+                      <Typography variant="caption" color="text.secondary">Çek Tutarı (Kasada)</Typography>
+                      <Typography variant="h6" sx={{ fontWeight: 600, color: 'primary.main' }}>
+                        {selectedTransaction.currency === 'TRY' ? '₺' : selectedTransaction.currency === 'EUR' ? '€' : '$'}
+                        {Number(selectedTransaction.amount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                      </Typography>
                     </Box>
+
+                    {/* Alınırken Çevirme */}
+                    {selectedTransaction.received_converted_amount && (
+                      <Box sx={{ mb: 2 }}>
+                        <Alert severity="success" sx={{ mb: 1 }}>
+                          Bu çek/senet müşteriden alınırken farklı bir para birimine çevrilerek müşteri hesabından düşülmüştür.
+                        </Alert>
+                        <Box sx={{ p: 2, bgcolor: 'success.lighter', borderRadius: 1 }}>
+                          <Typography variant="caption" color="text.secondary">Alınırken Çevrilen Tutar</Typography>
+                          <Typography variant="body1" sx={{ fontWeight: 600, color: 'success.dark' }}>
+                            {selectedTransaction.received_converted_currency === 'TRY' ? '₺' : selectedTransaction.received_converted_currency === 'EUR' ? '€' : '$'}
+                            {Number(selectedTransaction.received_converted_amount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                            Müşteri hesabından {selectedTransaction.received_converted_currency} cinsinden düşülmüştür
+                          </Typography>
+                          {/* Kur Hesaplaması */}
+                          <Box sx={{ mt: 1.5, p: 1, bgcolor: 'background.paper', borderRadius: 1, border: '1px dashed', borderColor: 'success.main' }}>
+                            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                              Kur Hesaplaması:
+                            </Typography>
+                            <Typography variant="body2" sx={{ mt: 0.5 }}>
+                              1 {selectedTransaction.received_converted_currency} = {(Number(selectedTransaction.amount) / Number(selectedTransaction.received_converted_amount)).toFixed(4)} {selectedTransaction.currency}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                              ({selectedTransaction.currency === 'TRY' ? '₺' : selectedTransaction.currency === 'EUR' ? '€' : '$'}{Number(selectedTransaction.amount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ÷ {selectedTransaction.received_converted_currency === 'TRY' ? '₺' : selectedTransaction.received_converted_currency === 'EUR' ? '€' : '$'}{Number(selectedTransaction.received_converted_amount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })})
+                            </Typography>
+                          </Box>
+                        </Box>
+                      </Box>
+                    )}
+
+                    {/* Verirken Çevirme */}
+                    {selectedTransaction.given_converted_amount && (
+                      <Box>
+                        <Alert severity="warning" sx={{ mb: 1 }}>
+                          Bu çek/senet tedarikçiye verirken farklı bir para birimine çevrilerek tedarikçi hesabına eklenmiştir.
+                        </Alert>
+                        <Box sx={{ p: 2, bgcolor: 'warning.lighter', borderRadius: 1 }}>
+                          <Typography variant="caption" color="text.secondary">Verirken Çevrilen Tutar</Typography>
+                          <Typography variant="body1" sx={{ fontWeight: 600, color: 'warning.dark' }}>
+                            {selectedTransaction.given_converted_currency === 'TRY' ? '₺' : selectedTransaction.given_converted_currency === 'EUR' ? '€' : '$'}
+                            {Number(selectedTransaction.given_converted_amount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                            Tedarikçi hesabına {selectedTransaction.given_converted_currency} cinsinden eklenmiştir
+                          </Typography>
+                          {/* Kur Hesaplaması */}
+                          <Box sx={{ mt: 1.5, p: 1, bgcolor: 'background.paper', borderRadius: 1, border: '1px dashed', borderColor: 'warning.main' }}>
+                            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                              Kur Hesaplaması:
+                            </Typography>
+                            <Typography variant="body2" sx={{ mt: 0.5 }}>
+                              1 {selectedTransaction.given_converted_currency} = {(Number(selectedTransaction.amount) / Number(selectedTransaction.given_converted_amount)).toFixed(4)} {selectedTransaction.currency}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                              ({selectedTransaction.currency === 'TRY' ? '₺' : selectedTransaction.currency === 'EUR' ? '€' : '$'}{Number(selectedTransaction.amount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ÷ {selectedTransaction.given_converted_currency === 'TRY' ? '₺' : selectedTransaction.given_converted_currency === 'EUR' ? '€' : '$'}{Number(selectedTransaction.given_converted_amount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })})
+                            </Typography>
+                          </Box>
+                        </Box>
+                      </Box>
+                    )}
                   </Box>
                 </>
               )}

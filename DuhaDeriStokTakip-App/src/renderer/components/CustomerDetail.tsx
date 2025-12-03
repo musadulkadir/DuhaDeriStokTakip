@@ -30,6 +30,8 @@ import {
   Snackbar,
   Alert,
   CircularProgress,
+  Switch,
+  FormControlLabel,
 } from '@mui/material';
 import {
   ArrowBack,
@@ -171,6 +173,11 @@ const CustomerDetail: React.FC = () => {
   const [branchName, setBranchName] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
+  
+  // Çek alırken çevirme alanları
+  const [convertCheckDialogOpen, setConvertCheckDialogOpen] = useState(false);
+  const [receiveConvertedAmount, setReceiveConvertedAmount] = useState('');
+  const [receiveConvertedCurrency, setReceiveConvertedCurrency] = useState('USD');
 
   // Sale dialog states
   const [saleDialogOpen, setSaleDialogOpen] = useState(false);
@@ -215,27 +222,23 @@ const CustomerDetail: React.FC = () => {
   const [paymentsRowsPerPage, setPaymentsRowsPerPage] = useState(10);
 
   // Tutar formatlama fonksiyonları
-  const formatNumberWithCommas = (value: string | number): string => {
-    // Eğer number ise string'e çevir
-    const stringValue = typeof value === 'number' ? value.toFixed(2) : value;
-    
-    // Sadece rakam ve nokta/virgül karakterlerini al
-    const numericValue = stringValue.replace(/[^\d.,]/g, '');
+  const formatNumberWithCommas = (value: string): string => {
+    // Sadece rakam ve nokta karakterlerini al
+    const numericValue = value.replace(/[^\d.]/g, '');
 
     // Eğer boşsa boş döndür
     if (!numericValue) return '';
 
     // Sayıyı parçalara ayır (tam kısım ve ondalık kısım)
-    // Hem nokta hem virgül ondalık ayıraç olabilir
-    const parts = numericValue.split(/[.,]/);
+    const parts = numericValue.split('.');
     const integerPart = parts[0];
     const decimalPart = parts[1];
 
-    // Tam kısmı üç haneli ayraçlarla formatla (NOKTA ile)
-    const formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    // Tam kısmı üç haneli ayraçlarla formatla
+    const formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
-    // Ondalık kısım varsa ekle (VİRGÜL ile)
-    return decimalPart !== undefined ? `${formattedInteger},${decimalPart}` : formattedInteger;
+    // Ondalık kısım varsa ekle
+    return decimalPart !== undefined ? `${formattedInteger}.${decimalPart}` : formattedInteger;
   };
 
   const parseFormattedNumber = (value: string): number => {
@@ -664,15 +667,26 @@ const CustomerDetail: React.FC = () => {
 
     try {
       const amount = parseFormattedNumber(paymentAmount);
+      
+      // Çevirme yapıldıysa çevrilen tutarı kullan
+      let finalAmount = amount;
+      let finalCurrency = paymentCurrency;
+      let paymentNotesText = paymentNotes || `Müşteri ödemesi - ${customer.name}`;
+      
+      if (receiveConvertedAmount && parseFormattedNumber(receiveConvertedAmount) > 0 && (paymentType === 'check' || paymentType === 'promissory_note')) {
+        finalAmount = parseFormattedNumber(receiveConvertedAmount);
+        finalCurrency = receiveConvertedCurrency;
+        paymentNotesText = `${paymentNotesText} (Orijinal: ${paymentCurrency} ${formatNumberWithCommas(amount.toFixed(2))} → Çevrilen: ${receiveConvertedCurrency} ${formatNumberWithCommas(finalAmount.toFixed(2))})`;
+      }
 
-      // Ödeme kaydı oluştur
+      // Ödeme kaydı oluştur - çevrilen tutar ve para birimi ile
       const paymentData = {
         customer_id: customerId,
-        amount,
-        currency: paymentCurrency,
+        amount: finalAmount,
+        currency: finalCurrency,
         payment_type: paymentType,
         payment_date: paymentDate, // Kullanıcının seçtiği tarih
-        notes: paymentNotes || `Müşteri ödemesi - ${customer.name}`,
+        notes: paymentNotesText,
       };
 
       const paymentResponse = await dbAPI.createPayment(paymentData);
@@ -685,7 +699,7 @@ const CustomerDetail: React.FC = () => {
       // Ödeme tipine göre kasa veya çek-senet kasasına kaydet
       if (paymentType === 'check' || paymentType === 'promissory_note') {
         // Çek veya Senet - check_transactions tablosuna kaydet
-        const checkTransactionData = {
+        const checkTransactionData: any = {
           type: 'in' as const,
           amount,
           currency: paymentCurrency,
@@ -705,6 +719,18 @@ const CustomerDetail: React.FC = () => {
           customer_name: customer.name,
           payment_id: paymentResponse.data.id, // Ödeme ID'sini ekle
         };
+
+        // Çek alırken çevirme yapıldıysa - sadece bilgi olarak sakla
+        if (receiveConvertedAmount && parseFormattedNumber(receiveConvertedAmount) > 0) {
+          const convertedAmount = parseFormattedNumber(receiveConvertedAmount);
+          
+          checkTransactionData.is_converted = true;
+          checkTransactionData.received_converted_currency = receiveConvertedCurrency;
+          checkTransactionData.received_converted_amount = convertedAmount;
+          
+          // ÖNEMLİ: Çek kasasına orijinal tutar ve para birimi ile kaydedilir
+          // currency ve amount değişmez - elimizdeki çek orijinal haliyle kalır
+        }
 
         console.log('🔵 Çek/Senet işlemi kaydediliyor:', checkTransactionData);
         const checkResponse = await dbAPI.addCheckTransaction(checkTransactionData);
@@ -752,6 +778,9 @@ const CustomerDetail: React.FC = () => {
       setBranchName('');
       setDueDate('');
       setAccountNumber('');
+      setConvertCheckDialogOpen(false);
+      setReceiveConvertedAmount('');
+      setReceiveConvertedCurrency('USD');
       setPaymentDialogOpen(false);
 
       // Verileri yeniden yükle
@@ -1982,14 +2011,19 @@ const CustomerDetail: React.FC = () => {
                               </TableCell>
                               <TableCell align="right">
                                 <Typography variant="body2" sx={{ color: 'success.main', fontWeight: 600 }}>
-                                  +{currencySymbol}{formatNumberWithCommas(payment.amount)}
+                                  +{currencySymbol}{formatNumberWithCommas(payment.amount.toString())}
                                 </Typography>
+                                {payment.notes && payment.notes.includes('Orijinal:') && (
+                                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                                    {payment.notes.match(/\(([^)]+)\)/)?.[1] || ''}
+                                  </Typography>
+                                )}
                               </TableCell>
                               <TableCell>
                                 {appliedToPrevious > 0 && appliedToCurrent > 0 ? (
                                   <Box>
-                                    <Chip label={`Önceki: ${currencySymbol}${formatNumberWithCommas(appliedToPrevious)}`} size="small" color="warning" sx={{ mb: 0.5, display: 'block' }} />
-                                    <Chip label={`Bu Dönem: ${currencySymbol}${formatNumberWithCommas(appliedToCurrent)}`} size="small" color="info" />
+                                    <Chip label={`Önceki: ${currencySymbol}${formatNumberWithCommas(appliedToPrevious.toFixed(2))}`} size="small" color="warning" sx={{ mb: 0.5, display: 'block' }} />
+                                    <Chip label={`Bu Dönem: ${currencySymbol}${formatNumberWithCommas(appliedToCurrent.toFixed(2))}`} size="small" color="info" />
                                   </Box>
                                 ) : appliedToPrevious > 0 ? (
                                   <Chip label="Önceki Bakiye" size="small" color="warning" />
@@ -2227,6 +2261,19 @@ const CustomerDetail: React.FC = () => {
                     onChange={(e) => setAccountNumber(e.target.value)}
                   />
                 </Box>
+
+                <Divider sx={{ my: 1 }} />
+
+                {/* Çek Alırken Çevirme Butonu */}
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <Button 
+                    variant="outlined" 
+                    size="small"
+                    onClick={() => setConvertCheckDialogOpen(true)}
+                  >
+                    Çevir
+                  </Button>
+                </Box>
               </Box>
             )}
 
@@ -2303,6 +2350,77 @@ const CustomerDetail: React.FC = () => {
             variant="contained"
           >
             Sil
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Convert Check Dialog */}
+      <Dialog open={convertCheckDialogOpen} onClose={() => setConvertCheckDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Çek/Senet Çevirme</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
+            <Alert severity="info">
+              Müşteriden {paymentCurrency} olarak aldığınız çeki farklı bir para birimine çevirerek kaydedin.
+              Çevrilen tutar müşterinin hesabından düşecektir.
+            </Alert>
+            
+            <Box sx={{ p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+              <Typography variant="body2" color="text.secondary">
+                Orijinal Tutar: <strong>{paymentCurrency === 'TRY' ? '₺' : paymentCurrency === 'EUR' ? '€' : '$'}{formatNumberWithCommas(paymentAmount)}</strong>
+              </Typography>
+            </Box>
+
+            <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
+              <TextField
+                fullWidth
+                label="Çevrilen Tutar"
+                value={receiveConvertedAmount}
+                onChange={(e) => {
+                  const formatted = formatNumberWithCommas(e.target.value);
+                  setReceiveConvertedAmount(formatted);
+                }}
+                placeholder="Örn: 100.00"
+                helperText="Çevrilen tutarı girin"
+              />
+              <FormControl sx={{ minWidth: 150 }}>
+                <InputLabel>Çevrilen Para Birimi</InputLabel>
+                <Select
+                  value={receiveConvertedCurrency}
+                  label="Çevrilen Para Birimi"
+                  onChange={(e) => setReceiveConvertedCurrency(e.target.value)}
+                >
+                  {paymentCurrency !== 'TRY' && <MenuItem value="TRY">₺ TRY</MenuItem>}
+                  {paymentCurrency !== 'USD' && <MenuItem value="USD">$ USD</MenuItem>}
+                  {paymentCurrency !== 'EUR' && <MenuItem value="EUR">€ EUR</MenuItem>}
+                </Select>
+              </FormControl>
+            </Box>
+
+            {receiveConvertedAmount && (
+              <Box sx={{ p: 1.5, bgcolor: 'success.lighter', borderRadius: 1, border: '1px solid', borderColor: 'success.main' }}>
+                <Typography variant="body2" color="success.dark" sx={{ fontWeight: 600 }}>
+                  Çevrilen Tutar: {receiveConvertedCurrency === 'TRY' ? '₺' : receiveConvertedCurrency === 'EUR' ? '€' : '$'}{formatNumberWithCommas(receiveConvertedAmount)}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                  Bu tutar müşterinin {receiveConvertedCurrency} hesabından düşecektir.
+                </Typography>
+              </Box>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setConvertCheckDialogOpen(false);
+            setReceiveConvertedAmount('');
+          }}>
+            İptal
+          </Button>
+          <Button 
+            onClick={() => setConvertCheckDialogOpen(false)}
+            variant="contained"
+            disabled={!receiveConvertedAmount || parseFormattedNumber(receiveConvertedAmount) <= 0}
+          >
+            Uygula
           </Button>
         </DialogActions>
       </Dialog>

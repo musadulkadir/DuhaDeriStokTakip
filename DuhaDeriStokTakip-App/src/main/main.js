@@ -286,6 +286,12 @@ async function createTables() {
       await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS original_amount DECIMAL(15,2)`);
       await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS conversion_rate DECIMAL(10,4)`);
       await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS converted_amount DECIMAL(15,2)`);
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS received_converted_currency VARCHAR(3)`);
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS received_converted_amount DECIMAL(15,2)`);
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS received_conversion_rate DECIMAL(10,4)`);
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS given_converted_currency VARCHAR(3)`);
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS given_converted_amount DECIMAL(15,2)`);
+      await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS given_conversion_rate DECIMAL(10,4)`);
       await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS protested_at TIMESTAMP`);
       await query(`ALTER TABLE check_transactions ADD COLUMN IF NOT EXISTS protest_reason TEXT`);
     } catch (error) {
@@ -3243,8 +3249,10 @@ ipcMain.handle('add-check-transaction', async (event, transaction) => {
       INSERT INTO check_transactions (
         sequence_number, is_official, type, amount, currency, check_type, check_number, received_date, 
         received_from, first_endorser, last_endorser, bank_name, branch_name,
-        due_date, account_number, description, customer_id, customer_name, payment_id, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+        due_date, account_number, description, customer_id, customer_name, payment_id, status,
+        is_converted, received_converted_currency, received_converted_amount,
+        given_converted_currency, given_converted_amount
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
       RETURNING *
     `, [
       sequenceNumber,
@@ -3266,7 +3274,12 @@ ipcMain.handle('add-check-transaction', async (event, transaction) => {
       transaction.customer_id,
       transaction.customer_name,
       transaction.payment_id || null,
-      transaction.status || 'active'
+      transaction.status || 'active',
+      transaction.is_converted || false,
+      transaction.received_converted_currency || null,
+      transaction.received_converted_amount || null,
+      transaction.given_converted_currency || null,
+      transaction.given_converted_amount || null
     ]);
     return { success: true, data: result };
   } catch (error) {
@@ -3289,8 +3302,10 @@ ipcMain.handle('update-check-transaction', async (event, id, transaction) => {
           original_currency = $21, original_amount = $22, 
           conversion_rate = $23, converted_amount = $24,
           protested_at = $25, protest_reason = $26,
+          received_converted_currency = $27, received_converted_amount = $28,
+          given_converted_currency = $29, given_converted_amount = $30,
           updated_at = CURRENT_TIMESTAMP
-      WHERE id = $27
+      WHERE id = $31
       RETURNING *
     `, [
       transaction.is_official !== undefined ? transaction.is_official : true,
@@ -3319,6 +3334,10 @@ ipcMain.handle('update-check-transaction', async (event, id, transaction) => {
       transaction.converted_amount || null,
       transaction.protested_at || null,
       transaction.protest_reason || null,
+      transaction.received_converted_currency || null,
+      transaction.received_converted_amount || null,
+      transaction.given_converted_currency || null,
+      transaction.given_converted_amount || null,
       id
     ]);
     
