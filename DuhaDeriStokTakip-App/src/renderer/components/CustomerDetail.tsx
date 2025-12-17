@@ -671,12 +671,12 @@ const CustomerDetail: React.FC = () => {
       // Çevirme yapıldıysa çevrilen tutarı kullan
       let finalAmount = amount;
       let finalCurrency = paymentCurrency;
-      let paymentNotesText = paymentNotes || `Müşteri ödemesi - ${customer.name}`;
+      let paymentNotesText = paymentNotes || `Musteri odemesi - ${customer.name}`;
       
       if (receiveConvertedAmount && parseFormattedNumber(receiveConvertedAmount) > 0 && (paymentType === 'check' || paymentType === 'promissory_note')) {
         finalAmount = parseFormattedNumber(receiveConvertedAmount);
         finalCurrency = receiveConvertedCurrency;
-        paymentNotesText = `${paymentNotesText} (Orijinal: ${paymentCurrency} ${formatNumberWithCommas(amount.toFixed(2))} → Çevrilen: ${receiveConvertedCurrency} ${formatNumberWithCommas(finalAmount.toFixed(2))})`;
+        paymentNotesText = `${paymentNotesText} (Orijinal: ${paymentCurrency} ${formatNumberWithCommas(amount.toFixed(2))} -> Cevrilen: ${receiveConvertedCurrency} ${formatNumberWithCommas(finalAmount.toFixed(2))})`;
       }
 
       // Ödeme kaydı oluştur - çevrilen tutar ve para birimi ile
@@ -820,7 +820,7 @@ const CustomerDetail: React.FC = () => {
       return isNaN(n) ? 0 : n.toLocaleString('tr-TR');
     };
 
-    // Türkçe karakterleri ASCII'ye çevir (jsPDF Türkçe desteklemiyor)
+    // Türkçe karakterleri ASCII'ye çevir (jsPDF Türkçe karakterleri düzgün gösteremiyor)
     const toAscii = (text: string) => {
       if (!text) return '';
       return text
@@ -1020,8 +1020,8 @@ const CustomerDetail: React.FC = () => {
     const paymentsTableData = filteredPayments.map(payment => {
       const paymentTypeText = payment.paymentType === 'cash' ? 'Nakit' :
         payment.paymentType === 'bank_transfer' ? 'Havale' :
-          payment.paymentType === 'check' ? 'Çek' :
-            payment.paymentType === 'promissory_note' ? 'Senet' : 'Diğer';
+          payment.paymentType === 'check' ? 'Cek' :
+            payment.paymentType === 'promissory_note' ? 'Senet' : 'Diger';
       const currencySymbol = payment.currency === 'TRY' ? 'TL' : payment.currency === 'USD' ? 'USD' : 'EUR';
 
       return [

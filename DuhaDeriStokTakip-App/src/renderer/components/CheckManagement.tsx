@@ -535,16 +535,16 @@ const CheckManagement: React.FC = () => {
               <Typography variant="h6">Toplam Çek</Typography>
             </Box>
             <Typography variant="h5" sx={{ mb: 0.5, color: checkBalanceTRY >= 0 ? 'success.main' : 'error.main' }}>
-              ₺{checkBalanceTRY.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+              ₺{checkBalanceTRY.toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </Typography>
             {checkBalanceUSD !== 0 && (
               <Typography variant="body2" color="text.secondary">
-                ${checkBalanceUSD.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                ${checkBalanceUSD.toLocaleString('en-US', { minimumFractionDigits: 2 })}
               </Typography>
             )}
             {checkBalanceEUR !== 0 && (
               <Typography variant="body2" color="text.secondary">
-                €{checkBalanceEUR.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                €{checkBalanceEUR.toLocaleString('en-US', { minimumFractionDigits: 2 })}
               </Typography>
             )}
           </CardContent>
@@ -557,16 +557,16 @@ const CheckManagement: React.FC = () => {
               <Typography variant="h6">Toplam Senet</Typography>
             </Box>
             <Typography variant="h5" sx={{ mb: 0.5, color: noteBalanceTRY >= 0 ? 'success.main' : 'error.main' }}>
-              ₺{noteBalanceTRY.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+              ₺{noteBalanceTRY.toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </Typography>
             {noteBalanceUSD !== 0 && (
               <Typography variant="body2" color="text.secondary">
-                ${noteBalanceUSD.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                ${noteBalanceUSD.toLocaleString('en-US', { minimumFractionDigits: 2 })}
               </Typography>
             )}
             {noteBalanceEUR !== 0 && (
               <Typography variant="body2" color="text.secondary">
-                €{noteBalanceEUR.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                €{noteBalanceEUR.toLocaleString('en-US', { minimumFractionDigits: 2 })}
               </Typography>
             )}
           </CardContent>
@@ -755,12 +755,12 @@ const CheckManagement: React.FC = () => {
                         <Box>
                           <Typography variant="body2" sx={{ fontWeight: 600 }}>
                             {transaction.currency === 'TRY' ? '₺' : transaction.currency === 'EUR' ? '€' : '$'}
-                            {Number(transaction.amount).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            {Number(transaction.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </Typography>
                           {transaction.is_converted && transaction.original_amount && transaction.original_currency && (
                             <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                               Orijinal: {transaction.original_currency === 'TRY' ? '₺' : transaction.original_currency === 'EUR' ? '€' : '$'}
-                              {Number(transaction.original_amount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                              {Number(transaction.original_amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                             </Typography>
                           )}
                         </Box>
@@ -991,7 +991,7 @@ const CheckManagement: React.FC = () => {
                     <Typography variant="caption" color="text.secondary">Tutar</Typography>
                     <Typography variant="body1" sx={{ fontWeight: 600 }}>
                       {selectedTransaction.currency === 'TRY' ? '₺' : selectedTransaction.currency === 'EUR' ? '€' : '$'}
-                      {Number(selectedTransaction.amount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                      {Number(selectedTransaction.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                     </Typography>
                   </Box>
                   <Box>
@@ -1067,7 +1067,7 @@ const CheckManagement: React.FC = () => {
                       <Typography variant="caption" color="text.secondary">Çek Tutarı (Kasada)</Typography>
                       <Typography variant="h6" sx={{ fontWeight: 600, color: 'primary.main' }}>
                         {selectedTransaction.currency === 'TRY' ? '₺' : selectedTransaction.currency === 'EUR' ? '€' : '$'}
-                        {Number(selectedTransaction.amount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                        {Number(selectedTransaction.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                       </Typography>
                     </Box>
 
@@ -1081,7 +1081,7 @@ const CheckManagement: React.FC = () => {
                           <Typography variant="caption" color="text.secondary">Alınırken Çevrilen Tutar</Typography>
                           <Typography variant="body1" sx={{ fontWeight: 600, color: 'success.dark' }}>
                             {selectedTransaction.received_converted_currency === 'TRY' ? '₺' : selectedTransaction.received_converted_currency === 'EUR' ? '€' : '$'}
-                            {Number(selectedTransaction.received_converted_amount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                            {Number(selectedTransaction.received_converted_amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                           </Typography>
                           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
                             Müşteri hesabından {selectedTransaction.received_converted_currency} cinsinden düşülmüştür
@@ -1095,7 +1095,7 @@ const CheckManagement: React.FC = () => {
                               1 {selectedTransaction.received_converted_currency} = {(Number(selectedTransaction.amount) / Number(selectedTransaction.received_converted_amount)).toFixed(4)} {selectedTransaction.currency}
                             </Typography>
                             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                              ({selectedTransaction.currency === 'TRY' ? '₺' : selectedTransaction.currency === 'EUR' ? '€' : '$'}{Number(selectedTransaction.amount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ÷ {selectedTransaction.received_converted_currency === 'TRY' ? '₺' : selectedTransaction.received_converted_currency === 'EUR' ? '€' : '$'}{Number(selectedTransaction.received_converted_amount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })})
+                              ({selectedTransaction.currency === 'TRY' ? '₺' : selectedTransaction.currency === 'EUR' ? '€' : '$'}{Number(selectedTransaction.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })} ÷ {selectedTransaction.received_converted_currency === 'TRY' ? '₺' : selectedTransaction.received_converted_currency === 'EUR' ? '€' : '$'}{Number(selectedTransaction.received_converted_amount).toLocaleString('en-US', { minimumFractionDigits: 2 })})
                             </Typography>
                           </Box>
                         </Box>
@@ -1112,7 +1112,7 @@ const CheckManagement: React.FC = () => {
                           <Typography variant="caption" color="text.secondary">Verirken Çevrilen Tutar</Typography>
                           <Typography variant="body1" sx={{ fontWeight: 600, color: 'warning.dark' }}>
                             {selectedTransaction.given_converted_currency === 'TRY' ? '₺' : selectedTransaction.given_converted_currency === 'EUR' ? '€' : '$'}
-                            {Number(selectedTransaction.given_converted_amount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                            {Number(selectedTransaction.given_converted_amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                           </Typography>
                           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
                             Tedarikçi hesabına {selectedTransaction.given_converted_currency} cinsinden eklenmiştir
@@ -1126,7 +1126,7 @@ const CheckManagement: React.FC = () => {
                               1 {selectedTransaction.given_converted_currency} = {(Number(selectedTransaction.amount) / Number(selectedTransaction.given_converted_amount)).toFixed(4)} {selectedTransaction.currency}
                             </Typography>
                             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                              ({selectedTransaction.currency === 'TRY' ? '₺' : selectedTransaction.currency === 'EUR' ? '€' : '$'}{Number(selectedTransaction.amount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ÷ {selectedTransaction.given_converted_currency === 'TRY' ? '₺' : selectedTransaction.given_converted_currency === 'EUR' ? '€' : '$'}{Number(selectedTransaction.given_converted_amount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })})
+                              ({selectedTransaction.currency === 'TRY' ? '₺' : selectedTransaction.currency === 'EUR' ? '€' : '$'}{Number(selectedTransaction.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })} ÷ {selectedTransaction.given_converted_currency === 'TRY' ? '₺' : selectedTransaction.given_converted_currency === 'EUR' ? '€' : '$'}{Number(selectedTransaction.given_converted_amount).toLocaleString('en-US', { minimumFractionDigits: 2 })})
                             </Typography>
                           </Box>
                         </Box>
@@ -1266,7 +1266,7 @@ const CheckManagement: React.FC = () => {
               type="number"
               value={cashOutAmount}
               onChange={(e) => setCashOutAmount(e.target.value)}
-              helperText={`Orijinal tutar: ${selectedTransaction?.currency === 'TRY' ? '₺' : selectedTransaction?.currency === 'EUR' ? '€' : '$'}${Number(selectedTransaction?.amount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`}
+              helperText={`Orijinal tutar: ${selectedTransaction?.currency === 'TRY' ? '₺' : selectedTransaction?.currency === 'EUR' ? '€' : '$'}${Number(selectedTransaction?.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`}
             />
 
             <TextField
@@ -1467,7 +1467,7 @@ const CheckManagement: React.FC = () => {
               </Typography>
               <Typography variant="body2">
                 <strong>Tutar:</strong> {selectedTransaction.currency === 'TRY' ? '₺' : selectedTransaction.currency === 'EUR' ? '€' : '$'}
-                {Number(selectedTransaction.amount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                {Number(selectedTransaction.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
               </Typography>
             </Box>
           )}
@@ -1512,7 +1512,7 @@ const CheckManagement: React.FC = () => {
               </Typography>
               <Typography variant="body2" sx={{ fontWeight: 600, color: 'error.main', mt: 1 }}>
                 Tutar: {selectedTransaction?.currency === 'TRY' ? '₺' : selectedTransaction?.currency === 'EUR' ? '€' : '$'}
-                {Number(selectedTransaction?.amount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                {Number(selectedTransaction?.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
               </Typography>
             </Box>
 

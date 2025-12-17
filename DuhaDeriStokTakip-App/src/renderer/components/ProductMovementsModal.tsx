@@ -50,10 +50,24 @@ const ProductMovementsModal: React.FC<ProductMovementsModalProps> = ({ open, onC
   const [movements, setMovements] = useState<Movement[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const safeToLocaleString = (value: any): string => {
+  const formatNumberWithCommas = (value: number | string): string => {
     if (value === null || value === undefined || value === '') return '0';
     const num = Number(value);
-    return !isNaN(num) ? num.toLocaleString('tr-TR') : '0';
+    if (isNaN(num)) return '0';
+    
+    // Sayıyı string'e çevir
+    const numStr = num.toFixed(2);
+    const parts = numStr.split('.');
+    const integerPart = parts[0];
+    const decimalPart = parts[1];
+    
+    // Tam kısmı üç haneli ayraçlarla formatla
+    const formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    
+    // Ondalık kısım varsa ekle (sıfır değilse)
+    return decimalPart && parseInt(decimalPart) > 0 
+      ? `${formattedInteger}.${decimalPart}` 
+      : formattedInteger;
   };
 
   const loadMovements = async (itemId: number, itemType: 'product' | 'material') => {
@@ -156,19 +170,19 @@ const ProductMovementsModal: React.FC<ProductMovementsModalProps> = ({ open, onC
                     </TableCell>
                     <TableCell align="right">
                       <Chip
-                        label={movement.movement_type === 'in' ? `+${safeToLocaleString(movement.quantity)}` : `-${safeToLocaleString(Math.abs(movement.quantity))}`}
+                        label={movement.movement_type === 'in' ? `+${formatNumberWithCommas(movement.quantity)}` : `-${formatNumberWithCommas(Math.abs(movement.quantity))}`}
                         color={movement.movement_type === 'in' ? 'success' : 'error'}
                         size="small"
                       />
                       <Typography variant="caption" display="block" color="text.secondary">
-                        {safeToLocaleString(movement.previous_stock)} → {safeToLocaleString(movement.new_stock)}
+                        {formatNumberWithCommas(movement.previous_stock)} → {formatNumberWithCommas(movement.new_stock)}
                       </Typography>
                     </TableCell>
                     <TableCell>
                       {movement.notes || 'Açıklama yok'}
                       {movement.total_amount && (
                         <Typography variant="caption" display="block" color="text.secondary">
-                          Tutar: {movement.currency === 'USD' ? '$' : '₺'}{safeToLocaleString(movement.total_amount)}
+                          Tutar: {movement.currency === 'USD' ? '$' : '₺'}{formatNumberWithCommas(movement.total_amount)}
                         </Typography>
                       )}
                     </TableCell>

@@ -40,6 +40,13 @@ import {
   Business,
   Delete,
   PictureAsPdf,
+  Phone,
+  EmailOutlined,
+  LocationOn,
+  TrendingUp,
+  AccountBalance,
+  Person,
+  Clear,
 } from '@mui/icons-material';
 import { dbAPI } from '../services/api';
 import { Customer, Product } from '../../main/database/models';
@@ -425,12 +432,14 @@ const SupplierDetail: React.FC = () => {
     }
   };
 
-  // Tarih filtresi değiştiğinde alımları yeniden yükle
+  // Tarih filtresi değiştiğinde alımları ve ödemeleri yeniden yükle
   useEffect(() => {
     if (id) {
       loadPurchases();
+      loadPayments();
       calculatePreviousBalance();
       setPurchasePage(0); // Pagination'ı sıfırla
+      setPaymentPage(0); // Ödeme pagination'ını da sıfırla
     }
   }, [startDate, endDate]);
 
@@ -445,9 +454,12 @@ const SupplierDetail: React.FC = () => {
 
     setLoading(true);
     try {
+      // Formatı parse et: virgül binlik ayıraç, nokta ondalık ayıraç
+      const parsedAmount = parseFloat(newPayment.amount.replace(/,/g, ''));
+      
       const paymentData = {
         customer_id: supplier.id!,
-        amount: parseFloat(newPayment.amount.replace(/,/g, '')),
+        amount: parsedAmount,
         currency: newPayment.currency,
         payment_type: newPayment.payment_method,
         payment_date: newPayment.payment_date,
@@ -465,12 +477,18 @@ const SupplierDetail: React.FC = () => {
             const isConverted = selectedCheck.currency !== paymentData.currency || 
                                selectedCheck.amount !== paymentData.amount;
             
+            // Description oluştur
+            let description = `${selectedCheck.description || ''} - Tedarikci Odemesi: ${supplier.name}`;
+            if (isConverted) {
+              description += ` (Orijinal: ${selectedCheck.currency} ${selectedCheck.amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} -> Cevrilen: ${paymentData.currency} ${paymentData.amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })})`;
+            }
+            
             await dbAPI.updateCheckTransaction(selectedCheckId, {
               ...selectedCheck,
               status: 'used',
               is_cashed: true,
               cashed_at: new Date().toISOString(),
-              description: `${selectedCheck.description || ''} - Tedarikçi Ödemesi: ${supplier.name}`.trim(),
+              description: description.trim(),
               // Verirken çevirme bilgileri
               given_converted_currency: isConverted ? paymentData.currency : null,
               given_converted_amount: isConverted ? paymentData.amount : null,
@@ -625,6 +643,29 @@ const SupplierDetail: React.FC = () => {
 
   const parseDecimalNumber = (value: string): number => {
     return parseFloat(value.replace(/,/g, '')) || 0;
+  };
+
+  // Ondalıklı sayı formatı (input için - üç hane ayıraçlı)
+  const formatDecimalInputNumber = (value: string): string => {
+    // Sadece rakam ve nokta karakterlerini al
+    const numericValue = value.replace(/[^\d.]/g, '');
+    if (!numericValue) return '';
+    
+    // Nokta sayısını kontrol et (sadece bir tane olmalı)
+    const parts = numericValue.split('.');
+    if (parts.length > 2) {
+      // Birden fazla nokta varsa, ilk noktadan sonrasını birleştir
+      return formatDecimalInputNumber(parts[0] + '.' + parts.slice(1).join(''));
+    }
+    
+    const integerPart = parts[0];
+    const decimalPart = parts[1];
+    
+    // Tam kısmı üç haneli ayraçlarla formatla (virgül kullan)
+    const formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    
+    // Ondalık kısım varsa nokta ile ekle
+    return decimalPart !== undefined ? `${formattedInteger}.${decimalPart}` : formattedInteger;
   };
 
   // Ürün ekleme
@@ -1167,175 +1208,295 @@ const SupplierDetail: React.FC = () => {
     <Box sx={{ mt: 2, mr: 2, }}>
       {/* Header */}
       <Box sx={{ mb: 4, display: 'flex', alignItems: 'center', gap: 2 }}>
-        <IconButton onClick={() => navigate('/suppliers')} size="large">
+        <IconButton onClick={() => navigate('/suppliers')}>
           <ArrowBack />
         </IconButton>
-        <Box sx={{ flex: 1 }}>
-          <Typography variant="h3" sx={{ fontWeight: 700, mb: 1 }}>
+        <Box sx={{ flexGrow: 1 }}>
+          <Typography variant="h4" sx={{ fontWeight: 700 }}>
             {supplier.name}
           </Typography>
           <Typography variant="body1" sx={{ color: 'text.secondary' }}>
-            Tedarikçi Detayları
+            Tedarikçi Detay Sayfası
           </Typography>
         </Box>
+        <Button
+          variant="outlined"
+          startIcon={<ShoppingCart />}
+          onClick={() => setPurchaseDialogOpen(true)}
+          size="large"
+          color="success"
+        >
+          Alım Yap
+        </Button>
         <Button
           variant="outlined"
           startIcon={<PictureAsPdf />}
           onClick={handleDownloadPDF}
           size="large"
           color="error"
-          sx={{ mr: 1 }}
         >
           PDF İndir
         </Button>
         <Button
-          variant="outlined"
-          startIcon={<Edit />}
-          onClick={() => setEditDialogOpen(true)}
+          variant="contained"
+          startIcon={<Payment />}
+          onClick={() => setPaymentDialogOpen(true)}
+          size="large"
         >
-          Düzenle
+          Ödeme Yap
         </Button>
       </Box>
 
-      {/* Supplier Info Cards */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid size={{ xs: 12, md: 8, }}>
-          <Card>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-                <Avatar sx={{ bgcolor: 'primary.main', mr: 2, width: 56, height: 56 }}>
-                  <Business />
+      {/* Supplier Info & Stats */}
+      <Box sx={{ mb: 4 }}>
+        {/* Supplier Info - Horizontal */}
+        <Card sx={{ mb: 2 }}>
+          <CardContent sx={{ py: 1.5, px: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <Avatar sx={{ bgcolor: 'primary.main', width: 48, height: 48, mr: 2 }}>
+                  <Business sx={{ fontSize: 24 }} />
                 </Avatar>
                 <Box>
-                  <Typography variant="h5" sx={{ fontWeight: 600 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 600, fontSize: '1rem' }}>
                     {supplier.name}
                   </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Tedarikçi
+                  <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                    Tedarikçi #{supplier.id}
                   </Typography>
                 </Box>
               </Box>
-              <Grid container spacing={2}>
-                <Grid size={{ xs: 12, sm: 6, }}>
-                  <Typography variant="body2" color="text.secondary">Telefon</Typography>
-                  <Typography variant="body1" sx={{ fontWeight: 500 }}>
+
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Phone sx={{ color: 'text.secondary', fontSize: 18 }} />
+                <Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem', display: 'block' }}>
+                    Telefon
+                  </Typography>
+                  <Typography variant="body2" sx={{ fontSize: '0.8rem', fontWeight: 500 }}>
                     {supplier.phone || 'Belirtilmemiş'}
                   </Typography>
-                </Grid>
-                <Grid size={{ xs: 12, sm: 6, }}>
-                  <Typography variant="body2" color="text.secondary">Email</Typography>
-                  <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                </Box>
+              </Box>
+
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <EmailOutlined sx={{ color: 'text.secondary', fontSize: 18 }} />
+                <Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem', display: 'block' }}>
+                    Email
+                  </Typography>
+                  <Typography variant="body2" sx={{ fontSize: '0.8rem', fontWeight: 500 }}>
                     {supplier.email || 'Belirtilmemiş'}
                   </Typography>
-                </Grid>
-                <Grid size={{ xs: 12, }}>
-                  <Typography variant="body2" color="text.secondary">Adres</Typography>
-                  <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                </Box>
+              </Box>
+
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1, minWidth: '200px' }}>
+                <LocationOn sx={{ color: 'text.secondary', fontSize: 18 }} />
+                <Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem', display: 'block' }}>
+                    Adres
+                  </Typography>
+                  <Typography variant="body2" sx={{ fontSize: '0.8rem', fontWeight: 500 }}>
                     {supplier.address || 'Belirtilmemiş'}
                   </Typography>
-                </Grid>
-              </Grid>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid size={{ xs: 12, md: 4, }}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-                Bakiye Durumu
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
-                Pozitif: Tedarikçiye borçluyuz | Negatif: Tedarikçi borçlu
-              </Typography>
-              <Box sx={{ mb: 2 }}>
-                <Chip
-                  label={formatCurrency(balance.balanceTRY, 'TRY')}
-                  color={getBalanceColor(balance.balanceTRY) as any}
-                  sx={{ mb: 1, mr: 1 }}
-                />
-                <Chip
-                  label={formatCurrency(balance.balanceUSD, 'USD')}
-                  color={getBalanceColor(balance.balanceUSD) as any}
-                  sx={{ mb: 1, mr: 1 }}
-                />
-                <Chip
-                  label={formatCurrency(balance.balanceEUR, 'EUR')}
-                  color={getBalanceColor(balance.balanceEUR) as any}
-                  sx={{ mb: 1 }}
-                />
-              </Box>
-              <Button
-                fullWidth
-                variant="contained"
-                startIcon={<Add />}
-                onClick={() => setPaymentDialogOpen(true)}
-              >
-                Ödeme Yap
-              </Button>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      {/* Tabs Content */}
-      <Grid container spacing={3}>
-        {/* Purchase History */}
-        <Grid size={{ xs: 12, md: 6 }} >
-          <Card>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <ShoppingCart sx={{ mr: 1 }} />
-                  <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                    Alım Geçmişi
-                  </Typography>
                 </Box>
-                <Button
-                  variant="contained"
-                  size="small"
-                  startIcon={<Add />}
-                  onClick={() => setPurchaseDialogOpen(true)}
-                >
-                  Alım Yap
-                </Button>
               </Box>
+            </Box>
+          </CardContent>
+        </Card>
 
-              {/* Tarih Filtresi */}
-              <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
-                <TextField
-                  label="Başlangıç"
-                  type="date"
-                  size="small"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  InputLabelProps={{ shrink: true }}
-                  sx={{ flex: 1 }}
-                />
-                <TextField
-                  label="Bitiş"
-                  type="date"
-                  size="small"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  InputLabelProps={{ shrink: true }}
-                  sx={{ flex: 1 }}
-                />
-              </Box>
+        {/* Stats Cards */}
+        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 2 }}>
+          <Card>
+            <CardContent sx={{ textAlign: 'center', py: 1.5, px: 1.5 }}>
+              <Avatar sx={{ bgcolor: 'info.main', mx: 'auto', mb: 0.5, width: 36, height: 36 }}>
+                <ShoppingCart sx={{ fontSize: 20 }} />
+              </Avatar>
+              <Typography variant="h5" sx={{ fontWeight: 700, fontSize: '1.5rem' }}>
+                {purchases.length}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                Toplam Alım
+              </Typography>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent sx={{ textAlign: 'center', py: 1.5, px: 1.5 }}>
+              <Avatar sx={{ bgcolor: 'error.main', mx: 'auto', mb: 0.5, width: 36, height: 36 }}>
+                <TrendingUp sx={{ fontSize: 20 }} />
+              </Avatar>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5, fontSize: '0.75rem' }}>
+                Toplam Alım Tutarı
+              </Typography>
+              {(() => {
+                const totals = { TRY: 0, USD: 0, EUR: 0 };
+                purchases.forEach(purchase => {
+                  const amount = Number(purchase.total_amount) || 0;
+                  if (purchase.currency === 'USD') totals.USD += amount;
+                  else if (purchase.currency === 'EUR') totals.EUR += amount;
+                  else totals.TRY += amount;
+                });
+                return (
+                  <>
+                    <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem' }}>
+                      ₺{totals.TRY.toLocaleString('tr-TR')}
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem' }}>
+                      ${totals.USD.toLocaleString('tr-TR')}
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem' }}>
+                      €{totals.EUR.toLocaleString('tr-TR')}
+                    </Typography>
+                  </>
+                );
+              })()}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent sx={{ textAlign: 'center', py: 1.5, px: 1.5 }}>
+              <Avatar sx={{ bgcolor: 'success.main', mx: 'auto', mb: 0.5, width: 36, height: 36 }}>
+                <Payment sx={{ fontSize: 20 }} />
+              </Avatar>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5, fontSize: '0.75rem' }}>
+                Toplam Ödeme
+              </Typography>
+              {(() => {
+                const totals = { TRY: 0, USD: 0, EUR: 0 };
+                payments.forEach(payment => {
+                  const amount = Number(payment.amount) || 0;
+                  const currency = payment.currency || 'TRY';
+                  if (currency === 'USD') totals.USD += amount;
+                  else if (currency === 'EUR') totals.EUR += amount;
+                  else totals.TRY += amount;
+                });
+                return (
+                  <>
+                    <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem' }}>
+                      ₺{totals.TRY.toLocaleString('tr-TR')}
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem' }}>
+                      ${totals.USD.toLocaleString('tr-TR')}
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem' }}>
+                      €{totals.EUR.toLocaleString('tr-TR')}
+                    </Typography>
+                  </>
+                );
+              })()}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent sx={{ textAlign: 'center', py: 1.5, px: 1.5 }}>
+              <Avatar sx={{
+                bgcolor: balance.balanceTRY > 0 ? 'error.main' : 'success.main',
+                mx: 'auto', mb: 0.5, width: 36, height: 36
+              }}>
+                <AccountBalance sx={{ fontSize: 20 }} />
+              </Avatar>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5, fontSize: '0.75rem' }}>
+                Güncel Bakiye
+              </Typography>
+              <Typography
+                variant="body2"
+                sx={{
+                  fontWeight: 600,
+                  fontSize: '0.8rem',
+                  color: balance.balanceTRY > 0 ? 'error.main' : balance.balanceTRY < 0 ? 'success.main' : 'text.secondary'
+                }}
+              >
+                {balance.balanceTRY > 0 ? '+' : ''}₺{balance.balanceTRY.toLocaleString('tr-TR')}
+              </Typography>
+              <Typography
+                variant="body2"
+                sx={{
+                  fontWeight: 600,
+                  fontSize: '0.8rem',
+                  color: balance.balanceUSD > 0 ? 'error.main' : balance.balanceUSD < 0 ? 'success.main' : 'text.secondary'
+                }}
+              >
+                {balance.balanceUSD > 0 ? '+' : ''}${balance.balanceUSD.toLocaleString('tr-TR')}
+              </Typography>
+              <Typography
+                variant="body2"
+                sx={{
+                  fontWeight: 600,
+                  fontSize: '0.8rem',
+                  color: balance.balanceEUR > 0 ? 'error.main' : balance.balanceEUR < 0 ? 'success.main' : 'text.secondary'
+                }}
+              >
+                {balance.balanceEUR > 0 ? '+' : ''}€{balance.balanceEUR.toLocaleString('tr-TR')}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Box>
+      </Box>
+
+      {/* Tarih Filtreleme - Hem alımlar hem ödemeler için */}
+      <Card sx={{ mt: 2 }}>
+        <CardContent sx={{ py: 2, px: 2 }}>
+          <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 600 }}>
+            Tarih Filtresi (Alımlar ve Ödemeler)
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+            <TextField
+              label="Başlangıç Tarihi"
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+              size="small"
+              sx={{ flex: 1 }}
+            />
+            <TextField
+              label="Bitiş Tarihi"
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+              size="small"
+              sx={{ flex: 1 }}
+            />
+            <Button
+              variant="outlined"
+              onClick={() => {
+                setStartDate(getDefaultStartDate());
+                setEndDate(getDefaultEndDate());
+              }}
+              size="small"
+              startIcon={<Clear />}
+            >
+              Temizle
+            </Button>
+          </Box>
+        </CardContent>
+      </Card>
+
+      {/* Tables */}
+      <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', mt: 2 }}>
+        {/* Purchase History */}
+        <Box sx={{ flex: '1 1 450px', minWidth: '450px' }}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+                Alım Geçmişi ({purchases.length} alım)
+              </Typography>
 
               <TableContainer>
                 <Table size="small">
                   <TableHead>
                     <TableRow>
                       <TableCell>Tarih</TableCell>
-                      <TableCell>Tutar</TableCell>
+                      <TableCell>Malzemeler</TableCell>
+                      <TableCell align="right">Tutar</TableCell>
                       <TableCell align="center">İşlem</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {purchases.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={3} align="center">
-                          Henüz alım kaydı bulunmuyor
+                        <TableCell colSpan={4} align="center">
+                          {startDate || endDate ? 'Bu tarih aralığında alım kaydı bulunmuyor' : 'Henüz alım kaydı bulunmuyor'}
                         </TableCell>
                       </TableRow>
                     ) : (
@@ -1343,29 +1504,31 @@ const SupplierDetail: React.FC = () => {
                         {purchases
                           .slice(purchasePage * rowsPerPage, purchasePage * rowsPerPage + rowsPerPage)
                           .map((purchase) => (
-                            <TableRow key={purchase.id} hover>
-                              <TableCell
-                                sx={{ cursor: 'pointer' }}
-                                onClick={() => handlePurchaseRowClick(purchase)}
-                              >
-                                {(() => {
-                                  try {
+                            <TableRow key={purchase.id} hover sx={{ cursor: 'pointer' }} onClick={() => handlePurchaseRowClick(purchase)}>
+                              <TableCell sx={{ verticalAlign: 'top', minWidth: 100 }}>
+                                <Typography variant="body2">
+                                  {(() => {
                                     const dateValue = purchase.purchase_date || purchase.date || purchase.created_at;
                                     if (!dateValue) return 'Tarih Belirtilmemiş';
-                                    const date = new Date(dateValue);
-                                    return isNaN(date.getTime()) ? 'Geçersiz Tarih' : date.toLocaleDateString('tr-TR');
-                                  } catch (error) {
-                                    return 'Geçersiz Tarih';
-                                  }
-                                })()}
+                                    return new Date(dateValue).toLocaleDateString('tr-TR');
+                                  })()}
+                                </Typography>
+                                <Chip 
+                                  label="ALIM" 
+                                  size="small" 
+                                  color="error"
+                                  sx={{ mt: 0.5, fontSize: '0.7rem' }}
+                                />
                               </TableCell>
-                              <TableCell
-                                sx={{ cursor: 'pointer' }}
-                                onClick={() => handlePurchaseRowClick(purchase)}
-                              >
-                                {formatCurrency(purchase.total_amount, purchase.currency)}
+                              <TableCell sx={{ verticalAlign: 'top' }}>
+                                <Typography variant="body2" color="text.secondary">
+                                  Malzeme alımı
+                                </Typography>
                               </TableCell>
-                              <TableCell align="center">
+                              <TableCell align="right" sx={{ verticalAlign: 'top', fontWeight: 600 }}>
+                                {purchase.currency === 'TRY' ? '₺' : purchase.currency === 'EUR' ? '€' : '$'}{Math.abs(purchase.total_amount || 0).toLocaleString('tr-TR')}
+                              </TableCell>
+                              <TableCell align="center" sx={{ verticalAlign: 'top' }}>
                                 <IconButton
                                   size="small"
                                   color="error"
@@ -1373,7 +1536,6 @@ const SupplierDetail: React.FC = () => {
                                     e.stopPropagation();
                                     handleDeletePurchase(purchase.id);
                                   }}
-                                  title="Sil"
                                 >
                                   <Delete />
                                 </IconButton>
@@ -1430,13 +1592,13 @@ const SupplierDetail: React.FC = () => {
                           return (
                             <>
                               <TableRow>
-                                <TableCell colSpan={3} sx={{ py: 1 }} />
+                                <TableCell colSpan={4} sx={{ py: 1 }} />
                               </TableRow>
                               <TableRow sx={{ bgcolor: 'action.hover' }}>
-                                <TableCell sx={{ fontWeight: 600 }}>
+                                <TableCell colSpan={3} sx={{ fontWeight: 600 }}>
                                   Önceki Bakiye ({startDate} öncesi)
                                 </TableCell>
-                                <TableCell sx={{ fontWeight: 700 }}>
+                                <TableCell align="right" sx={{ fontWeight: 700 }}>
                                   <Box>
                                     <Typography
                                       variant="body2"
@@ -1467,7 +1629,6 @@ const SupplierDetail: React.FC = () => {
                                     </Typography>
                                   </Box>
                                 </TableCell>
-                                <TableCell></TableCell>
                               </TableRow>
                             </>
                           );
@@ -1491,26 +1652,23 @@ const SupplierDetail: React.FC = () => {
               )}
             </CardContent>
           </Card>
-        </Grid>
+        </Box>
 
         {/* Payment History */}
-        <Grid size={{ xs: 12, md: 6, }}>
+        <Box sx={{ flex: '1 1 450px', minWidth: '450px' }}>
           <Card>
             <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                <Payment sx={{ mr: 1 }} />
-                <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                  Ödeme Geçmişi
-                </Typography>
-              </Box>
+              <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+                Ödeme Geçmişi ({payments.length} ödeme)
+              </Typography>
               <TableContainer>
                 <Table size="small">
                   <TableHead>
                     <TableRow>
                       <TableCell>Tarih</TableCell>
-                      <TableCell>Tutar</TableCell>
+                      <TableCell align="right">Tutar</TableCell>
                       <TableCell>Uygulanan</TableCell>
-                      <TableCell>Yöntem</TableCell>
+                      <TableCell>Tip</TableCell>
                       <TableCell align="center">İşlem</TableCell>
                     </TableRow>
                   </TableHead>
@@ -1559,26 +1717,26 @@ const SupplierDetail: React.FC = () => {
                                 <TableRow key={payment.id} hover>
                                   <TableCell>
                                     {(() => {
-                                      try {
-                                        const dateValue = payment.payment_date || payment.date || payment.created_at;
-                                        if (!dateValue) return 'Tarih Belirtilmemiş';
-                                        const date = new Date(dateValue);
-                                        return isNaN(date.getTime()) ? 'Geçersiz Tarih' : date.toLocaleDateString('tr-TR');
-                                      } catch (error) {
-                                        return 'Geçersiz Tarih';
-                                      }
+                                      const dateValue = payment.payment_date || payment.date || payment.created_at;
+                                      if (!dateValue) return 'Tarih Belirtilmemiş';
+                                      return new Date(dateValue).toLocaleDateString('tr-TR');
                                     })()}
                                   </TableCell>
-                                  <TableCell>
+                                  <TableCell align="right">
                                     <Typography variant="body2" sx={{ color: 'success.main', fontWeight: 600 }}>
-                                      -{currencySymbol}{formatNumberWithCommas(payment.amount)}
+                                      -{currencySymbol}{formatNumberWithCommas(payment.amount.toString())}
                                     </Typography>
+                                    {payment.description && payment.description.includes('Orijinal:') && (
+                                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                                        {payment.description.match(/\(([^)]+)\)/)?.[1] || ''}
+                                      </Typography>
+                                    )}
                                   </TableCell>
                                   <TableCell>
                                     {appliedToPrevious > 0 && appliedToCurrent > 0 ? (
                                       <Box>
-                                        <Chip label={`Önceki: ${currencySymbol}${formatNumberWithCommas(appliedToPrevious)}`} size="small" color="warning" sx={{ mb: 0.5, display: 'block' }} />
-                                        <Chip label={`Bu Dönem: ${currencySymbol}${formatNumberWithCommas(appliedToCurrent)}`} size="small" color="info" />
+                                        <Chip label={`Önceki: ${currencySymbol}${formatNumberWithCommas(appliedToPrevious.toFixed(2))}`} size="small" color="warning" sx={{ mb: 0.5, display: 'block' }} />
+                                        <Chip label={`Bu Dönem: ${currencySymbol}${formatNumberWithCommas(appliedToCurrent.toFixed(2))}`} size="small" color="info" />
                                       </Box>
                                     ) : appliedToPrevious > 0 ? (
                                       <Chip label="Önceki Bakiye" size="small" color="warning" />
@@ -1588,13 +1746,14 @@ const SupplierDetail: React.FC = () => {
                                   </TableCell>
                                   <TableCell>
                                     <Chip
-                                      label={payment.payment_type === 'cash' ? 'Nakit' :
-                                        payment.payment_type === 'card' ? 'Kart' :
-                                          payment.payment_type === 'transfer' ? 'Banka Transferi' :
-                                            payment.payment_type === 'check' ? 'Çek' :
-                                              payment.payment_type || 'Belirtilmemiş'}
+                                      label={
+                                        payment.payment_type === 'cash' ? 'Nakit' :
+                                        payment.payment_type === 'transfer' ? 'Banka' :
+                                        payment.payment_type === 'check' ? 'Çek' :
+                                        payment.payment_type === 'promissory_note' ? 'Senet' : 'Diğer'
+                                      }
+                                      variant="outlined"
                                       size="small"
-                                      color="primary"
                                     />
                                   </TableCell>
                                   <TableCell align="center">
@@ -1602,7 +1761,6 @@ const SupplierDetail: React.FC = () => {
                                       size="small"
                                       color="error"
                                       onClick={() => handleDeletePayment(payment.id)}
-                                      title="Sil"
                                     >
                                       <Delete />
                                     </IconButton>
@@ -1658,8 +1816,8 @@ const SupplierDetail: React.FC = () => {
               )}
             </CardContent>
           </Card>
-        </Grid>
-      </Grid>
+        </Box>
+      </Box>
 
       {/* Add Payment Dialog */}
       <Dialog
@@ -1678,10 +1836,11 @@ const SupplierDetail: React.FC = () => {
                 label="Tutar"
                 value={newPayment.amount}
                 onChange={(e) => {
-                  const value = e.target.value.replace(/[^\d,]/g, '');
-                  setNewPayment({ ...newPayment, amount: value });
+                  const formatted = formatDecimalInputNumber(e.target.value);
+                  setNewPayment({ ...newPayment, amount: formatted });
                 }}
                 helperText="Ödenen tutarı giriniz"
+                placeholder="Örn: 10,000.50"
               />
             </Grid>
             <Grid size={{ xs: 12, md: 3 }}>
@@ -2171,10 +2330,13 @@ const SupplierDetail: React.FC = () => {
             <TextField
               fullWidth
               label="Çevrilmiş Tutar"
-              type="number"
               value={convertedAmount}
-              onChange={(e) => setConvertedAmount(e.target.value)}
+              onChange={(e) => {
+                const formatted = formatDecimalInputNumber(e.target.value);
+                setConvertedAmount(formatted);
+              }}
               helperText="Çekin yeni para birimindeki karşılığını girin"
+              placeholder="Örn: 10,000.50"
             />
           </Box>
         </DialogContent>
@@ -2182,7 +2344,9 @@ const SupplierDetail: React.FC = () => {
           <Button onClick={() => setConvertCheckDialogOpen(false)}>İptal</Button>
           <Button 
             onClick={() => {
-              if (convertedAmount && parseFloat(convertedAmount) > 0) {
+              // Formatı parse et: virgül binlik ayıraç, nokta ondalık ayıraç
+              const parsedAmount = parseFloat(convertedAmount.replace(/,/g, ''));
+              if (convertedAmount && parsedAmount > 0) {
                 setNewPayment({
                   ...newPayment,
                   amount: convertedAmount,
@@ -2197,7 +2361,7 @@ const SupplierDetail: React.FC = () => {
               }
             }}
             variant="contained"
-            disabled={!convertedAmount || parseFloat(convertedAmount) <= 0}
+            disabled={!convertedAmount || parseFloat(convertedAmount.replace(/,/g, '')) <= 0}
           >
             Çevir
           </Button>

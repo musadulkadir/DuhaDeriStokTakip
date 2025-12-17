@@ -94,6 +94,29 @@ const formatNumberWithCommas = (value: number | string): string => {
   return `${integerPart},${parts[1]}`;
 };
 
+// Input için format fonksiyonu (kullanıcı yazarken)
+const formatInputNumber = (value: string): string => {
+  // Sadece rakam ve nokta karakterlerini al
+  const numericValue = value.replace(/[^\d.]/g, '');
+  if (!numericValue) return '';
+  
+  // Sayıyı parçalara ayır (tam kısım ve ondalık kısım)
+  const parts = numericValue.split('.');
+  const integerPart = parts[0];
+  const decimalPart = parts[1];
+  
+  // Tam kısmı üç haneli ayraçlarla formatla
+  const formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  
+  // Ondalık kısım varsa ekle
+  return decimalPart !== undefined ? `${formattedInteger}.${decimalPart}` : formattedInteger;
+};
+
+const parseFormattedNumber = (value: string): number => {
+  // Virgülleri kaldır ve sayıya çevir
+  return parseFloat(value.replace(/,/g, '')) || 0;
+};
+
 const EmployeeDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -252,13 +275,13 @@ const EmployeeDetail: React.FC = () => {
 
   // Ödeme ekle
   const handleAddPayment = async () => {
-    if (!employee || !paymentAmount || parseFloat(paymentAmount) <= 0) {
+    if (!employee || !paymentAmount || parseFormattedNumber(paymentAmount) <= 0) {
       setSnackbar({ open: true, message: 'Geçerli bir ödeme tutarı girin', severity: 'error' });
       return;
     }
 
     try {
-      const amount = parseFloat(paymentAmount);
+      const amount = parseFormattedNumber(paymentAmount);
 
       // Ödeme kaydı oluştur
       const paymentData = {
@@ -468,7 +491,7 @@ const EmployeeDetail: React.FC = () => {
                     <Box>
                       <Typography variant="caption" color="text.secondary">Maaş</Typography>
                       <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                        ₺{(employee.salary || 0).toLocaleString('tr-TR')}
+                        ₺{formatNumberWithCommas(employee.salary || 0)}
                       </Typography>
                     </Box>
                   </Box>
@@ -492,11 +515,11 @@ const EmployeeDetail: React.FC = () => {
                 <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mt: 0.5 }}>
                   {Object.entries(stats.totalPaidByCurrency).map(([currency, amount]) => (
                     <Typography key={currency} variant="h6" sx={{ fontWeight: 700 }}>
-                      {currency === 'TRY' ? '₺' : currency === 'USD' ? '$' : '€'}{amount.toLocaleString('tr-TR')}
+                      {currency === 'TRY' ? '₺' : currency === 'USD' ? '$' : '€'}{formatNumberWithCommas(amount)}
                     </Typography>
                   ))}
                   {Object.keys(stats.totalPaidByCurrency).length === 0 && (
-                    <Typography variant="h6" sx={{ fontWeight: 700 }}>₺0</Typography>
+                    <Typography variant="h6" sx={{ fontWeight: 700 }}>₺0,00</Typography>
                   )}
                 </Box>
               </Box>
@@ -642,9 +665,12 @@ const EmployeeDetail: React.FC = () => {
                 fullWidth
                 size="medium"
                 label="Ödeme Tutarı"
-                type="number"
                 value={paymentAmount}
-                onChange={(e) => setPaymentAmount(e.target.value)}
+                onChange={(e) => {
+                  const formatted = formatInputNumber(e.target.value);
+                  setPaymentAmount(formatted);
+                }}
+                placeholder="Örn: 30,000"
               />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
@@ -704,7 +730,7 @@ const EmployeeDetail: React.FC = () => {
           <Button
             onClick={handleAddPayment}
             variant='contained'
-            disabled={!paymentAmount || parseFloat(paymentAmount) <= 0}
+            disabled={!paymentAmount || parseFormattedNumber(paymentAmount) <= 0}
           >
             Ödeme Kaydet
           </Button>
@@ -721,7 +747,7 @@ const EmployeeDetail: React.FC = () => {
           {selectedPayment && (
             <Box sx={{ mt: 2, p: 2, bgcolor: 'background.paper', borderRadius: 1 }}>
               <Typography variant="body2">
-                <strong>Tutar:</strong> {selectedPayment.currency === 'TRY' ? '₺' : selectedPayment.currency === 'USD' ? '$' : '€'}{selectedPayment.amount.toLocaleString('tr-TR')}
+                <strong>Tutar:</strong> {selectedPayment.currency === 'TRY' ? '₺' : selectedPayment.currency === 'USD' ? '$' : '€'}{formatNumberWithCommas(selectedPayment.amount)}
               </Typography>
               <Typography variant="body2">
                 <strong>Para Birimi:</strong> {selectedPayment.currency}

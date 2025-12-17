@@ -521,7 +521,7 @@ const ProductManagement: React.FC = () => {
               previous_stock: originalStock,
               new_stock: newStock,
               reference_type: 'adjustment',
-              notes: `Stok düzeltmesi - ${selectedProduct.category} ${selectedProduct.color_shade || ''} (${stockDifference > 0 ? '+' : ''}${stockDifference})`,
+              notes: `Stok düzeltmesi - ${selectedProduct.category} ${selectedProduct.color_shade || ''} (${stockDifference > 0 ? '+' : ''}${Math.abs(stockDifference).toLocaleString('en-US')})`,
               user: 'Sistem Kullanıcısı',
             };
 
@@ -539,7 +539,7 @@ const ProductManagement: React.FC = () => {
               previous_stock: originalStock,
               new_stock: newStock,
               reference_type: 'adjustment',
-              notes: `Stok düzeltmesi - ${selectedProduct.category} ${selectedProduct.color || ''} (${stockDifference > 0 ? '+' : ''}${stockDifference})`,
+              notes: `Stok düzeltmesi - ${selectedProduct.category} ${selectedProduct.color || ''} (${stockDifference > 0 ? '+' : ''}${Math.abs(stockDifference).toLocaleString('en-US')})`,
               user: 'Sistem Kullanıcısı',
             };
 
