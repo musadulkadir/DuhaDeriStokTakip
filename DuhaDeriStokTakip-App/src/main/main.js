@@ -1021,8 +1021,10 @@ function createWindow() {
     console.log('__dirname:', __dirname);
     console.log('Index path exists:', fs.existsSync(indexPath));
 
-    // Production'da da DevTools aç (hata ayıklama için)
-    mainWindow.webContents.openDevTools();
+    // Production'da da DevTools aç (sadece packaged değilse - hata ayıklama için)
+    if (!app.isPackaged) {
+      mainWindow.webContents.openDevTools();
+    }
   }
 
   // Belirlenen yolu yükle
