@@ -782,6 +782,7 @@ const CustomerDetail: React.FC = () => {
       setReceiveConvertedAmount('');
       setReceiveConvertedCurrency('USD');
       setPaymentDialogOpen(false);
+      setPaymentsPage(0); // Pagination'ı sıfırla
 
       // Verileri yeniden yükle
       await loadCustomerData();
@@ -1208,6 +1209,7 @@ const CustomerDetail: React.FC = () => {
       setSaleDate(new Date().toISOString().split('T')[0]);
       setSaleErrors([]);
       setSaleDialogOpen(false);
+      setSalesPage(0); // Pagination'ı sıfırla
 
       // Verileri yeniden yükle
       await loadCustomerData();
@@ -1288,6 +1290,7 @@ const CustomerDetail: React.FC = () => {
       });
       setDeletePaymentDialogOpen(false);
       setSelectedPayment(null);
+      setPaymentsPage(0); // Pagination'ı sıfırla
 
       // Verileri yeniden yükle
       await loadCustomerData();
@@ -1318,6 +1321,7 @@ const CustomerDetail: React.FC = () => {
       setSnackbar({ open: true, message: 'Satış başarıyla silindi ve bakiye güncellendi', severity: 'success' });
       setDeleteSaleDialogOpen(false);
       setSelectedSale(null);
+      setSalesPage(0); // Pagination'ı sıfırla
 
       // Verileri yeniden yükle
       await loadCustomerData();
@@ -1450,6 +1454,7 @@ const CustomerDetail: React.FC = () => {
       setReturnSale(null);
       setReturnItems([]);
       setReturnDate(new Date().toISOString().split('T')[0]);
+      setSalesPage(0); // Pagination'ı sıfırla
 
       // Verileri yeniden yükle
       await loadCustomerData();
@@ -1966,102 +1971,61 @@ const CustomerDetail: React.FC = () => {
                     <TableRow>
                       <TableCell>Tarih</TableCell>
                       <TableCell align="right">Tutar</TableCell>
-                      <TableCell>Uygulanan</TableCell>
                       <TableCell>Tip</TableCell>
                       <TableCell align="center">İşlem</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {(() => {
-                      // Ödemeleri işlerken önceki bakiyeyi takip et
-                      let remainingPrevBalanceTRY = previousBalance.TRY;
-                      let remainingPrevBalanceUSD = previousBalance.USD;
-                      let remainingPrevBalanceEUR = previousBalance.EUR;
+                    {filteredPayments
+                      .slice(paymentsPage * paymentsRowsPerPage, paymentsPage * paymentsRowsPerPage + paymentsRowsPerPage)
+                      .map((payment) => {
+                        const currencySymbol = payment.currency === 'TRY' ? '₺' : payment.currency === 'EUR' ? '€' : '$';
 
-                      return filteredPayments
-                        .slice(paymentsPage * paymentsRowsPerPage, paymentsPage * paymentsRowsPerPage + paymentsRowsPerPage)
-                        .map((payment) => {
-                          const currency = payment.currency || 'TRY';
-                          let appliedToPrevious = 0;
-                          let appliedToCurrent = 0;
-
-                          // Ödemeyi önce önceki bakiyeye uygula
-                          if (currency === 'TRY' && remainingPrevBalanceTRY > 0) {
-                            appliedToPrevious = Math.min(payment.amount, remainingPrevBalanceTRY);
-                            appliedToCurrent = payment.amount - appliedToPrevious;
-                            remainingPrevBalanceTRY -= appliedToPrevious;
-                          } else if (currency === 'USD' && remainingPrevBalanceUSD > 0) {
-                            appliedToPrevious = Math.min(payment.amount, remainingPrevBalanceUSD);
-                            appliedToCurrent = payment.amount - appliedToPrevious;
-                            remainingPrevBalanceUSD -= appliedToPrevious;
-                          } else if (currency === 'EUR' && remainingPrevBalanceEUR > 0) {
-                            appliedToPrevious = Math.min(payment.amount, remainingPrevBalanceEUR);
-                            appliedToCurrent = payment.amount - appliedToPrevious;
-                            remainingPrevBalanceEUR -= appliedToPrevious;
-                          } else {
-                            appliedToCurrent = payment.amount;
-                          }
-
-                          const currencySymbol = payment.currency === 'TRY' ? '₺' : payment.currency === 'EUR' ? '€' : '$';
-
-                          return (
-                            <TableRow key={payment.id}>
-                              <TableCell>
-                                {new Date(payment.paymentDate).toLocaleDateString('tr-TR')}
-                              </TableCell>
-                              <TableCell align="right">
-                                <Typography variant="body2" sx={{ color: 'success.main', fontWeight: 600 }}>
-                                  +{currencySymbol}{formatNumberWithCommas(payment.amount.toString())}
+                        return (
+                          <TableRow key={payment.id}>
+                            <TableCell>
+                              {new Date(payment.paymentDate).toLocaleDateString('tr-TR')}
+                            </TableCell>
+                            <TableCell align="right">
+                              <Typography variant="body2" sx={{ color: 'success.main', fontWeight: 600 }}>
+                                +{currencySymbol}{formatNumberWithCommas(payment.amount.toString())}
+                              </Typography>
+                              {payment.notes && payment.notes.includes('Orijinal:') && (
+                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                                  {payment.notes.match(/\(([^)]+)\)/)?.[1] || ''}
                                 </Typography>
-                                {payment.notes && payment.notes.includes('Orijinal:') && (
-                                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                                    {payment.notes.match(/\(([^)]+)\)/)?.[1] || ''}
-                                  </Typography>
-                                )}
-                              </TableCell>
-                              <TableCell>
-                                {appliedToPrevious > 0 && appliedToCurrent > 0 ? (
-                                  <Box>
-                                    <Chip label={`Önceki: ${currencySymbol}${formatNumberWithCommas(appliedToPrevious.toFixed(2))}`} size="small" color="warning" sx={{ mb: 0.5, display: 'block' }} />
-                                    <Chip label={`Bu Dönem: ${currencySymbol}${formatNumberWithCommas(appliedToCurrent.toFixed(2))}`} size="small" color="info" />
-                                  </Box>
-                                ) : appliedToPrevious > 0 ? (
-                                  <Chip label="Önceki Bakiye" size="small" color="warning" />
-                                ) : (
-                                  <Chip label="Bu Dönem" size="small" color="info" />
-                                )}
-                              </TableCell>
-                              <TableCell>
-                                <Chip
-                                  label={
-                                    payment.paymentType === 'cash' ? 'Nakit' :
-                                    payment.paymentType === 'bank_transfer' ? 'Banka' :
-                                    payment.paymentType === 'check' ? 'Çek' :
-                                    payment.paymentType === 'promissory_note' ? 'Senet' : 'Diğer'
-                                  }
-                                  variant="outlined"
-                                  size="small"
-                                />
-                              </TableCell>
-                              <TableCell align="center">
-                                <IconButton
-                                  size="small"
-                                  color="error"
-                                  onClick={() => {
-                                    setSelectedPayment(payment);
-                                    setDeletePaymentDialogOpen(true);
-                                  }}
-                                >
-                                  <Delete />
-                                </IconButton>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        });
-                    })()}
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <Chip
+                                label={
+                                  payment.paymentType === 'cash' ? 'Nakit' :
+                                  payment.paymentType === 'bank_transfer' ? 'Banka' :
+                                  payment.paymentType === 'check' ? 'Çek' :
+                                  payment.paymentType === 'promissory_note' ? 'Senet' : 'Diğer'
+                                }
+                                variant="outlined"
+                                size="small"
+                              />
+                            </TableCell>
+                            <TableCell align="center">
+                              <IconButton
+                                size="small"
+                                color="error"
+                                onClick={() => {
+                                  setSelectedPayment(payment);
+                                  setDeletePaymentDialogOpen(true);
+                                }}
+                              >
+                                <Delete />
+                              </IconButton>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     {filteredPayments.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={5} align="center">
+                        <TableCell colSpan={4} align="center">
                           Henüz ödeme kaydı bulunmuyor
                         </TableCell>
                       </TableRow>
@@ -2077,7 +2041,7 @@ const CustomerDetail: React.FC = () => {
                           <TableCell colSpan={2} sx={{ fontWeight: 700, fontSize: '1rem' }}>
                             TOPLAM ÖDEME
                           </TableCell>
-                          <TableCell align="right" colSpan={3} sx={{ fontWeight: 700, fontSize: '1rem' }}>
+                          <TableCell align="right" colSpan={2} sx={{ fontWeight: 700, fontSize: '1rem' }}>
                             <Box>
                               {paymentsTotals.TRY > 0 && (
                                 <Typography variant="body2" sx={{ fontWeight: 700, color: 'success.dark' }}>

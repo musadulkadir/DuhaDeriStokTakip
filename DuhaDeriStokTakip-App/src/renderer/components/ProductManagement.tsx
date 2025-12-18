@@ -312,6 +312,7 @@ const ProductManagement: React.FC = () => {
           description: '',
           entry_date: new Date().toISOString().split('T')[0],
         });
+        setProductsCurrentPage(1); // Pagination'ı sıfırla
         await loadProducts();
       } else {
         console.error('API Error:', response.error);
@@ -469,6 +470,7 @@ const ProductManagement: React.FC = () => {
         stock_quantity: '',
         description: '',
       });
+      setMaterialsCurrentPage(1); // Pagination'ı sıfırla
 
       // Kısa bir bekleme sonrası yeniden yükle
       setTimeout(async () => {

@@ -11,6 +11,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TablePagination,
   Chip,
   Dialog,
   DialogTitle,
@@ -36,6 +37,27 @@ import { formatDateTime, formatDate, getTodayDateString } from '../utils/dateUti
 import { dbAPI } from '../services/api';
 import CurrencySelect from './common/CurrencySelect';
 import { DEFAULT_CURRENCIES } from '../constants/currencies';
+
+// Sayı formatlama fonksiyonları
+const formatNumberWithCommas = (value: string): string => {
+  // Sadece rakam ve nokta karakterlerini al
+  const numericValue = value.replace(/[^\d.]/g, '');
+  // Eğer boşsa boş döndür
+  if (!numericValue) return '';
+  // Sayıyı parçalara ayır (tam kısım ve ondalık kısım)
+  const parts = numericValue.split('.');
+  const integerPart = parts[0];
+  const decimalPart = parts[1];
+  // Tam kısmı üç haneli ayraçlarla formatla
+  const formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  // Ondalık kısım varsa ekle
+  return decimalPart !== undefined ? `${formattedInteger}.${decimalPart}` : formattedInteger;
+};
+
+const parseFormattedNumber = (value: string): number => {
+  // Virgülleri kaldır ve sayıya çevir
+  return parseFloat(value.replace(/,/g, '')) || 0;
+};
 
 interface CheckTransaction {
   id: number;
@@ -99,6 +121,10 @@ const CheckManagement: React.FC = () => {
   const [filterCheckType, setFilterCheckType] = useState<'all' | 'check' | 'promissory_note'>('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  
+  // Pagination states
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
   
   // Dialog states
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -276,6 +302,7 @@ const CheckManagement: React.FC = () => {
       if (response.success) {
         setSnackbar({ open: true, message: 'İşlem başarıyla eklendi', severity: 'success' });
         handleCloseDialog();
+        setPage(0); // Pagination'ı sıfırla
         loadTransactions();
       } else {
         setSnackbar({ open: true, message: response.error || 'İşlem eklenemedi', severity: 'error' });
@@ -344,6 +371,7 @@ const CheckManagement: React.FC = () => {
         setSnackbar({ open: true, message: 'İşlem başarıyla güncellendi', severity: 'success' });
         setEditDialogOpen(false);
         setSelectedTransaction(null);
+        setPage(0); // Pagination'ı sıfırla
         loadTransactions();
       } else {
         setSnackbar({ open: true, message: response.error || 'İşlem güncellenemedi', severity: 'error' });
@@ -371,6 +399,7 @@ const CheckManagement: React.FC = () => {
         setSnackbar({ open: true, message: 'İşlem başarıyla silindi', severity: 'success' });
         setDeleteDialogOpen(false);
         setSelectedTransaction(null);
+        setPage(0); // Pagination'ı sıfırla
         loadTransactions();
       } else {
         setSnackbar({ open: true, message: response.error || 'İşlem silinemedi', severity: 'error' });
@@ -422,6 +451,7 @@ const CheckManagement: React.FC = () => {
         setProtestDialogOpen(false);
         setProtestReason('');
         setSelectedTransaction(null);
+        setPage(0); // Pagination'ı sıfırla
         loadTransactions();
       } else {
         console.log('❌ Protesto başarısız:', response.error);
@@ -437,7 +467,7 @@ const CheckManagement: React.FC = () => {
   };
 
   const handleCashOut = async () => {
-    if (!selectedTransaction || !cashOutAmount || parseFloat(cashOutAmount) <= 0) {
+    if (!selectedTransaction || !cashOutAmount || parseFormattedNumber(cashOutAmount) <= 0) {
       setSnackbar({ open: true, message: 'Lütfen geçerli bir tutar girin', severity: 'error' });
       return;
     }
@@ -450,7 +480,7 @@ const CheckManagement: React.FC = () => {
 
     setLoading(true);
     try {
-      const amount = parseFloat(cashOutAmount);
+      const amount = parseFormattedNumber(cashOutAmount);
 
       // 1. Orijinal çeki "tahsil edildi" olarak işaretle
       const updateResponse = await dbAPI.updateCheckTransaction(selectedTransaction.id, {
@@ -492,6 +522,7 @@ const CheckManagement: React.FC = () => {
       setCashOutDialogOpen(false);
       setCashOutAmount('');
       setSelectedTransaction(null);
+      setPage(0); // Pagination'ı sıfırla
       loadTransactions();
 
     } catch (error) {
@@ -671,7 +702,9 @@ const CheckManagement: React.FC = () => {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredTransactions.map((transaction) => (
+                  filteredTransactions
+                    .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+                    .map((transaction) => (
                     <TableRow 
                       key={transaction.id} 
                       hover 
@@ -771,6 +804,21 @@ const CheckManagement: React.FC = () => {
               </TableBody>
             </Table>
           </TableContainer>
+          
+          <TablePagination
+            component="div"
+            count={filteredTransactions.length}
+            page={page}
+            onPageChange={(_, newPage) => setPage(newPage)}
+            rowsPerPage={rowsPerPage}
+            onRowsPerPageChange={(e) => {
+              setRowsPerPage(parseInt(e.target.value, 10));
+              setPage(0);
+            }}
+            rowsPerPageOptions={[5, 10, 25, 50]}
+            labelRowsPerPage="Sayfa başına satır:"
+            labelDisplayedRows={({ from, to, count }) => `${from}-${to} / ${count}`}
+          />
         </CardContent>
       </Card>
 
@@ -1212,7 +1260,7 @@ const CheckManagement: React.FC = () => {
                   variant="contained" 
                   color="success"
                   onClick={() => {
-                    setCashOutAmount(selectedTransaction.amount.toString());
+                    setCashOutAmount(formatNumberWithCommas(selectedTransaction.amount.toString()));
                     setCashOutDialogOpen(true);
                     setDetailDialogOpen(false);
                   }}
@@ -1263,9 +1311,8 @@ const CheckManagement: React.FC = () => {
             <TextField
               fullWidth
               label="Tahsil Tutarı"
-              type="number"
               value={cashOutAmount}
-              onChange={(e) => setCashOutAmount(e.target.value)}
+              onChange={(e) => setCashOutAmount(formatNumberWithCommas(e.target.value))}
               helperText={`Orijinal tutar: ${selectedTransaction?.currency === 'TRY' ? '₺' : selectedTransaction?.currency === 'EUR' ? '€' : '$'}${Number(selectedTransaction?.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`}
             />
 
@@ -1284,7 +1331,7 @@ const CheckManagement: React.FC = () => {
             onClick={handleCashOut} 
             variant="contained" 
             color="success"
-            disabled={loading || !cashOutAmount || parseFloat(cashOutAmount) <= 0}
+            disabled={loading || !cashOutAmount || parseFormattedNumber(cashOutAmount) <= 0}
           >
             {loading ? 'İşleniyor...' : 'Tahsil Et'}
           </Button>

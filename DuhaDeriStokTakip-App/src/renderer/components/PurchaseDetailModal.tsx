@@ -67,13 +67,15 @@ const PurchaseDetailModal: React.FC<Props> = ({ open, onClose, purchaseId }) => 
         try {
           // 2. Adımda oluşturacağımız yeni API fonksiyonu
           const response = await dbAPI.getPurchaseById(purchaseId);
+          console.log('🔍 PurchaseDetailModal - API yanıtı:', response);
           if (response.success) {
+            console.log('✅ PurchaseDetailModal - Veri set ediliyor:', response.data);
             setPurchaseData(response.data);
           } else {
-            console.error(response.error);
+            console.error('❌ PurchaseDetailModal - Hata:', response.error);
           }
         } catch (error) {
-          console.error('Alım detayı çekilemedi:', error);
+          console.error('❌ PurchaseDetailModal - Exception:', error);
         } finally {
           setLoading(false);
         }

@@ -145,16 +145,33 @@ const Reports: React.FC = () => {
       console.log('📦 Alım verileri backend\'den geldi:', response.data?.slice(0, 3));
 
       if (response.success && response.data) {
-        // Tarih filtresini uygula
-        const filtered = response.data.filter((purchase: any) => {
+        // Tarih filtresini uygula ve items'ları düzleştir
+        const flattenedData: any[] = [];
+        
+        response.data.forEach((purchase: any) => {
           const purchaseDate = new Date(purchase.purchase_date || purchase.date || purchase.created_at);
           const start = new Date(startDate);
           const end = new Date(endDate);
-          return purchaseDate >= start && purchaseDate <= end;
+          
+          if (purchaseDate >= start && purchaseDate <= end) {
+            // Her purchase'ın items'larını ayrı satır olarak ekle
+            if (purchase.items && purchase.items.length > 0) {
+              purchase.items.forEach((item: any) => {
+                flattenedData.push({
+                  ...item,
+                  purchase_date: purchase.purchase_date,
+                  created_at: purchase.created_at,
+                  supplier_name: purchase.supplier_name,
+                  currency: purchase.currency,
+                  total_amount: purchase.total_amount
+                });
+              });
+            }
+          }
         });
 
-        console.log('📦 Filtrelenmiş alım verileri:', filtered.slice(0, 3));
-        setPurchasesData(filtered);
+        console.log('📦 Düzleştirilmiş alım verileri:', flattenedData.slice(0, 3));
+        setPurchasesData(flattenedData);
       } else {
         setPurchasesData([]);
         setError(response.error || 'Veriler yüklenemedi');

@@ -1362,7 +1362,9 @@ ipcMain.handle('cash:get-all', async () => {
 ipcMain.handle('purchases:get-all', async (_, page = 1, limit = 50) => {
   try {
     const offset = (page - 1) * limit;
-    const result = await queryAll(`
+    
+    // Önce alımları çek
+    const purchases = await queryAll(`
       SELECT 
         p.id,
         p.supplier_id,
@@ -1373,21 +1375,34 @@ ipcMain.handle('purchases:get-all', async (_, page = 1, limit = 50) => {
         p.status,
         p.created_at,
         p.updated_at,
-        c.name as supplier_name,
-        pi.product_id,
-        pi.quantity,
-        pi.unit_price,
-        pi.total_price,
-        COALESCE(m.name, pr.name) as material_name,
-        COALESCE(m.unit, pr.unit) as unit
+        c.name as supplier_name
       FROM purchases p 
       LEFT JOIN customers c ON p.supplier_id = c.id 
-      LEFT JOIN purchase_items pi ON p.id = pi.purchase_id
-      LEFT JOIN materials m ON pi.product_id = m.id
-      LEFT JOIN products pr ON pi.product_id = pr.id
       ORDER BY p.created_at DESC 
       LIMIT $1 OFFSET $2
     `, [limit, offset]);
+
+    // Her alım için item'ları ayrı çek
+    const result = await Promise.all(purchases.map(async (purchase) => {
+      const items = await queryAll(`
+        SELECT 
+          pi.product_id,
+          pi.quantity,
+          pi.unit_price,
+          pi.total_price,
+          COALESCE(m.name, pr.name) as material_name,
+          COALESCE(m.unit, pr.unit) as unit
+        FROM purchase_items pi
+        LEFT JOIN materials m ON pi.product_id = m.id
+        LEFT JOIN products pr ON pi.product_id = pr.id
+        WHERE pi.purchase_id = $1
+      `, [purchase.id]);
+      
+      return {
+        ...purchase,
+        items
+      };
+    }));
 
     console.log('📦 Backend - İlk 2 alım verisi:', JSON.stringify(result.slice(0, 2), null, 2));
 
@@ -1508,13 +1523,13 @@ ipcMain.handle('materials:get-all', async () => {
 ipcMain.handle('materials:create', async (_, material) => {
   try {
     const result = await queryOne(`
-      INSERT INTO materials (name, category, color, brand, code, stock_quantity, unit, description, supplier_id, supplier_name)
+      INSERT INTO materials (name, category, color_shade, brand, code, stock_quantity, unit, description, supplier_id, supplier_name)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING *
     `, [
       material.name,
       material.category,
-      material.color || null,
+      material.color_shade || null,
       material.brand || null,
       material.code || null,
       material.stock_quantity || 0, // ✅ DÜZELTME: Kullanıcının girdiği stok miktarını kullan
@@ -2704,21 +2719,13 @@ ipcMain.handle('purchases:get-by-id', async (_, id) => {
 
 ipcMain.handle('purchases:create', async (_, purchase) => {
   try {
-    console.log('🚀 purchases:create BAŞLADI:', {
-      supplier_id: purchase.supplier_id,
-      items_count: purchase.items?.length,
-      timestamp: new Date()
-    });
-
     // Start transaction
     await query('BEGIN');
 
     // Tarih kontrolü ve düzeltmesi
-    console.log('📦 Alım tarihi (frontend):', purchase.purchase_date, typeof purchase.purchase_date);
     const purchaseDate = purchase.purchase_date ? new Date(purchase.purchase_date) : new Date();
-    console.log('📦 Alım tarihi (backend):', purchaseDate);
 
-    // Create purchase record
+    // Create purchase record - her alım ayrı kayıt (satış mantığı gibi)
     const purchaseResult = await queryOne(`
       INSERT INTO purchases (supplier_id, total_amount, currency, purchase_date, notes, status) 
       VALUES ($1, $2, $3, $4, $5, $6)
@@ -2735,25 +2742,14 @@ ipcMain.handle('purchases:create', async (_, purchase) => {
     // Create purchase items
     if (purchase.items && purchase.items.length > 0) {
       for (const item of purchase.items) {
-        console.log('Processing purchase item:', {
-          product_id: item.product_id,
-          brand_from_item: item.brand,
-          brand_type: typeof item.brand,
-          brand_length: item.brand?.length
-        });
-
         // Get brand from item or materials table
-        // Check for both null/undefined and empty string
         let brand = (item.brand && item.brand.trim()) ? item.brand.trim() : null;
 
         // If brand not provided in item, get from materials table
         if (!brand) {
           const materialInfo = await queryOne(`SELECT brand FROM materials WHERE id = $1`, [item.product_id]);
           brand = materialInfo?.brand || null;
-          console.log('Brand from materials table:', brand);
         }
-
-        console.log('Final brand value to insert:', brand);
 
         await query(`
           INSERT INTO purchase_items (
@@ -2817,18 +2813,6 @@ ipcMain.handle('purchases:create', async (_, purchase) => {
 
         // Create movement record - use material_movements for materials, stock_movements for products
         if (isMaterial) {
-          console.log('📦 Material movement oluşturuluyor:', {
-            material_id: item.product_id,
-            productName,
-            quantity: item.quantity,
-            previousStock,
-            newStock,
-            purchase_id: purchaseResult.id,
-            timestamp: new Date()
-          });
-
-          // ✅ created_at açıkça belirtilmedi - PostgreSQL DEFAULT CURRENT_TIMESTAMP kullanacak
-          // Bu sayede timezone tutarlı olacak
           await query(`
             INSERT INTO material_movements (
               material_id, movement_type, quantity, previous_stock, new_stock, 
@@ -2901,6 +2885,41 @@ ipcMain.handle('purchases:delete', async (_, id) => {
       return { success: false, error: 'Alım bulunamadı' };
     }
 
+    // Alım kalemlerini al (stok güncellemesi için)
+    const purchaseItems = await queryAll('SELECT * FROM purchase_items WHERE purchase_id = $1', [id]);
+
+    if (purchaseItems.length === 0) {
+      console.error('❌ HATA: Alım kalemleri bulunamadı! purchase_id:', id);
+    } else {
+      console.log('✅ Alım siliniyor, stok güncellenecek:', purchaseItems.length, 'kalem');
+    }
+
+    // Her malzeme için stok güncelle (alım iptal = stok azalt)
+    for (const item of purchaseItems) {
+      const quantity = parseFloat(item.quantity) || 0;
+      
+      // Önce materials tablosunda var mı kontrol et
+      const materialCheck = await query('SELECT id, stock_quantity FROM materials WHERE id = $1', [item.product_id]);
+      
+      if (materialCheck.rows.length > 0) {
+        // Malzeme stoğunu azalt
+        await query(`
+          UPDATE materials 
+          SET stock_quantity = stock_quantity - $1, updated_at = CURRENT_TIMESTAMP 
+          WHERE id = $2
+        `, [quantity, item.product_id]);
+        console.log('✅ Malzeme stoğu azaltıldı:', item.product_id, '-', quantity);
+      } else {
+        // Ürün stoğunu azalt
+        await query(`
+          UPDATE products 
+          SET stock_quantity = stock_quantity - $1, updated_at = CURRENT_TIMESTAMP 
+          WHERE id = $2
+        `, [quantity, item.product_id]);
+        console.log('✅ Ürün stoğu azaltıldı:', item.product_id, '-', quantity);
+      }
+    }
+
     // Alımı sil (CASCADE ile purchase_items de silinir)
     await query('DELETE FROM purchases WHERE id = $1', [id]);
 
@@ -2965,7 +2984,14 @@ ipcMain.handle('purchases:getById', async (event, purchaseId) => {
 
     const purchaseDetailsRows = await queryAll(queryText, [purchaseId]);
 
+    console.log('📦 purchases:getById çağrıldı:', {
+      purchaseId,
+      rowCount: purchaseDetailsRows?.length || 0,
+      firstRow: purchaseDetailsRows?.[0]
+    });
+
     if (!purchaseDetailsRows || purchaseDetailsRows.length === 0) {
+      console.error('❌ Alım bulunamadı:', purchaseId);
       return { success: false, error: 'Alım bulunamadı' };
     }
 
@@ -2980,19 +3006,25 @@ ipcMain.handle('purchases:getById', async (event, purchaseId) => {
       supplierId: firstRow?.supplier_id || null,
       supplierName: firstRow?.supplier_name || 'Bilinmeyen Tedarikçi',
       currency: firstRow?.currency || 'TRY',
-      total: firstRow?.total_amount || 0,
+      total: parseFloat(firstRow?.total_amount) || 0,
       date: firstRow?.purchase_date || null,
       notes: firstRow?.notes || '',
 
       items: purchaseDetailsRows.map(row => ({
         productId: row.product_id,
         productName: row.material_name || `${row.category || 'Bilinmiyor'}${row.color_shade ? ' - ' + row.color_shade : ''}${row.code ? ' - ' + row.code : ''}${row.material_brand ? ' (' + row.material_brand + ')' : ''}`,
-        quantity: row.quantity,
-        unitPrice: row.unit_price,
-        total: row.total_price,
+        quantity: parseFloat(row.quantity) || 0,
+        unitPrice: parseFloat(row.unit_price) || 0,
+        total: parseFloat(row.total_price) || 0,
         brand: row.purchase_brand || row.material_brand || null
       })).filter(item => item.productId)
     };
+
+    console.log('✅ Formatlanmış alım verisi:', {
+      id: formattedPurchase.id,
+      itemsCount: formattedPurchase.items.length,
+      firstItem: formattedPurchase.items[0]
+    });
 
     return { success: true, data: formattedPurchase };
   } catch (error) {
